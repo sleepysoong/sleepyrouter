@@ -6,7 +6,7 @@ import { runProbeScheduler } from '../latency/probe-scheduler.js';
 import { isCoolingDown } from '../latency/router.js';
 import { loadModelCatalog } from '../providers/catalog.js';
 import { FetchLike, ModelSource, OmfmModel, ProviderApiKeys } from '../types.js';
-import { buildModelRows, renderStaticModelTable } from './model-view.js';
+import { buildModelRows, renderStaticModelTable, sortModelRows } from './model-view.js';
 import { runModelTui } from './model-tui.js';
 
 interface OutputLike {
@@ -69,9 +69,14 @@ async function runBestModel(options: { models: OmfmModel[]; apiKeys: ProviderApi
     },
     onUpdate: ({ modelId, result }) => results.set(modelId, result),
   });
+  const modelOrder = new Map(options.models.map((model, index) => [model.id, index]));
   const fresh = [...results.values()]
     .filter((result): result is ProbeResult & { latencyMs: number } => result.status === 'ok' && typeof result.latencyMs === 'number' && Number.isFinite(result.latencyMs))
-    .sort((a, b) => a.latencyMs - b.latencyMs || a.modelId.localeCompare(b.modelId))[0];
+    .sort((a, b) =>
+      a.latencyMs - b.latencyMs
+      || (modelOrder.get(a.modelId) ?? Number.MAX_SAFE_INTEGER) - (modelOrder.get(b.modelId) ?? Number.MAX_SAFE_INTEGER)
+      || a.modelId.localeCompare(b.modelId),
+    )[0];
   if (fresh) {
     const model = options.models.find((candidate) => candidate.id === fresh.modelId)!;
     return { model, latencyMs: Math.round(fresh.latencyMs), status: fresh.status, probed: true };
@@ -112,7 +117,7 @@ export async function runModelCommand(options: RunModelCommandOptions = {}): Pro
   }
 
   if (options.all) {
-    store.updateSelectedModelIds(models.map((model) => model.id));
+    store.updateSelectedModelIds(sortModelRows(buildModelRows(models, new Set(), store.readLatency())).map((row) => row.model.id));
   } else if (options.select) {
     const freeIds = new Set(models.map((model) => model.id));
     const invalid = options.select.filter((id) => !freeIds.has(id));
@@ -143,6 +148,6 @@ export async function runModelCommand(options: RunModelCommandOptions = {}): Pro
 
   if (!stdout.isTTY || options.all || options.select) {
     const selectedIds = new Set(store.readConfig().selectedModelIds);
-    stdout.write(`Free models:\n${renderStaticModelTable(buildModelRows(models, selectedIds, store.readLatency()))}`);
+    stdout.write(`Free models:\n${renderStaticModelTable(sortModelRows(buildModelRows(models, selectedIds, store.readLatency()), { selectedFirst: true }))}`);
   }
 }
