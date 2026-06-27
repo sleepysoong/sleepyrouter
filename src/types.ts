@@ -41,13 +41,6 @@ export interface ModelCache {
   fetchedAt: string;
 }
 
-export interface DaemonState {
-  pid: number;
-  port: number;
-  logPath: string;
-  startedAt: string;
-}
-
 export type FetchLike = typeof fetch;
 
 export type ProviderApiKeys = Partial<Record<ModelSource, string>>;

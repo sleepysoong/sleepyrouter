@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import { readLocalEnv } from '../config/env.js';
 import { getEnvPath } from '../config/paths.js';
 import { ConfigStore } from '../config/store.js';
-import { isProcessRunning } from '../daemon/daemon.js';
 
 interface OutputLike {
   write(chunk: string): unknown;
@@ -23,8 +22,6 @@ export interface DoctorStatus {
   selectedModelCount: number;
   cachedModelCount: number;
   cacheFetchedAt?: string;
-  daemon: 'running' | 'stale' | 'not-configured';
-  daemonPid?: number;
 }
 
 const PROVIDERS: Array<{ name: string; envName: DoctorProviderStatus['envName']; prefix: string }> = [
@@ -51,8 +48,6 @@ export function getDoctorStatus(options: { store?: ConfigStore; env?: NodeJS.Pro
   const local = readLocalEnv(store.paths.root);
   const config = store.readConfig();
   const cache = store.readModelCache();
-  const daemon = store.readDaemon();
-  const running = daemon ? isProcessRunning(daemon.pid) : false;
 
   return {
     configPath: store.paths.configPath,
@@ -70,8 +65,6 @@ export function getDoctorStatus(options: { store?: ConfigStore; env?: NodeJS.Pro
     selectedModelCount: config.selectedModelIds.length,
     cachedModelCount: cache?.models.length ?? 0,
     cacheFetchedAt: cache?.fetchedAt,
-    daemon: daemon ? (running ? 'running' : 'stale') : 'not-configured',
-    daemonPid: daemon?.pid,
   };
 }
 
@@ -92,5 +85,4 @@ export function printDoctorStatus(options: { store?: ConfigStore; env?: NodeJS.P
   }
   stdout.write(`selected models: ${status.selectedModelCount}\n`);
   stdout.write(`cached models: ${status.cachedModelCount}${status.cacheFetchedAt ? ` (fetched ${status.cacheFetchedAt})` : ''}\n`);
-  stdout.write(`daemon: ${status.daemon}${status.daemonPid ? ` (pid ${status.daemonPid})` : ''}\n`);
 }

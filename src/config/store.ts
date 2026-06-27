@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_MODEL_GROUPS, normalizeModelGroups } from '../model-groups.js';
-import { DaemonState, ModelCache, ModelGroupName, OmfmConfig, UsageObservation } from '../types.js';
-import { getConfigPath, getConfigRoot, getDaemonPath, getModelCachePath, getUsagePath } from './paths.js';
+import { ModelCache, ModelGroupName, OmfmConfig, UsageObservation } from '../types.js';
+import { getConfigPath, getConfigRoot, getModelCachePath, getUsagePath } from './paths.js';
 
 const DEFAULT_PORT = 4567;
 export const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -12,7 +12,6 @@ export interface StorePaths {
   configPath: string;
   usagePath: string;
   modelCachePath: string;
-  daemonPath: string;
 }
 
 export function createStorePaths(root = getConfigRoot()): StorePaths {
@@ -21,7 +20,6 @@ export function createStorePaths(root = getConfigRoot()): StorePaths {
     configPath: getConfigPath(root),
     usagePath: getUsagePath(root),
     modelCachePath: getModelCachePath(root),
-    daemonPath: getDaemonPath(root),
   };
 }
 
@@ -127,18 +125,6 @@ export class ConfigStore {
 
   writeModelCache(cache: ModelCache): void {
     writeJson(this.paths.modelCachePath, cache);
-  }
-
-  readDaemon(): DaemonState | undefined {
-    return readJson<DaemonState | undefined>(this.paths.daemonPath, undefined);
-  }
-
-  writeDaemon(state: DaemonState): void {
-    writeJson(this.paths.daemonPath, state);
-  }
-
-  clearDaemon(): void {
-    if (fs.existsSync(this.paths.daemonPath)) fs.unlinkSync(this.paths.daemonPath);
   }
 }
 

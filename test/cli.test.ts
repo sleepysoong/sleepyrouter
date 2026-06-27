@@ -1,11 +1,5 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
-
-const roots: string[] = [];
-afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
+import { describe, expect, it } from 'vitest';
 
 describe('CLI entrypoint', () => {
   it('prints help', () => {
@@ -17,12 +11,5 @@ describe('CLI entrypoint', () => {
   it('prints version with --version', () => {
     const out = execFileSync(process.execPath, ['--import', 'tsx', 'src/cli.ts', '--version'], { encoding: 'utf8' });
     expect(out.trim()).toMatch(/^\d+\.\d+\.\d+/);
-  });
-
-  it('reports stopped status without daemon', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omfm-cli-'));
-    roots.push(root);
-    const out = execFileSync(process.execPath, ['--import', 'tsx', 'src/cli.ts', 'status'], { encoding: 'utf8', env: { ...process.env, OMFM_HOME: root } });
-    expect(out).toContain('omfm stopped');
   });
 });

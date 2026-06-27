@@ -17,10 +17,6 @@ export function getModelCachePath(root = getConfigRoot()): string {
   return path.join(root, 'models-cache.json');
 }
 
-export function getDaemonPath(root = getConfigRoot()): string {
-  return path.join(root, 'daemon.json');
-}
-
 export function getEnvPath(root = getConfigRoot()): string {
   return path.join(root, '.env');
 }

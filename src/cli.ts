@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { runStartCommand } from './commands/start.js';
-import { runStopCommand } from './commands/stop.js';
 import { printStatus } from './commands/status.js';
 import { printDoctorStatus } from './commands/doctor.js';
 import { runUsageCommand } from './commands/usage.js';
@@ -36,7 +35,7 @@ function parsePort(value: string | boolean | undefined): number | undefined {
 }
 
 function help(): void {
-  console.log(`oh-my-free-models ${VERSION}\n\nUsage:\n  omfm start [--port 4567] [--daemon]\n  omfm stop\n  omfm status\n  omfm usage [--json]\n  omfm doctor\n  omfm --version\n\nEnvironment:\n  OPENROUTER_API_KEY and NVIDIA_API_KEY are read from the process first, then ~/.oh-my-free-models/.env\n`);
+  console.log(`oh-my-free-models ${VERSION}\n\nUsage:\n  omfm start [--port 4567]\n  omfm status\n  omfm usage [--json]\n  omfm doctor\n  omfm --version\n\nEnvironment:\n  OPENROUTER_API_KEY and NVIDIA_API_KEY are read from the process first, then ~/.oh-my-free-models/.env\n`);
 }
 
 async function main(): Promise<void> {
@@ -53,13 +52,7 @@ async function main(): Promise<void> {
     const portFlag = parsed.flags.get('port');
     await runStartCommand({
       port: parsePort(portFlag),
-      daemon: parsed.flags.has('daemon'),
-      daemonChild: parsed.flags.has('daemon-child'),
     });
-    return;
-  }
-  if (parsed.command === 'stop') {
-    runStopCommand();
     return;
   }
   if (parsed.command === 'status') {
