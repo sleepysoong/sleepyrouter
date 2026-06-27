@@ -69,7 +69,7 @@ describe('config/env', () => {
     expect(store.readConfig()).toMatchObject({
       port: 1234,
       selectedModelIds: ['a'],
-      modelGroups: { fast: [], balanced: [], capable: [] },
+      modelGroups: {},
     });
   });
 

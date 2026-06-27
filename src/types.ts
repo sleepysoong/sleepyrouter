@@ -1,8 +1,6 @@
 export type ModelSource = 'openrouter' | 'nvidia';
 
-export type ModelGroupName = 'fast' | 'balanced' | 'capable';
-
-export type ModelGroups = Record<ModelGroupName, string[]>;
+export type ModelGroups = Record<string, string[]>;
 
 export function sourceOf(model: OmfmModel): ModelSource {
   return model.source === 'nvidia' ? 'nvidia' : 'openrouter';
@@ -38,6 +36,7 @@ export interface OmfmConfig {
   port: number;
   selectedModelIds: string[];
   modelGroups: ModelGroups;
+  defaultGroup?: string;
 }
 
 export interface ModelCache {

@@ -9,7 +9,7 @@
 | CLI 진입점 | [src/cli.ts](../src/cli.ts), `src/commands/*` | `slr` 명령어(start, status, doctor, usage)를 파싱해요. | `test/cli.test.ts`, `test/status.test.ts`, `test/usage.test.ts`, `test/doctor.test.ts` |
 | 설정/저장소 | [src/config/store.ts](../src/config/store.ts), [src/config/env.ts](../src/config/env.ts), [src/config/paths.ts](../src/config/paths.ts) | 선택된 모델 ID, 사용량 카운터, API 키 조회를 저장해요. | `test/config.test.ts` |
 | 프로바이더 어댑터 | [src/providers/openrouter.ts](../src/providers/openrouter.ts), [src/providers/nvidia.ts](../src/providers/nvidia.ts), [src/providers/catalog.ts](../src/providers/catalog.ts) | 적격 무료 모델을 나열하고 정규화하고, `listAvailableFreeModels`로 집계하고, 프로바이더별 ID를 보존하고, 프로바이더 요청을 전달해요. | `test/openrouter.test.ts`, `test/nvidia.test.ts`, `test/catalog.test.ts` |
-| 라우팅 계층 | [src/latency/router.ts](../src/latency/router.ts) | 요청 매칭, 그룹 매칭, 또는 결정론적 설정 순서 기반으로 선택된 모델을 골라요. | `test/router.test.ts` |
+| 라우팅 계층 | [src/latency/router.ts](../src/latency/router.ts) | 요청 매칭, 구성 가능한 그룹 매칭, 기본 그룹 대체, 또는 결정론적 설정 순서 기반으로 선택된 모델을 골라요. | `test/router.test.ts` |
 | 로컬 서버 | [src/server/create-server.ts](../src/server/create-server.ts), [src/server/translate.ts](../src/server/translate.ts), [src/server/sse.ts](../src/server/sse.ts) | `/v1`과 `/anthropic` 경로를 노출하고, 대체 페이로드를 번역하고, SSE 응답을 스트리밍해요. | `test/server.test.ts`, `test/translate.test.ts` |
 
 ## 경계 규칙

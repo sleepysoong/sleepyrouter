@@ -18,7 +18,7 @@
 - The package does not auto-start during install; users explicitly run `slr start`.
 - Only models listed in the config file's `selectedModelIds` array are eligible for request routing.
 - If a request names a selected model, the proxy honors it; provider upstream IDs also match selected local models when available. Generic or unknown model names route to the first model in the config order.
-- Model groups `fast`, `balanced`, and `capable` let clients address separate pools with `slr/fast`, `slr/balanced`, `slr/capable`, or the `haiku`/`sonnet`/`opus` aliases. Non-empty groups route only within that group; empty groups fall back to the full selected list.
+- Model groups are configurable in the config file under `modelGroups`. Each group has an ordered list of model IDs. When a request specifies a group name, the router tries models in that group in order. A `defaultGroup` setting routes unknown model names to a fallback group.
 - Supported provider adapters must preserve free/text eligibility and selected-model allowlisting.
 - Unsupported modalities and non-chat endpoints remain out of scope for version `0.0.1` unless an implementation task changes the product contract.
 

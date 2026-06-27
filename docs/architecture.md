@@ -9,7 +9,7 @@ This package is a local Node.js proxy that lets coding agents point OpenAI-compa
 | CLI entrypoint | [src/cli.ts](../src/cli.ts), `src/commands/*` | Parse `slr` commands for start, status, doctor, and usage. | `test/cli.test.ts`, `test/status.test.ts`, `test/usage.test.ts`, `test/doctor.test.ts` |
 | Config/store | [src/config/store.ts](../src/config/store.ts), [src/config/env.ts](../src/config/env.ts), [src/config/paths.ts](../src/config/paths.ts) | Persist selected model IDs, usage counters, and API-key lookup. | `test/config.test.ts` |
 | Provider adapters | [src/providers/openrouter.ts](../src/providers/openrouter.ts), [src/providers/nvidia.ts](../src/providers/nvidia.ts), [src/providers/catalog.ts](../src/providers/catalog.ts) | List and normalize eligible free models, aggregate them through `listAvailableFreeModels`, preserve provider-specific IDs, and forward provider requests. | `test/openrouter.test.ts`, `test/nvidia.test.ts`, `test/catalog.test.ts` |
-| Latency layer | [src/latency/router.ts](../src/latency/router.ts) | Choose selected models by request match, group match, or deterministic config-order fallback. | `test/router.test.ts` |
+| Latency layer | [src/latency/router.ts](../src/latency/router.ts) | Choose selected models by request match, configurable group match, default group fallback, or deterministic config-order fallback. | `test/router.test.ts` |
 | Local server | [src/server/create-server.ts](../src/server/create-server.ts), [src/server/translate.ts](../src/server/translate.ts), [src/server/sse.ts](../src/server/sse.ts) | Expose `/v1` and `/anthropic` routes, translate fallback payloads, and stream SSE responses. | `test/server.test.ts`, `test/translate.test.ts` |
 
 ## Boundary rules

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_MODEL_GROUPS, normalizeModelGroups } from '../model-groups.js';
-import { ModelCache, ModelGroupName, OmfmConfig, UsageObservation } from '../types.js';
+import { normalizeModelGroups } from '../model-groups.js';
+import { ModelCache, OmfmConfig, UsageObservation } from '../types.js';
 import { getConfigPath, getConfigRoot, getModelCachePath, getUsagePath } from './paths.js';
 
 const DEFAULT_PORT = 4567;
@@ -63,7 +63,8 @@ export class ConfigStore {
     return {
       port: typeof config.port === 'number' ? config.port : DEFAULT_PORT,
       selectedModelIds: Array.isArray(config.selectedModelIds) ? config.selectedModelIds.filter((x): x is string => typeof x === 'string') : [],
-      modelGroups: normalizeModelGroups(config.modelGroups ?? DEFAULT_MODEL_GROUPS),
+      modelGroups: normalizeModelGroups(config.modelGroups),
+      defaultGroup: typeof config.defaultGroup === 'string' ? config.defaultGroup : undefined,
     };
   }
 
@@ -78,7 +79,7 @@ export class ConfigStore {
     return next;
   }
 
-  updateModelGroup(group: ModelGroupName, modelIds: string[]): OmfmConfig {
+  updateModelGroup(group: string, modelIds: string[]): OmfmConfig {
     const config = this.readConfig();
     const groupIds = [...new Set(modelIds)];
     const next = {

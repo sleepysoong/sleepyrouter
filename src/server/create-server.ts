@@ -104,6 +104,7 @@ interface SelectedModelsResult {
   byId: Map<string, OmfmModel>;
   ids: string[];
   modelGroups: ModelGroups;
+  defaultGroup?: string;
 }
 
 async function selectedModelSelection(store: ConfigStore, apiKeys: ProviderApiKeys, fetchImpl?: FetchLike): Promise<SelectedModelsResult> {
@@ -117,6 +118,7 @@ async function selectedModelSelection(store: ConfigStore, apiKeys: ProviderApiKe
     byId: new Map(models.map((model) => [model.id, model])),
     ids: models.map((model) => model.id),
     modelGroups: config.modelGroups,
+    defaultGroup: config.defaultGroup,
   };
 }
 
@@ -246,7 +248,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
         const selected = await selectedModelSelection(store, apiKeys, fetchImpl);
         assertSelectedFree(selected.models);
         const routingModel = requestedModelForRouting(selected.models, body.model);
-        const candidateIds = orderedCandidates(selected.ids, routingModel, selected.modelGroups);
+        const candidateIds = orderedCandidates(selected.ids, routingModel, selected.modelGroups, selected.defaultGroup);
         let lastError: unknown;
         let attempts = 0;
         for (const modelId of candidateIds) {
@@ -300,7 +302,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
         const selected = await selectedModelSelection(store, apiKeys, fetchImpl);
         assertSelectedFree(selected.models);
         const routingModel = requestedModelForRouting(selected.models, body.model);
-        const candidateIds = orderedCandidates(selected.ids, routingModel, selected.modelGroups);
+        const candidateIds = orderedCandidates(selected.ids, routingModel, selected.modelGroups, selected.defaultGroup);
         let lastError: unknown;
         let attempts = 0;
         for (const modelId of candidateIds) {
