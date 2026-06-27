@@ -75,9 +75,9 @@ describe('local proxy server', () => {
     await withServer(store, mockFetch, async (base) => {
       const res = await fetch(`${base}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'auto', messages: [{ role: 'user', content: 'hi' }] }) });
       const body = await res.json() as any;
-      expect(body.model).toBe('fast:free');
-      expect(seen[0].model).toBe('fast:free');
-      expect(store.readUsage()['fast:free']).toMatchObject({ requests: 1, successes: 1, inputTokens: 2, outputTokens: 3, totalTokens: 5 });
+      expect(body.model).toBe('slow:free');
+      expect(seen[0].model).toBe('slow:free');
+      expect(store.readUsage()['slow:free']).toMatchObject({ requests: 1, successes: 1, inputTokens: 2, outputTokens: 3, totalTokens: 5 });
     });
   });
 
@@ -100,8 +100,8 @@ describe('local proxy server', () => {
       await res.text();
       const responseLog = logs.find((event) => event.type === 'response');
       expect(logs[0]).toMatchObject({ type: 'request', method: 'POST', path: '/v1/chat/completions' });
-      expect(responseLog).toMatchObject({ type: 'response', statusCode: 200, requestedModel: 'auto', modelId: 'fast:free', routeReason: 'lowest-latency', observedLatencyMs: 10 });
-      expect(formatServerLogEvent(responseLog!)).toContain('requested=auto model=fast:free route=lowest-latency cached=10ms');
+      expect(responseLog).toMatchObject({ type: 'response', statusCode: 200, requestedModel: 'auto', modelId: 'slow:free', routeReason: 'fallback-order', observedLatencyMs: 500 });
+      expect(formatServerLogEvent(responseLog!)).toContain('requested=auto model=slow:free route=fallback-order cached=500ms');
       expect(formatServerLogEvent(logs[0]!, { color: true })).toContain('\u001b[36mrequest\u001b[0m');
       expect(formatServerLogEvent(responseLog!, { color: true })).toContain('\u001b[32mresponse\u001b[0m');
     } finally {
@@ -363,20 +363,20 @@ describe('local proxy server', () => {
     const mockFetch: FetchLike = async (_url, init) => {
       const body = JSON.parse(String(init?.body));
       calls.push(body.model);
-      if (body.model === 'fast:free') return new Response('{"error":{"message":"rate limit","code":429}}', { status: 429 });
+      if (body.model === 'slow:free') return new Response('{"error":{"message":"rate limit","code":429}}', { status: 429 });
       return Response.json({ id: 'chatcmpl_1', model: body.model, choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] });
     };
     await withServer(store, mockFetch, async (base) => {
       const first = await fetch(`${base}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'auto', messages: [{ role: 'user', content: 'hi' }] }) });
       const firstBody = await first.json() as any;
-      expect(firstBody.model).toBe('slow:free');
-      expect(calls).toEqual(['fast:free', 'slow:free']);
-      expect(store.readLatency()['fast:free']?.lastStatus).toBe('rate-limited');
-      expect(store.readUsage()['fast:free']).toMatchObject({ requests: 1, failures: 1, lastStatus: 'rate-limited', lastHttpStatus: 429 });
+      expect(firstBody.model).toBe('fast:free');
+      expect(calls).toEqual(['slow:free', 'fast:free']);
+      expect(store.readLatency()['slow:free']?.lastStatus).toBe('rate-limited');
+      expect(store.readUsage()['slow:free']).toMatchObject({ requests: 1, failures: 1, lastStatus: 'rate-limited', lastHttpStatus: 429 });
       const second = await fetch(`${base}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'auto', messages: [{ role: 'user', content: 'hi' }] }) });
       const secondBody = await second.json() as any;
-      expect(secondBody.model).toBe('slow:free');
-      expect(calls).toEqual(['fast:free', 'slow:free', 'slow:free']);
+      expect(secondBody.model).toBe('fast:free');
+      expect(calls).toEqual(['slow:free', 'fast:free', 'slow:free', 'fast:free']);
     });
   });
 
@@ -419,7 +419,7 @@ describe('local proxy server', () => {
     await withServer(store, mockFetch, async (base) => {
       const res = await fetch(`${base}/anthropic/v1/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01', 'x-api-key': 'local' }, body: JSON.stringify({ model: 'auto', max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] }) });
       const body = await res.json() as any;
-      expect(body.model).toBe('fast:free');
+      expect(body.model).toBe('slow:free');
       expect(seen[0].url).toContain('/api/v1/messages');
     });
   });

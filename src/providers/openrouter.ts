@@ -40,6 +40,13 @@ export function isFreeOpenRouterModel(model: OpenRouterModel): boolean {
   return priceIsZero(pricing.prompt) && priceIsZero(pricing.completion) && priceIsZero(pricing.request ?? 0);
 }
 
+function openrouterUsageId(id: string): string {
+  const parts = id.split('/');
+  const modelName = parts.length >= 2 ? parts.slice(1).join('/') : id;
+  const cleaned = modelName.replace(/:free$/, '');
+  return `openrouter/${cleaned}`;
+}
+
 export function normalizeOpenRouterModel(model: OpenRouterModel, popularityRank?: number, metadataCatalog?: ProviderMetadataCatalog): OmfmModel {
   const id = model.id ?? model.canonical_slug ?? 'unknown';
   const metadata = modelMetadata('openrouter', id, metadataCatalog);
@@ -49,6 +56,7 @@ export function normalizeOpenRouterModel(model: OpenRouterModel, popularityRank?
     name: model.name ?? id,
     provider: inferProvider(id),
     source: 'openrouter',
+    usageId: openrouterUsageId(id),
     contextLength: model.context_length ?? metadata?.contextLength,
     popularityRank,
     supportedParameters: model.supported_parameters ?? [],

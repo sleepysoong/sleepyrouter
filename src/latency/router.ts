@@ -43,13 +43,6 @@ export function chooseModel(selectedModelIds: string[], observations: Record<str
     return { modelId: requestedModel, reason: 'requested-selected' };
   }
 
-  const available = selectedModelIds.filter((id) => !isCoolingDown(observations[id]));
-  const primary = pickLowestLatency(available, observations);
-  if (primary) return { modelId: primary, reason: 'lowest-latency' };
-
-  const fallback = pickLowestLatency(selectedModelIds, observations);
-  if (fallback) return { modelId: fallback, reason: 'lowest-latency' };
-
   return { modelId: selectedModelIds[0]!, reason: 'fallback-order' };
 }
 
@@ -77,12 +70,7 @@ export function orderedCandidates(selectedModelIds: string[], observations: Reco
     const ra = statusRank(observations[a]);
     const rb = statusRank(observations[b]);
     if (ra !== rb) return ra - rb;
-    const la = latencyValue(observations[a]);
-    const lb = latencyValue(observations[b]);
-    if (la !== undefined && lb !== undefined) return la - lb || pool.ids.indexOf(a) - pool.ids.indexOf(b) || a.localeCompare(b);
-    if (la !== undefined) return -1;
-    if (lb !== undefined) return 1;
-    return pool.ids.indexOf(a) - pool.ids.indexOf(b) || a.localeCompare(b);
+    return pool.ids.indexOf(a) - pool.ids.indexOf(b);
   });
   return [first, ...rest];
 }

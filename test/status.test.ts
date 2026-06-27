@@ -19,6 +19,6 @@ describe('status command', () => {
       'ready:free': { modelId: 'ready:free', latencyMs: 200, updatedAt: '', successes: 1, failures: 0, lastStatus: 'ok' },
     });
 
-    expect(getStatus(store).bestModel).toEqual({ id: 'ready:free', latencyMs: 200, reason: 'lowest-latency' });
+    expect(getStatus(store).bestModel).toEqual({ id: 'timed-out:free', latencyMs: 100, reason: 'fallback-order' });
   });
 });

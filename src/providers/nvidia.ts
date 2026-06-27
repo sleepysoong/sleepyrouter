@@ -35,6 +35,13 @@ export function isChatLikeNvidiaModel(model: NvidiaModel): boolean {
   return true;
 }
 
+function nvidiaUsageId(upstreamId: string): string {
+  const parts = upstreamId.split('/');
+  const modelName = parts.length >= 2 ? parts.slice(1).join('/') : upstreamId;
+  const cleaned = modelName.replace(/-(\d{3,}b(?:-\w+)?)$/, '');
+  return `nvidia/${cleaned}`;
+}
+
 export function normalizeNvidiaModel(model: NvidiaModel, metadataCatalog?: ProviderMetadataCatalog): OmfmModel {
   const upstreamId = model.id ?? 'unknown';
   const metadata = modelMetadata('nvidia', upstreamId, metadataCatalog);
@@ -44,6 +51,7 @@ export function normalizeNvidiaModel(model: NvidiaModel, metadataCatalog?: Provi
     name: model.name ?? metadata?.name ?? titleFromId(upstreamId),
     provider: 'nvidia',
     source: 'nvidia',
+    usageId: nvidiaUsageId(upstreamId),
     contextLength: extractContextLengthFromRecord(model as Record<string, unknown>) ?? metadata?.contextLength,
     raw: model,
   };

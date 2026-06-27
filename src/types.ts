@@ -10,6 +10,7 @@ export interface OmfmModel {
   name: string;
   provider: string;
   source?: ModelSource;
+  usageId?: string;
   contextLength?: number;
   popularityRank?: number;
   supportedParameters?: string[];

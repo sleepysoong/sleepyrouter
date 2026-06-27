@@ -182,15 +182,15 @@ function estimateInputTokens(body: unknown): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-function recordSuccessfulUsage(store: ConfigStore, modelId: string, httpStatus: number, data?: Record<string, any>): void {
-  store.recordUsage(modelId, { success: true, httpStatus, ...usageFromResponse(data) });
+function recordSuccessfulUsage(store: ConfigStore, model: OmfmModel, httpStatus: number, data?: Record<string, any>): void {
+  store.recordUsage(model.usageId ?? model.id, { success: true, httpStatus, ...usageFromResponse(data) });
 }
 
-async function recordUpstreamFailure(store: ConfigStore, modelId: string, upstream: Response): Promise<string> {
+async function recordUpstreamFailure(store: ConfigStore, model: OmfmModel, upstream: Response): Promise<string> {
   const text = await upstream.text();
   const status = upstream.status === 429 ? 'rate-limited' : upstream.status === 402 ? 'payment' : 'failed';
-  store.recordFailure(modelId, { status, httpStatus: upstream.status, error: text.slice(0, 500) });
-  store.recordUsage(modelId, { success: false, httpStatus: upstream.status, status });
+  store.recordFailure(model.id, { status, httpStatus: upstream.status, error: text.slice(0, 500) });
+  store.recordUsage(model.usageId ?? model.id, { success: false, httpStatus: upstream.status, status });
   return text;
 }
 
@@ -297,17 +297,17 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
           if (upstream.ok) {
             store.recordSuccess(modelId, Date.now() - started);
             if (stream) {
-              recordSuccessfulUsage(store, modelId, upstream.status);
+              recordSuccessfulUsage(store, model, upstream.status);
               res.writeHead(upstream.status, { 'Content-Type': upstream.headers.get('content-type') ?? 'text/event-stream; charset=utf-8' });
               await pipeWebStreamToNode(upstream.body, res);
               return;
             }
             const data = await upstream.json() as Record<string, any>;
-            recordSuccessfulUsage(store, modelId, upstream.status, data);
+            recordSuccessfulUsage(store, model, upstream.status, data);
             json(res, upstream.status, data);
             return;
           }
-          lastError = await recordUpstreamFailure(store, modelId, upstream);
+          lastError = await recordUpstreamFailure(store, model, upstream);
         }
         if (attempts === 0) {
           noUsableModelResponse(res, lastError);
@@ -351,10 +351,10 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
             const upstream = await postNvidiaChatCompletion({ apiKey, body: fallbackBody, fetchImpl });
             if (upstream.ok) {
               store.recordSuccess(modelId, Date.now() - started);
-              await writeOpenAIAsAnthropic(upstream, res, body, modelId, (data) => recordSuccessfulUsage(store, modelId, upstream.status, data));
+              await writeOpenAIAsAnthropic(upstream, res, body, modelId, (data) => recordSuccessfulUsage(store, model, upstream.status, data));
               return;
             }
-            lastError = await recordUpstreamFailure(store, modelId, upstream);
+            lastError = await recordUpstreamFailure(store, model, upstream);
             continue;
           }
 
@@ -365,24 +365,24 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
             upstream = await postOpenRouterChatCompletion({ apiKey, body: fallbackBody, stream, fetchImpl });
             if (upstream.ok) {
               store.recordSuccess(modelId, Date.now() - started);
-              await writeOpenAIAsAnthropic(upstream, res, body, modelId, (data) => recordSuccessfulUsage(store, modelId, upstream.status, data));
+              await writeOpenAIAsAnthropic(upstream, res, body, modelId, (data) => recordSuccessfulUsage(store, model, upstream.status, data));
               return;
             }
           }
           if (upstream.ok) {
             store.recordSuccess(modelId, Date.now() - started);
             if (stream) {
-              recordSuccessfulUsage(store, modelId, upstream.status);
+              recordSuccessfulUsage(store, model, upstream.status);
               res.writeHead(upstream.status, { 'Content-Type': upstream.headers.get('content-type') ?? 'text/event-stream; charset=utf-8' });
               await pipeWebStreamToNode(upstream.body, res);
               return;
             }
             const data = await upstream.json() as Record<string, any>;
-            recordSuccessfulUsage(store, modelId, upstream.status, data);
+            recordSuccessfulUsage(store, model, upstream.status, data);
             json(res, upstream.status, data);
             return;
           }
-          lastError = await recordUpstreamFailure(store, modelId, upstream);
+          lastError = await recordUpstreamFailure(store, model, upstream);
         }
         if (attempts === 0) {
           noUsableModelResponse(res, lastError);
