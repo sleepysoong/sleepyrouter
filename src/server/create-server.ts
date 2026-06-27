@@ -4,7 +4,7 @@ import { requireAnyProviderApiKey } from '../config/env.js';
 import { loadModelCatalog } from '../providers/catalog.js';
 import { postNvidiaChatCompletion } from '../providers/nvidia.js';
 import { isFreeOpenRouterModel, postOpenRouterAnthropicMessage, postOpenRouterChatCompletion } from '../providers/openrouter.js';
-import { FetchLike, ModelGroups, OmfmModel, ProviderApiKeys } from '../types.js';
+import { FetchLike, ModelGroups, OmfmModel, ProviderApiKeys, sourceOf } from '../types.js';
 import { orderedCandidates, RouteChoice } from '../latency/router.js';
 import { anthropicToOpenAI, openAIToAnthropic } from './translate.js';
 import { pipeOpenAIStreamAsAnthropic, pipeWebStreamToNode } from './sse.js';
@@ -84,16 +84,12 @@ async function readBody(req: IncomingMessage): Promise<any> {
   return JSON.parse(text);
 }
 
-function sourceOf(model: OmfmModel): 'openrouter' | 'nvidia' {
-  return model.source === 'nvidia' ? 'nvidia' : 'openrouter';
-}
-
 function upstreamId(model: OmfmModel): string {
   return model.upstreamId ?? (sourceOf(model) === 'nvidia' ? model.id.replace(/^nvidia\//, '') : model.id);
 }
 
 function isCachedFreeModel(model: OmfmModel): boolean {
-  if (sourceOf(model) === 'nvidia') return model.id.startsWith('nvidia/') || model.provider === 'nvidia';
+  if (sourceOf(model) === 'nvidia') return true;
   if (model.id.endsWith(':free')) return true;
   return Boolean(model.raw && typeof model.raw === 'object' && isFreeOpenRouterModel(model.raw as Parameters<typeof isFreeOpenRouterModel>[0]));
 }
@@ -122,13 +118,6 @@ async function selectedModelSelection(store: ConfigStore, apiKeys: ProviderApiKe
     ids: models.map((model) => model.id),
     modelGroups: config.modelGroups,
   };
-}
-
-async function selectedModels(store: ConfigStore, apiKeys: ProviderApiKeys, fetchImpl?: FetchLike) {
-  const config = store.readConfig();
-  const freeModels = await availableFreeModels(store, apiKeys, fetchImpl);
-  const selected = new Set(config.selectedModelIds);
-  return freeModels.filter((model) => selected.has(model.id));
 }
 
 function assertSelectedFree(models: OmfmModel[]): void {
@@ -237,8 +226,8 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
 
       if (method === 'GET' && url.pathname === '/v1/models') {
         const apiKeys = requireAnyProviderApiKey(env, store.paths.root);
-        const models = await selectedModels(store, apiKeys, fetchImpl);
-        json(res, 200, { object: 'list', data: models.map((model) => ({ id: model.id, object: 'model', created: 0, owned_by: sourceOf(model), provider: model.provider })) });
+        const selected = await selectedModelSelection(store, apiKeys, fetchImpl);
+        json(res, 200, { object: 'list', data: selected.models.map((model) => ({ id: model.id, object: 'model', created: 0, owned_by: sourceOf(model), provider: model.provider })) });
         return;
       }
 

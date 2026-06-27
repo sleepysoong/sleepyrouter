@@ -4,6 +4,10 @@ export type ModelGroupName = 'fast' | 'balanced' | 'capable';
 
 export type ModelGroups = Record<ModelGroupName, string[]>;
 
+export function sourceOf(model: OmfmModel): ModelSource {
+  return model.source === 'nvidia' ? 'nvidia' : 'openrouter';
+}
+
 export interface OmfmModel {
   id: string;
   upstreamId?: string;

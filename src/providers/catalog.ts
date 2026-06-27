@@ -1,5 +1,5 @@
 import { ConfigStore, isModelCacheFresh } from '../config/store.js';
-import { FetchLike, ModelSource, OmfmModel, ProviderApiKeys } from '../types.js';
+import { FetchLike, OmfmModel, ProviderApiKeys, sourceOf } from '../types.js';
 import { listNvidiaFreeModels } from './nvidia.js';
 import { listOpenRouterFreeModels } from './openrouter.js';
 
@@ -16,10 +16,6 @@ export interface LoadedModelCatalog {
 
 function errorMessage(source: string, error: unknown): string {
   return `${source}: ${error instanceof Error ? error.message : String(error)}`;
-}
-
-function sourceOf(model: OmfmModel): ModelSource {
-  return model.source === 'nvidia' ? 'nvidia' : 'openrouter';
 }
 
 function modelsForConfiguredProviders(models: OmfmModel[], apiKeys: ProviderApiKeys): OmfmModel[] {

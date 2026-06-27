@@ -52,7 +52,6 @@ export function normalizeOpenRouterModel(model: OpenRouterModel, popularityRank?
   const metadata = modelMetadata('openrouter', id, metadataCatalog);
   return {
     id,
-    upstreamId: id,
     name: model.name ?? id,
     provider: inferProvider(id),
     source: 'openrouter',
@@ -83,8 +82,10 @@ async function fetchOpenRouterModels(options: { apiKey: string; fetchImpl: Fetch
 export async function listOpenRouterFreeModels(options: { apiKey: string; fetchImpl?: FetchLike }): Promise<OmfmModel[]> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const metadataCatalogPromise = loadModelMetadataCatalog({ fetchImpl: options.fetchImpl });
-  const allModels = await fetchOpenRouterModels({ apiKey: options.apiKey, fetchImpl });
-  const programmingPopularity = await fetchOpenRouterModels({ apiKey: options.apiKey, fetchImpl, category: 'programming' }).catch(() => []);
+  const [allModels, programmingPopularity] = await Promise.all([
+    fetchOpenRouterModels({ apiKey: options.apiKey, fetchImpl }),
+    fetchOpenRouterModels({ apiKey: options.apiKey, fetchImpl, category: 'programming' }).catch(() => []),
+  ]);
   const metadataCatalog = await metadataCatalogPromise;
   const popularityById = new Map<string, number>();
   for (const [index, model] of programmingPopularity.entries()) {

@@ -49,10 +49,11 @@ export function getDoctorStatus(options: { store?: ConfigStore; env?: NodeJS.Pro
   const config = store.readConfig();
   const cache = store.readModelCache();
 
+  const envPath = getEnvPath(store.paths.root);
   return {
     configPath: store.paths.configPath,
-    envPath: getEnvPath(store.paths.root),
-    envFileExists: fs.existsSync(getEnvPath(store.paths.root)),
+    envPath,
+    envFileExists: fs.existsSync(envPath),
     providers: PROVIDERS.map((provider) => {
       const key = keyValue(env, local, provider.envName);
       return {
