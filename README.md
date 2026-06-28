@@ -35,10 +35,21 @@ Free tier 코딩 에이전트는 스펙 시트에서는 멀쩡해 보이지만, 
 
 ## 30초 만에 시도하기
 
+### npm으로 설치
+
 ```bash
 npm install -g sleepy-llm-router
 mkdir -p ~/.sleepy-llm-router && echo 'OPENROUTER_API_KEY=sk-or-...' > ~/.sleepy-llm-router/.env
 slr start        # http://localhost:4567 서빙
+```
+
+### 로컬 파일로 설치
+
+```bash
+git clone https://github.com/sleepysoong/sleepy-llm-router
+cd sleepy-llm-router && npm install && npm run build
+npm pack && npm install -g ./sleepy-llm-router-*.tgz
+slr start
 ```
 
 ## 자주 쓰는 명령어

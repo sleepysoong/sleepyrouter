@@ -4,8 +4,37 @@
 
 ## 1. 설치
 
+### npm으로 설치 (권장)
+
 ```bash
 npm install -g sleepy-llm-router
+```
+
+### 로컬 파일로 설치
+
+저장소를 clone한 뒤 로컬에서 직접 설치할 수 있습니다.
+
+```bash
+# 1. 저장소 clone
+git clone https://github.com/sleepysoong/sleepy-llm-router
+cd sleepy-llm-router
+
+# 2. 의존성 설치 및 빌드
+npm install
+npm run build
+
+# 3-1. npm pack으로 설치 (tarball 생성 후 전역 설치)
+npm pack
+npm install -g ./sleepy-llm-router-*.tgz
+
+# 3-2. npm link로 설치 (개발용, 소스 변경 시 자동 반영)
+npm link
+```
+
+설치 후 `slr` 명령어를 사용할 수 있습니다.
+
+```bash
+slr --version
 ```
 
 설치 시 백그라운드 프로세스가 자동으로 뜨지 **않습니다**. 필요할 때 직접 실행하세요.
