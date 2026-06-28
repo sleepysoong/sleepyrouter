@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runUsageCommand } from '../src/commands/usage.js';
 import { ConfigStore } from '../src/config/store.js';
 
@@ -14,32 +14,34 @@ function tempStore(): ConfigStore {
   return new ConfigStore(root);
 }
 
-function output() {
-  let text = '';
-  return {
-    stream: { write: (chunk: string) => { text += chunk; } },
-    text: () => text,
-  };
-}
-
 describe('usage command', () => {
-  it('prints model usage sorted by request count', () => {
+  it('prints empty when no records', () => {
     const store = tempStore();
-    store.recordUsage('beta', { success: true });
-    store.recordUsage('alpha', { success: true, inputTokens: 1, outputTokens: 2 });
-    store.recordUsage('alpha', { success: false });
-    const out = output();
-    runUsageCommand({ store, stdout: out.stream });
-    expect(out.text()).toContain('모델');
-    expect(out.text().indexOf('alpha')).toBeLessThan(out.text().indexOf('beta'));
-    expect(out.text()).toContain('3');
+    const out: string[] = [];
+    const spy = vi.spyOn(console, 'log').mockImplementation((msg) => out.push(msg));
+    try {
+      runUsageCommand({ store });
+      expect(out.join('')).toContain('기록');
+    } finally {
+      spy.mockRestore();
+    }
   });
 
-  it('prints json usage', () => {
+  it('prints usage aggregated by model', () => {
     const store = tempStore();
-    store.recordUsage('alpha', { success: true, totalTokens: 5 });
-    const out = output();
-    runUsageCommand({ store, stdout: out.stream, json: true });
-    expect(JSON.parse(out.text())).toMatchObject({ usage: [{ modelId: 'alpha', requests: 1, totalTokens: 5 }] });
+    store.appendUsage({ ts: '2026-06-28T10:00:00Z', model: 'beta', inputTokens: 0, outputTokens: 0, success: true });
+    store.appendUsage({ ts: '2026-06-28T10:01:00Z', model: 'alpha', inputTokens: 1, outputTokens: 2, success: true });
+    store.appendUsage({ ts: '2026-06-28T10:02:00Z', model: 'alpha', inputTokens: 0, outputTokens: 0, success: false });
+    const out: string[] = [];
+    const spy = vi.spyOn(console, 'log').mockImplementation((msg) => out.push(msg));
+    try {
+      runUsageCommand({ store });
+      const text = out.join('\n');
+      expect(text).toContain('Model ID');
+      expect(text.indexOf('alpha')).toBeLessThan(text.indexOf('beta'));
+      expect(text).toContain('1');  // inputTokens for alpha (1+0)
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

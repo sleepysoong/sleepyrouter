@@ -5,4 +5,3 @@ export { listNvidiaFreeModels } from './providers/nvidia.js';
 export { listAvailableFreeModels } from './providers/catalog.js';
 export { chooseGroupedModel, chooseModel, orderedCandidates } from './latency/router.js';
 export { anthropicToOpenAI, openAIToAnthropic } from './server/translate.js';
-export { getDoctorStatus, printDoctorStatus } from './commands/doctor.js';

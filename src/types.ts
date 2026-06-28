@@ -19,17 +19,12 @@ export interface OmfmModel {
   raw?: unknown;
 }
 
-export interface UsageObservation {
-  modelId: string;
-  requests: number;
-  successes: number;
-  failures: number;
+export interface UsageLogEntry {
+  ts: string;
+  model: string;
   inputTokens: number;
   outputTokens: number;
-  totalTokens: number;
-  updatedAt: string;
-  lastStatus?: string;
-  lastHttpStatus?: number;
+  success: boolean;
 }
 
 export interface OmfmConfig {

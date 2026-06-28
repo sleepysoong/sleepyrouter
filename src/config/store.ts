@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { normalizeModelGroups } from '../model-groups.js';
-import { ModelCache, OmfmConfig, UsageObservation } from '../types.js';
+import { ModelCache, OmfmConfig, UsageLogEntry } from '../types.js';
 import { getConfigPath, getConfigRoot, getModelCachePath, getUsagePath } from './paths.js';
 
 const DEFAULT_PORT = 4567;
@@ -82,33 +82,32 @@ export class ConfigStore {
     return next;
   }
 
-  readUsage(): Record<string, UsageObservation> {
-    return readJson<Record<string, UsageObservation>>(this.paths.usagePath, {});
+  // ponytail: JSONL append-log — 한 줄에 하나의 요청 기록
+  appendUsage(entry: UsageLogEntry): void {
+    ensureDir(this.paths.usagePath);
+    // backup old usage.json if exists
+    const oldJson = this.paths.usagePath.replace(/\.jsonl$/, '.json');
+    if (fs.existsSync(oldJson)) {
+      fs.renameSync(oldJson, `${oldJson}.bak`);
+    }
+    fs.appendFileSync(this.paths.usagePath, `${JSON.stringify(entry)}\n`);
   }
 
-  writeUsage(usage: Record<string, UsageObservation>): void {
-    writeJson(this.paths.usagePath, usage);
-  }
-
-  recordUsage(modelId: string, details: { success: boolean; inputTokens?: number; outputTokens?: number; totalTokens?: number; httpStatus?: number; status?: string }): void {
-    const all = this.readUsage();
-    const current = all[modelId];
-    const inputTokens = Math.max(0, Math.floor(details.inputTokens ?? 0));
-    const outputTokens = Math.max(0, Math.floor(details.outputTokens ?? 0));
-    const totalTokens = Math.max(0, Math.floor(details.totalTokens ?? inputTokens + outputTokens));
-    all[modelId] = {
-      modelId,
-      requests: (current?.requests ?? 0) + 1,
-      successes: (current?.successes ?? 0) + (details.success ? 1 : 0),
-      failures: (current?.failures ?? 0) + (details.success ? 0 : 1),
-      inputTokens: (current?.inputTokens ?? 0) + inputTokens,
-      outputTokens: (current?.outputTokens ?? 0) + outputTokens,
-      totalTokens: (current?.totalTokens ?? 0) + totalTokens,
-      updatedAt: new Date().toISOString(),
-      lastStatus: details.status ?? (details.success ? 'ok' : 'failed'),
-      ...(details.httpStatus !== undefined ? { lastHttpStatus: details.httpStatus } : {}),
-    };
-    this.writeUsage(all);
+  readUsageLogs(): UsageLogEntry[] {
+    if (!fs.existsSync(this.paths.usagePath)) return [];
+    const text = fs.readFileSync(this.paths.usagePath, 'utf8').trim();
+    if (!text) return [];
+    const lines = text.split('\n');
+    const result: UsageLogEntry[] = [];
+    for (const line of lines) {
+      if (!line) continue;
+      try {
+        result.push(JSON.parse(line) as UsageLogEntry);
+      } catch {
+        // skip malformed
+      }
+    }
+    return result;
   }
 
   readModelCache(): ModelCache | undefined {

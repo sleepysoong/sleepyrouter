@@ -46,20 +46,14 @@ describe('config/env', () => {
     expect(again.readConfig().modelGroups.slow).toEqual(['a']);
   });
 
-  it('persists model usage counters and token totals', () => {
+  it('appends usage log entries', () => {
     const store = new ConfigStore(tempRoot());
-    store.recordUsage('a', { success: true, inputTokens: 3, outputTokens: 4, httpStatus: 200 });
-    store.recordUsage('a', { success: false, httpStatus: 429, status: 'rate-limited' });
-    expect(new ConfigStore(store.paths.root).readUsage().a).toMatchObject({
-      requests: 2,
-      successes: 1,
-      failures: 1,
-      inputTokens: 3,
-      outputTokens: 4,
-      totalTokens: 7,
-      lastStatus: 'rate-limited',
-      lastHttpStatus: 429,
-    });
+    store.appendUsage({ ts: '2026-06-28T10:00:00Z', model: 'a', inputTokens: 3, outputTokens: 4, success: true });
+    store.appendUsage({ ts: '2026-06-28T10:01:00Z', model: 'a', inputTokens: 0, outputTokens: 0, success: false });
+    const logs = new ConfigStore(store.paths.root).readUsageLogs();
+    expect(logs).toHaveLength(2);
+    expect(logs[0]).toEqual({ ts: '2026-06-28T10:00:00Z', model: 'a', inputTokens: 3, outputTokens: 4, success: true });
+    expect(logs[1]).toEqual({ ts: '2026-06-28T10:01:00Z', model: 'a', inputTokens: 0, outputTokens: 0, success: false });
   });
 
   it('defaults missing model groups for existing configs', () => {

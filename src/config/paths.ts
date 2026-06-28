@@ -10,7 +10,7 @@ export function getConfigPath(root = getConfigRoot()): string {
 }
 
 export function getUsagePath(root = getConfigRoot()): string {
-  return path.join(root, 'usage.json');
+  return path.join(root, 'usage.jsonl');
 }
 
 export function getModelCachePath(root = getConfigRoot()): string {

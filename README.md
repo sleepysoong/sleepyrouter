@@ -57,9 +57,9 @@ slr start
 | 명령어 | 용도 |
 | --- | --- |
 | `slr start` | 로컬 프록시를 foreground로 실행하고 request/response 라우팅 로그를 출력합니다. |
-| `slr status` | config와 선택된 모델 상태를 확인합니다. |
-| `slr doctor` | config 경로, 키, 모델 캐시 상태를 점검합니다. |
-| `slr usage` | 모델별 요청 수와 token 관측치를 확인합니다. |
+| `slr usage` | 모델별 요청 수, 실패 수, 토큰 사용량을 출력합니다. |
+| `slr usage --date 20260203` | 특정 날짜의 사용량만 출력합니다. |
+| `slr usage --week 27` | 특정 주의 사용량만 출력합니다. |
 
 ## 에이전트에서 쓰기
 

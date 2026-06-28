@@ -75,7 +75,8 @@ describe('local proxy server', () => {
       const body = await res.json() as any;
       expect(body.model).toBe('model-a:free');
       expect(seen[0].model).toBe('model-a:free');
-      expect(store.readUsage()['model-a:free']).toMatchObject({ requests: 1, successes: 1, inputTokens: 2, outputTokens: 3, totalTokens: 5 });
+      const logs = store.readUsageLogs();
+      expect(logs.some((l) => l.model === 'model-a:free' && l.inputTokens === 2 && l.outputTokens === 3 && l.success)).toBe(true);
     });
   });
 
@@ -137,7 +138,7 @@ describe('local proxy server', () => {
       const body = await res.json() as any;
       expect(body.model).toBe('model-a:free');
       expect(seen[0].body.model).toBe('model-a:free');
-      expect(store.readUsage()['model-a:free']).toMatchObject({ requests: 1, successes: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 });
+      expect(store.readUsageLogs().some((l) => l.model === 'model-a:free' && l.inputTokens === 1 && l.outputTokens === 1 && l.success)).toBe(true);
     });
   });
 
@@ -361,7 +362,7 @@ describe('local proxy server', () => {
       const firstBody = await first.json() as any;
       expect(firstBody.model).toBe('model-b:free');
       expect(calls).toEqual(['model-a:free', 'model-b:free']);
-      expect(store.readUsage()['model-a:free']).toMatchObject({ requests: 1, failures: 1, lastStatus: 'rate-limited', lastHttpStatus: 429 });
+      expect(store.readUsageLogs().some((l) => l.model === 'model-a:free' && !l.success)).toBe(true);
     });
   });
 

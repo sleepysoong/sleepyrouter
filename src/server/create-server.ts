@@ -177,13 +177,13 @@ function usageFromResponse(data: Record<string, any> | undefined): { inputTokens
 }
 
 function recordSuccessfulUsage(store: ConfigStore, model: OmfmModel, httpStatus: number, data?: Record<string, any>): void {
-  store.recordUsage(model.usageId ?? model.id, { success: true, httpStatus, ...usageFromResponse(data) });
+  const { inputTokens, outputTokens } = usageFromResponse(data);
+  store.appendUsage({ ts: new Date().toISOString(), model: model.usageId ?? model.id, inputTokens: inputTokens ?? 0, outputTokens: outputTokens ?? 0, success: true });
 }
 
 async function recordUpstreamFailure(store: ConfigStore, model: OmfmModel, upstream: Response): Promise<string> {
   const text = await upstream.text();
-  const status = upstream.status === 429 ? 'rate-limited' : upstream.status === 402 ? 'payment' : 'failed';
-  store.recordUsage(model.usageId ?? model.id, { success: false, httpStatus: upstream.status, status });
+  store.appendUsage({ ts: new Date().toISOString(), model: model.usageId ?? model.id, inputTokens: 0, outputTokens: 0, success: false });
   return text;
 }
 

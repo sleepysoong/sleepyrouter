@@ -4,7 +4,7 @@
 
 ## 제공하는 것
 
-- 시작, 상태 확인, 진단, 모델 사용량 카운터 조회를 위한 `slr` CLI.
+- 시작, 사용량 확인을 위한 `slr` CLI.
 - `http://localhost:4567/v1`의 OpenAI 호환 경로:
   - `GET /v1/models`
   - `POST /v1/chat/completions`

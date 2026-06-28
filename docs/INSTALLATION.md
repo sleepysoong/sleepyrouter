@@ -109,15 +109,15 @@ export ANTHROPIC_API_KEY=
 
 `slr` 은 로컬 Anthropic 인증 헤더를 받아서 선택된 모델에 맞는 provider 키로 요청을 forward합니다. provider가 자체 Anthropic 호환 엔드포인트를 노출하면 (예: OpenRouter의 Anthropic surface) `slr` 은 그쪽을 우선 사용하고, 그렇지 않으면 텍스트와 일반적인 클라이언트 tool-use 흐름을 Anthropic/OpenAI 형태로 번역해 fallback합니다. Token count는 provider tokenizer의 정확한 값이 아니라 로컬 호환성 추정치입니다.
 
-## 6. 진단
+## 6. 사용량 확인
 
 | 명령어 | 용도 |
 | --- | --- |
-| `slr doctor` | config 경로, provider 키 출처, 선택 모델 수, 캐시 모델 수를 출력합니다. |
-| `slr usage` | 모델별 요청 수와 가능한 token 합계를 출력합니다. |
-| `slr usage --json` | usage 관측치를 JSON으로 출력합니다. |
+| `slr usage` | 모델별 누적 요청 수, 실패 수, 토큰 사용량을 테이블로 출력합니다. |
+| `slr usage --date 20260203` | 특정 날짜의 사용량만 출력합니다. |
+| `slr usage --week 27` | 특정 주의 사용량만 출력합니다. (올해 기준) |
 
-`doctor` 는 설정을 변경하지 않습니다. Streaming 요청은 `usage` 요청 수에 포함되지만, stream passthrough에서는 보통 token 합계를 얻을 수 없습니다.
+사용 기록은 `~/.sleepy-llm-router/usage.jsonl`에 JSONL 형식으로 저장됩니다.
 
 ## 7. 라우팅 규칙
 

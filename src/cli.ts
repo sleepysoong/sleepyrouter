@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 import { runStartCommand } from './commands/start.js';
-import { printStatus } from './commands/status.js';
-import { printDoctorStatus } from './commands/doctor.js';
 import { runUsageCommand } from './commands/usage.js';
 import { VERSION } from './version.js';
 
@@ -35,7 +33,7 @@ function parsePort(value: string | boolean | undefined): number | undefined {
 }
 
 function help(): void {
-  console.log(`sleepy-llm-router ${VERSION}\n\n사용법:\n  slr start [--port 4567]\n  slr status\n  slr usage [--json]\n  slr doctor\n  slr --version\n\n환경변수:\n  OPENROUTER_API_KEY와 NVIDIA_API_KEY는 프로세스 환경변수에서 먼저 읽고, ~/.sleepy-llm-router/.env에서 읽어요.\n`);
+  console.log(`sleepy-llm-router ${VERSION}\n\n사용법:\n  slr start [--port 4567]\n  slr usage [--date YYYYMMDD|--week NN]\n  slr --version\n`);
 }
 
 async function main(): Promise<void> {
@@ -55,16 +53,13 @@ async function main(): Promise<void> {
     });
     return;
   }
-  if (parsed.command === 'status') {
-    printStatus();
-    return;
-  }
   if (parsed.command === 'usage') {
-    runUsageCommand({ json: parsed.flags.has('json') });
-    return;
-  }
-  if (parsed.command === 'doctor') {
-    printDoctorStatus();
+    const dateFlag = parsed.flags.get('date');
+    const weekFlag = parsed.flags.get('week');
+    runUsageCommand({
+      date: typeof dateFlag === 'string' ? dateFlag : undefined,
+      week: typeof weekFlag === 'string' ? Number(weekFlag) : undefined,
+    });
     return;
   }
   help();

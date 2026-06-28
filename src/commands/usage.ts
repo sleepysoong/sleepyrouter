@@ -1,57 +1,78 @@
 import { ConfigStore } from '../config/store.js';
-import { UsageObservation } from '../types.js';
-
-interface OutputLike {
-  write(chunk: string): unknown;
-}
+import { UsageLogEntry } from '../types.js';
+import Table from 'cli-table3';
 
 export interface RunUsageCommandOptions {
-  json?: boolean;
+  date?: string;  // YYYYMMDD
+  week?: number;  // ISO week number
   store?: ConfigStore;
-  stdout?: OutputLike;
 }
 
-function pad(value: string, width: number): string {
-  return value.length >= width ? value : `${value}${' '.repeat(width - value.length)}`;
+function getWeekNumber(d: Date): number {
+  const start = new Date(d.getFullYear(), 0, 1);
+  const days = Math.floor((d.getTime() - start.getTime()) / 86400000);
+  return Math.ceil((days + start.getDay() + 1) / 7);
 }
 
-function formatTable(rows: UsageObservation[]): string {
-  if (rows.length === 0) return '아직 사용 기록이 없어요.\n';
-  const modelWidth = Math.min(56, Math.max(5, ...rows.map((row) => row.modelId.length)));
-  const lines = [
-    `${pad('모델', modelWidth)} ${pad('요청', 5)} ${pad('성공', 5)} ${pad('실패', 5)} ${pad('입력토큰', 8)} ${pad('출력토큰', 8)} ${pad('합계', 8)} 최근`,
-    `${'-'.repeat(modelWidth)} ${'-'.repeat(5)} ${'-'.repeat(5)} ${'-'.repeat(5)} ${'-'.repeat(8)} ${'-'.repeat(8)} ${'-'.repeat(8)} ----`,
-  ];
-  for (const row of rows) {
-    lines.push([
-      pad(row.modelId.length > modelWidth ? `${row.modelId.slice(0, modelWidth - 1)}…` : row.modelId, modelWidth),
-      pad(String(row.requests), 5),
-      pad(String(row.successes), 5),
-      pad(String(row.failures), 5),
-      pad(String(row.inputTokens), 8),
-      pad(String(row.outputTokens), 8),
-      pad(String(row.totalTokens), 8),
-      row.updatedAt,
-    ].join(' '));
+function filterLogs(logs: UsageLogEntry[], date?: string, week?: number): UsageLogEntry[] {
+  if (!date && !week) return logs;
+  return logs.filter((entry) => {
+    const d = new Date(entry.ts);
+    if (date) {
+      const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+      if (ymd !== date) return false;
+    }
+    if (week) {
+      const y = d.getFullYear();
+      const w = getWeekNumber(d);
+      const targetYear = new Date().getFullYear();
+      if (y !== targetYear || w !== week) return false;
+    }
+    return true;
+  });
+}
+
+function aggregate(logs: UsageLogEntry[]): Array<{ model: string; requests: number; failed: number; inputTokens: number; outputTokens: number }> {
+  const map = new Map<string, { requests: number; failed: number; inputTokens: number; outputTokens: number }>();
+  for (const entry of logs) {
+    const row = map.get(entry.model) ?? { requests: 0, failed: 0, inputTokens: 0, outputTokens: 0 };
+    row.requests += 1;
+    if (!entry.success) row.failed += 1;
+    row.inputTokens += entry.inputTokens;
+    row.outputTokens += entry.outputTokens;
+    map.set(entry.model, row);
   }
-  return `${lines.join('\n')}\n`;
-}
-
-export function usageRows(store = new ConfigStore()): UsageObservation[] {
-  return Object.values(store.readUsage()).sort((a, b) =>
-    b.requests - a.requests
-    || b.totalTokens - a.totalTokens
-    || a.modelId.localeCompare(b.modelId),
-  );
+  return [...map.entries()]
+    .map(([model, data]) => ({ model, ...data }))
+    .sort((a, b) => b.requests - a.requests || b.inputTokens - a.inputTokens || a.model.localeCompare(b.model));
 }
 
 export function runUsageCommand(options: RunUsageCommandOptions = {}): void {
   const store = options.store ?? new ConfigStore();
-  const stdout = options.stdout ?? process.stdout;
-  const rows = usageRows(store);
-  if (options.json) {
-    stdout.write(`${JSON.stringify({ usage: rows }, null, 2)}\n`);
+  const logs = filterLogs(store.readUsageLogs(), options.date, options.week);
+
+  if (logs.length === 0) {
+    console.log('아직 사용 기록이 없어요.');
     return;
   }
-  stdout.write(formatTable(rows));
+
+  const rows = aggregate(logs);
+
+  const table = new Table({
+    head: ['Model ID', 'Requests', 'Failed', 'Input Tokens', 'Output Tokens'],
+    colWidths: [56, 10, 8, 14, 14],
+    style: { head: ['cyan'] },
+  });
+
+  for (const row of rows) {
+    table.push([
+      row.model,
+      String(row.requests),
+      String(row.failed),
+      String(row.inputTokens),
+      String(row.outputTokens),
+    ]);
+  }
+
+  console.log(table.toString());
 }
