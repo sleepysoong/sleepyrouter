@@ -22,6 +22,8 @@ export interface DoctorStatus {
   selectedModelCount: number;
   cachedModelCount: number;
   cacheFetchedAt?: string;
+  groupNames: string[];
+  defaultGroup?: string;
 }
 
 const PROVIDERS: Array<{ name: string; envName: DoctorProviderStatus['envName']; prefix: string }> = [
@@ -66,6 +68,8 @@ export function getDoctorStatus(options: { store?: ConfigStore; env?: NodeJS.Pro
     selectedModelCount: config.selectedModelIds.length,
     cachedModelCount: cache?.models.length ?? 0,
     cacheFetchedAt: cache?.fetchedAt,
+    groupNames: Object.keys(config.modelGroups),
+    defaultGroup: config.defaultGroup,
   };
 }
 
@@ -86,4 +90,8 @@ export function printDoctorStatus(options: { store?: ConfigStore; env?: NodeJS.P
   }
   stdout.write(`선택된 모델: ${status.selectedModelCount}개\n`);
   stdout.write(`캐시된 모델: ${status.cachedModelCount}개${status.cacheFetchedAt ? ` (가져온 시간: ${status.cacheFetchedAt})` : ''}\n`);
+  if (status.groupNames.length > 0) {
+    stdout.write(`그룹: ${status.groupNames.join(', ')}\n`);
+    if (status.defaultGroup) stdout.write(`기본 그룹: ${status.defaultGroup}\n`);
+  }
 }

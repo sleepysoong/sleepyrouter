@@ -35,3 +35,4 @@ data/model-metadata.json
 
 # Generated at build time from package.json version
 src/version.ts
+*.tgz
