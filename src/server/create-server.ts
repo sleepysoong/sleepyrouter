@@ -25,7 +25,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 
 export type ServerLogEvent =
   | { type: 'request'; id: number; method: string; path: string }
-  | { type: 'response'; id: number; method: string; path: string; statusCode: number; durationMs: number; requestedModel?: string; modelId?: string; routeReason?: RouteChoice['reason'] | 'failover'; stream?: boolean; inputTokens?: number; outputTokens?: number };
+  | { type: 'response'; id: number; method: string; path: string; statusCode: number; durationMs: number; requestedModel?: string; modelId?: string; routeReason?: RouteChoice['reason'] | 'failover'; stream?: boolean; inputTokens?: number; outputTokens?: number; error?: string };
 
 interface FormatServerLogEventOptions {
   color?: boolean;
@@ -62,6 +62,7 @@ export function formatServerLogEvent(event: ServerLogEvent, options: FormatServe
   if (typeof event.inputTokens === 'number') details.push(`in=${event.inputTokens}`);
   if (typeof event.outputTokens === 'number') details.push(`out=${event.outputTokens}`);
   if (event.stream) details.push('stream=true');
+  if (event.error) details.push(`error=${safeLogValue(event.error)}`);
   return details.join(' ');
 }
 
@@ -215,6 +216,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
     let stream: boolean | undefined;
     let lastInputTokens: number | undefined;
     let lastOutputTokens: number | undefined;
+    let lastError: string | undefined;
     try {
       const method = req.method ?? 'GET';
       const url = new URL(req.url ?? '/', 'http://localhost');
@@ -234,6 +236,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
             stream,
             inputTokens: lastInputTokens,
             outputTokens: lastOutputTokens,
+            error: lastError,
           });
         });
       }
@@ -265,7 +268,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
         assertSelectedFree(selected.models);
         const routingModel = requestedModelForRouting(selected.models, body.model);
         const candidateIds = orderedCandidates(selected.modelGroups, routingModel, selected.defaultGroup);
-        let lastError: unknown;
+        let upstreamError: unknown;
         let attempts = 0;
         for (const modelId of candidateIds) {
           if (attempts >= maxRetries) break;
@@ -273,7 +276,8 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
           if (!model) continue;
           const apiKey = apiKeys[sourceOf(model)];
           if (!apiKey) {
-            lastError = missingKeyMessage(model);
+            upstreamError = missingKeyMessage(model);
+            lastError = String(upstreamError);
             continue;
           }
           if (requestLogger) {
@@ -300,13 +304,14 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
             json(res, upstream.status, data);
             return;
           }
-          lastError = await recordUpstreamFailure(store, model, upstream);
+          upstreamError = await recordUpstreamFailure(store, model, upstream);
+          lastError = `[${modelId}] ${String(upstreamError).slice(0, 300)}`;
         }
         if (attempts === 0) {
-          noUsableModelResponse(res, lastError);
+          noUsableModelResponse(res, upstreamError);
           return;
         }
-        json(res, 502, { error: { message: '선택된 모든 무료 모델이 실패했어요.', details: String(lastError ?? '') } });
+        json(res, 502, { error: { message: '선택된 모든 무료 모델이 실패했어요.', details: String(upstreamError ?? '') } });
         return;
       }
 
@@ -319,7 +324,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
         assertSelectedFree(selected.models);
         const routingModel = requestedModelForRouting(selected.models, body.model);
         const candidateIds = orderedCandidates(selected.modelGroups, routingModel, selected.defaultGroup);
-        let lastError: unknown;
+        let upstreamError: unknown;
         let attempts = 0;
         for (const modelId of candidateIds) {
           if (attempts >= maxRetries) break;
@@ -327,7 +332,8 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
           if (!model) continue;
           const apiKey = apiKeys[sourceOf(model)];
           if (!apiKey) {
-            lastError = missingKeyMessage(model);
+            upstreamError = missingKeyMessage(model);
+            lastError = String(upstreamError);
             continue;
           }
           if (requestLogger) {
@@ -347,7 +353,8 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
               });
               return;
             }
-            lastError = await recordUpstreamFailure(store, model, upstream);
+            upstreamError = await recordUpstreamFailure(store, model, upstream);
+            lastError = `[${modelId}] ${String(upstreamError).slice(0, 300)}`;
             continue;
           }
 
@@ -381,13 +388,14 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
             json(res, upstream.status, data);
             return;
           }
-          lastError = await recordUpstreamFailure(store, model, upstream);
+          upstreamError = await recordUpstreamFailure(store, model, upstream);
+          lastError = `[${modelId}] ${String(upstreamError).slice(0, 300)}`;
         }
         if (attempts === 0) {
-          noUsableModelResponse(res, lastError);
+          noUsableModelResponse(res, upstreamError);
           return;
         }
-        json(res, 502, { error: { type: 'api_error', message: '선택된 모든 무료 모델이 실패했어요.', details: String(lastError ?? '') } });
+        json(res, 502, { error: { type: 'api_error', message: '선택된 모든 무료 모델이 실패했어요.', details: String(upstreamError ?? '') } });
         return;
       }
 
