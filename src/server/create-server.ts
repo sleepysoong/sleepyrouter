@@ -124,7 +124,7 @@ async function selectedModelSelection(store: ConfigStore, apiKeys: ProviderApiKe
       models.push(free);
       byId.set(id, free);
     } else if (!cacheIds.has(id)) {
-      const source: ModelSource = (apiKeys.nvidia && !apiKeys.openrouter) || id.startsWith('nvidia/') ? 'nvidia' : 'openrouter';
+      const source: ModelSource = id.startsWith('nvidia/') ? 'nvidia' : 'openrouter';
       const stub: OmfmModel = { id, name: id, provider: source, source };
       models.push(stub);
       byId.set(id, stub);

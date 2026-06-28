@@ -13,6 +13,21 @@ export async function runStartCommand(options: { port?: number; store?: ConfigSt
 
   const apiKeys = requireAnyProviderApiKey(process.env, store.paths.root);
 
+  const invalidModels: string[] = [];
+  for (const [group, models] of Object.entries(config.modelGroups)) {
+    for (const id of models) {
+      if (!id.startsWith('nvidia/') && !id.startsWith('openrouter/')) {
+        invalidModels.push(`${group}: ${id}`);
+      }
+    }
+  }
+  if (invalidModels.length > 0) {
+    console.error(`\n모델 ID가 잘못되었어요. nvidia/ 또는 openrouter/ 접두사가 필요해요:`);
+    for (const m of invalidModels) console.error(`  - ${m}`);
+    console.error(`\nconfig.json을 수정한 후 다시 시도하세요.`);
+    process.exit(1);
+  }
+
   const groupNames = Object.keys(config.modelGroups);
   if (groupNames.length > 0) {
     const totalModels = allGroupModelIds(config.modelGroups).length;
