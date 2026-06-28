@@ -14,7 +14,6 @@ export interface ServerOptions {
   store?: ConfigStore;
   fetchImpl?: FetchLike;
   env?: NodeJS.ProcessEnv;
-  maxRetries?: number;
   requestLogger?: (event: ServerLogEvent) => void;
 }
 
@@ -203,7 +202,6 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
   const store = options.store ?? new ConfigStore();
   const env = options.env ?? process.env;
   const fetchImpl = options.fetchImpl;
-  const maxRetries = options.maxRetries ?? 2;
   const requestLogger = options.requestLogger;
   let nextRequestId = 0;
 
@@ -269,9 +267,8 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
         const routingModel = requestedModelForRouting(selected.models, body.model);
         const candidateIds = orderedCandidates(selected.modelGroups, routingModel, selected.defaultGroup);
         let upstreamError: unknown;
-        let attempts = 0;
+        let triedAny = false;
         for (const modelId of candidateIds) {
-          if (attempts >= maxRetries) break;
           const model = selected.byId.get(modelId);
           if (!model) continue;
           const apiKey = apiKeys[sourceOf(model)];
@@ -282,9 +279,9 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
           }
           if (requestLogger) {
             routedModel = modelId;
-            routeReason = attempts === 0 ? 'fallback-order' : 'failover';
+            routeReason = 'fallback-order';
           }
-          attempts += 1;
+          triedAny = true;
           const upstreamBody = withUpstreamModel(body, model);
           const upstream = sourceOf(model) === 'nvidia'
             ? await postNvidiaChatCompletion({ apiKey, body: upstreamBody, fetchImpl })
@@ -307,7 +304,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
           upstreamError = await recordUpstreamFailure(store, model, upstream);
           lastError = `[${modelId}] ${String(upstreamError).slice(0, 300)}`;
         }
-        if (attempts === 0) {
+        if (!triedAny) {
           noUsableModelResponse(res, upstreamError);
           return;
         }
@@ -325,9 +322,8 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
         const routingModel = requestedModelForRouting(selected.models, body.model);
         const candidateIds = orderedCandidates(selected.modelGroups, routingModel, selected.defaultGroup);
         let upstreamError: unknown;
-        let attempts = 0;
+        let triedAny = false;
         for (const modelId of candidateIds) {
-          if (attempts >= maxRetries) break;
           const model = selected.byId.get(modelId);
           if (!model) continue;
           const apiKey = apiKeys[sourceOf(model)];
@@ -338,9 +334,9 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
           }
           if (requestLogger) {
             routedModel = modelId;
-            routeReason = attempts === 0 ? 'fallback-order' : 'failover';
+            routeReason = 'fallback-order';
           }
-          attempts += 1;
+          triedAny = true;
           if (sourceOf(model) === 'nvidia') {
             const fallbackBody = anthropicToOpenAI(body, upstreamId(model));
             const upstream = await postNvidiaChatCompletion({ apiKey, body: fallbackBody, fetchImpl });
@@ -391,7 +387,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
           upstreamError = await recordUpstreamFailure(store, model, upstream);
           lastError = `[${modelId}] ${String(upstreamError).slice(0, 300)}`;
         }
-        if (attempts === 0) {
+        if (!triedAny) {
           noUsableModelResponse(res, upstreamError);
           return;
         }
