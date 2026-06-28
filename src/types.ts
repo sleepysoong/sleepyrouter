@@ -34,7 +34,6 @@ export interface UsageObservation {
 
 export interface OmfmConfig {
   port: number;
-  selectedModelIds: string[];
   modelGroups: ModelGroups;
   defaultGroup?: string;
 }

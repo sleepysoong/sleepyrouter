@@ -37,13 +37,13 @@ describe('config/env', () => {
     expect(parseDotEnv('# hi\nA=1\nB="two"\n')).toEqual({ A: '1', B: 'two' });
   });
 
-  it('persists selected models and model groups', () => {
+  it('persists model groups', () => {
     const store = new ConfigStore(tempRoot());
-    store.updateSelectedModelIds(['a', 'b', 'a']);
     store.updateModelGroup('fast', ['b', 'b']);
+    store.updateModelGroup('slow', ['a']);
     const again = new ConfigStore(store.paths.root);
-    expect(again.readConfig().selectedModelIds).toEqual(['a', 'b']);
     expect(again.readConfig().modelGroups.fast).toEqual(['b']);
+    expect(again.readConfig().modelGroups.slow).toEqual(['a']);
   });
 
   it('persists model usage counters and token totals', () => {
@@ -65,10 +65,9 @@ describe('config/env', () => {
   it('defaults missing model groups for existing configs', () => {
     const store = new ConfigStore(tempRoot());
     fs.mkdirSync(store.paths.root, { recursive: true });
-    fs.writeFileSync(store.paths.configPath, '{"port":1234,"selectedModelIds":["a"]}\n');
+    fs.writeFileSync(store.paths.configPath, '{"port":1234}\n');
     expect(store.readConfig()).toMatchObject({
       port: 1234,
-      selectedModelIds: ['a'],
       modelGroups: {},
     });
   });

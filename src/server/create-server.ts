@@ -6,6 +6,7 @@ import { postNvidiaChatCompletion } from '../providers/nvidia.js';
 import { isFreeOpenRouterModel, postOpenRouterAnthropicMessage, postOpenRouterChatCompletion } from '../providers/openrouter.js';
 import { FetchLike, ModelGroups, OmfmModel, ProviderApiKeys, sourceOf } from '../types.js';
 import { orderedCandidates, RouteChoice } from '../latency/router.js';
+import { allGroupModelIds } from '../model-groups.js';
 import { anthropicToOpenAI, openAIToAnthropic } from './translate.js';
 import { pipeOpenAIStreamAsAnthropic, pipeWebStreamToNode } from './sse.js';
 
@@ -110,9 +111,9 @@ interface SelectedModelsResult {
 async function selectedModelSelection(store: ConfigStore, apiKeys: ProviderApiKeys, fetchImpl?: FetchLike): Promise<SelectedModelsResult> {
   const config = store.readConfig();
   const freeModels = await availableFreeModels(store, apiKeys, fetchImpl);
-  const selected = new Set(config.selectedModelIds);
-  const selectedById = new Map(freeModels.filter((model) => selected.has(model.id)).map((model) => [model.id, model]));
-  const models = config.selectedModelIds.map((id) => selectedById.get(id)).filter((model): model is OmfmModel => Boolean(model));
+  const allIds = allGroupModelIds(config.modelGroups);
+  const selectedById = new Map(freeModels.filter((model) => allIds.includes(model.id)).map((model) => [model.id, model]));
+  const models = allIds.map((id) => selectedById.get(id)).filter((model): model is OmfmModel => Boolean(model));
   return {
     models,
     byId: new Map(models.map((model) => [model.id, model])),
@@ -248,7 +249,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
         const selected = await selectedModelSelection(store, apiKeys, fetchImpl);
         assertSelectedFree(selected.models);
         const routingModel = requestedModelForRouting(selected.models, body.model);
-        const candidateIds = orderedCandidates(selected.ids, routingModel, selected.modelGroups, selected.defaultGroup);
+        const candidateIds = orderedCandidates(selected.modelGroups, routingModel, selected.defaultGroup);
         let lastError: unknown;
         let attempts = 0;
         for (const modelId of candidateIds) {
@@ -302,7 +303,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
         const selected = await selectedModelSelection(store, apiKeys, fetchImpl);
         assertSelectedFree(selected.models);
         const routingModel = requestedModelForRouting(selected.models, body.model);
-        const candidateIds = orderedCandidates(selected.ids, routingModel, selected.modelGroups, selected.defaultGroup);
+        const candidateIds = orderedCandidates(selected.modelGroups, routingModel, selected.defaultGroup);
         let lastError: unknown;
         let attempts = 0;
         for (const modelId of candidateIds) {

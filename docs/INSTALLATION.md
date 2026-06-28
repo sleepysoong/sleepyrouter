@@ -59,7 +59,7 @@ NVIDIA_API_KEY=nvapi-...
 
 ## 3. 모델 설정
 
-`slr`은 설정 파일(`~/.sleepy-llm-router/config.json`)의 `selectedModelIds` 배열에 있는 모델만 라우팅 후보로 사용합니다. 수동으로 설정 파일을 편집하거나, 설정 API를 통해 모델 목록을 관리할 수 있습니다.
+`slr`은 설정 파일(`~/.sleepy-llm-router/config.json`)의 `modelGroups`에 정의된 모델만 라우팅 후보로 사용합니다. 각 그룹에 모델을 넣으면 해당 그룹 순서대로 라우팅됩니다. `defaultGroup`으로 지정된 그룹은 인식할 수 없는 모델 요청이 들어올 때 사용됩니다.
 
 ## 4. 로컬 프록시 실행
 
@@ -121,9 +121,9 @@ export ANTHROPIC_API_KEY=
 
 ## 7. 라우팅 규칙
 
-- 설정 파일의 `selectedModelIds` 배열 순서대로 모델이 라우팅됩니다.
+- 설정 파일의 `modelGroups` 그룹 순서대로 모델이 라우팅됩니다.
 - 요청에 모델 이름이 명시되어 있으면 `slr` 은 그 모델을 그대로 사용합니다. provider prefix가 붙은 로컬 모델 ID는 매칭되는 upstream 모델 ID도 인식합니다.
-- 그룹 모델명 (`slr/fast`, `slr/balanced`, `slr/capable`, 그리고 `haiku`/`sonnet`/`opus`) 은 해당 그룹에 선택된 모델이 있으면 그 그룹 안에서만 라우팅합니다. 빈 그룹은 전체 선택 목록으로 fallback합니다.
+- 그룹 모델명 (`slr/fast`, `slr/balanced`, `slr/capable`, 그리고 `haiku`/`sonnet`/`opus`) 은 해당 그룹에 모델이 있으면 그 그룹 안에서만 라우팅합니다. `defaultGroup`으로 지정된 그룹은 인식할 수 없는 모델 요청에 사용됩니다.
 
 ## 8. 개발
 

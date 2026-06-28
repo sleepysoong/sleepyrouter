@@ -23,9 +23,9 @@ function output() {
 afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
 
 describe('doctor command', () => {
-  it('reports provider key sources, cache, and selected model counts', () => {
+  it('reports provider key sources, cache, and model counts', () => {
     const store = tempStore();
-    store.updateSelectedModelIds(['a']);
+    store.updateModelGroup('default', ['a']);
     store.writeModelCache({ models: [{ id: 'a', name: 'A', provider: 'alpha' }], fetchedAt: '2026-05-03T00:00:00.000Z' });
     fs.writeFileSync(path.join(store.paths.root, '.env'), 'NVIDIA_API_KEY=nvapi-local\n');
 
@@ -34,7 +34,7 @@ describe('doctor command', () => {
       expect.objectContaining({ name: 'OpenRouter', source: 'process', validPrefix: true }),
       expect.objectContaining({ name: 'NVIDIA', source: 'local-env', validPrefix: true }),
     ]);
-    expect(status.selectedModelCount).toBe(1);
+    expect(status.modelCount).toBe(1);
     expect(status.cachedModelCount).toBe(1);
 
     const out = output();

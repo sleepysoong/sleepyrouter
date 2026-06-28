@@ -5,10 +5,10 @@
 ## 현재 라우팅 모델
 
 - 소스 앵커: [src/latency/router.ts](../src/latency/router.ts).
-- `chooseModel`은 요청된 모델이 선택된 목록에 있을 때만 허용해요. 서버 라우팅은 라우터를 호출하기 전에 프로바이더 업스트림 ID를 선택된 로컬 ID로 정규화해요.
-- `chooseGroupedModel`과 서버 재시도 순서는 `modelGroups`에서 구성된 그룹 이름과 레거시 별칭 `haiku`/`sonnet`/`opus`를 인식해요. 비어있지 않은 그룹은 해당 구성된 그룹 내에서만 라우팅과 재시도를 하고, 비어있는 그룹은 전체 선택된 목록으로 대체해요.
-- 일반적이거나 알 수 없는 요청(빈 문자열, `auto`, `default`, `slr`, `openrouter/free`)은 설정된 **기본 그룹**으로 라우팅되고, 없으면 선택된 목록의 첫 번째 모델로 라우팅돼요.
-- `orderedCandidates`는 재시도 후보를 상태 순위(건강한 것 먼저, 기타 실패는 마지막)로 순서 지정하고, 그 다음 그룹 순서 또는 선택된 순서로 지정해요.
+- `chooseModel`은 요청된 모델이 모델 그룹에 있을 때만 허용해요. 서버 라우팅은 라우터를 호출하기 전에 프로바이더 업스트림 ID를 로컬 ID로 정규화해요.
+- `chooseGroupedModel`과 서버 재시도 순서는 `modelGroups`에서 구성된 그룹 이름과 레거시 별칭 `haiku`/`sonnet`/`opus`를 인식해요. 비어있지 않은 그룹은 해당 구성된 그룹 내에서만 라우팅과 재시도를 하고, 비어있는 그룹은 전체 모델 목록으로 대체해요.
+- 일반적이거나 알 수 없는 요청(빈 문자열, `auto`, `default`, `slr`, `openrouter/free`)은 설정된 **기본 그룹**으로 라우팅되고, 없으면 모델 목록의 첫 번째 모델로 라우팅돼요.
+- `orderedCandidates`는 재시도 후보를 상태 순위(건강한 것 먼저, 기타 실패는 마지막)로 순서 지정하고, 그 다음 그룹 순서로 지정해요.
 
 ## 구성 가능한 그룹
 
@@ -16,7 +16,6 @@
 
 ```json
 {
-  "selectedModelIds": ["nvidia/deepseek-r1", "nvidia/qwen-7b", "nvidia/llama-8b", "nvidia/gemma-7b"],
   "modelGroups": {
     "coding": ["nvidia/deepseek-r1", "nvidia/qwen-7b"],
     "chat": ["nvidia/llama-8b", "nvidia/gemma-7b"]
@@ -27,8 +26,8 @@
 
 - 각 그룹은 모델 ID의 정렬된 목록을 가져요. 라우터는 순서대로 시도해요.
 - 요청이 모델로 그룹 이름을 지정하면(예: `"model": "coding"`), 라우터는 설정 순서대로 그룹의 모델을 반환해요.
-- 요청이 알 수 없는 모델 이름을 지정하면(`selectedModelIds`에 없고 그룹 이름도 아닌 경우), 라우터는 `defaultGroup`이 설정되어 있으면 해당 그룹으로 라우팅해요.
-- `defaultGroup`이 설정되지 않으면 알 수 없는 요청은 첫 번째 그룹으로, 그 다음 전체 선택된 목록으로 대체돼요.
+- 요청이 알 수 없는 모델 이름을 지정하면(모델 그룹에도 없고 그룹 이름도 아닌 경우), 라우터는 `defaultGroup`이 설정되어 있으면 해당 그룹으로 라우팅해요.
+- `defaultGroup`이 설정되지 않으면 알 수 없는 요청은 첫 번째 그룹으로, 그 다음 전체 모델 목록으로 대체돼요.
 - 레거시 별칭 `haiku`→`fast`, `sonnet`→`balanced`, `opus`→`capable`는 여전히 지원돼요.
 - `slr/` 접두사는 그룹 이름 매칭 전에 제거돼요 (예: `slr/coding`은 그룹 `coding`과 매칭돼요).
 

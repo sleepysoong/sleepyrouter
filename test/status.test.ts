@@ -13,7 +13,7 @@ describe('status command', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-status-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['model-a:free', 'model-b:free']);
+    store.updateModelGroup('default', ['model-a:free', 'model-b:free']);
 
     expect(getStatus(store).primaryModel).toBe('model-a:free');
   });

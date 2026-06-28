@@ -11,7 +11,7 @@ function tempStore() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-server-'));
   roots.push(root);
   const store = new ConfigStore(root);
-  store.updateSelectedModelIds(['model-a:free', 'model-b:free']);
+  store.updateModelGroup('default', ['model-a:free', 'model-b:free']);
   const models: OmfmModel[] = [
     { id: 'model-a:free', name: 'Model A', provider: 'test' },
     { id: 'model-b:free', name: 'Model B', provider: 'test' },
@@ -46,7 +46,7 @@ describe('local proxy server', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-stale-model-cache-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['new:free']);
+    store.updateModelGroup('default', ['new:free']);
     store.writeModelCache({
       models: [{ id: 'old:free', name: 'Old', provider: 'old' }],
       fetchedAt: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
@@ -172,7 +172,7 @@ describe('local proxy server', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-nvidia-server-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['nvidia/deepseek-ai/deepseek-v3.2']);
+    store.updateModelGroup('default', ['nvidia/deepseek-ai/deepseek-v3.2']);
     store.writeModelCache({
       models: [{ id: 'nvidia/deepseek-ai/deepseek-v3.2', upstreamId: 'deepseek-ai/deepseek-v3.2', name: 'DeepSeek', provider: 'nvidia', source: 'nvidia' }],
       fetchedAt: new Date().toISOString(),
@@ -202,7 +202,7 @@ describe('local proxy server', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-nvidia-upstream-request-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['nvidia/deepseek-ai/deepseek-v3.2', 'model-b:free']);
+    store.updateModelGroup('default', ['nvidia/deepseek-ai/deepseek-v3.2', 'model-b:free']);
     store.writeModelCache({
       models: [
         { id: 'nvidia/deepseek-ai/deepseek-v3.2', upstreamId: 'deepseek-ai/deepseek-v3.2', name: 'DeepSeek', provider: 'nvidia', source: 'nvidia' },
@@ -236,7 +236,7 @@ describe('local proxy server', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-exact-before-upstream-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['same', 'nvidia/same']);
+    store.updateModelGroup('default', ['same', 'nvidia/same']);
     store.writeModelCache({
       models: [
         { id: 'same', upstreamId: 'same', name: 'OpenRouter Same', provider: 'test', source: 'openrouter', raw: { id: 'same', pricing: { prompt: '0', completion: '0', request: '0' } } },
@@ -270,7 +270,7 @@ describe('local proxy server', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-derived-upstream-request-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['nvidia/foo', 'model-b:free']);
+    store.updateModelGroup('default', ['nvidia/foo', 'model-b:free']);
     store.writeModelCache({
       models: [
         { id: 'nvidia/foo', name: 'NVIDIA Foo', provider: 'nvidia', source: 'nvidia' },
@@ -304,7 +304,7 @@ describe('local proxy server', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-legacy-nvidia-openrouter-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['nvidia/llama:free']);
+    store.updateModelGroup('default', ['nvidia/llama:free']);
     store.writeModelCache({
       models: [{ id: 'nvidia/llama:free', name: 'NVIDIA via OpenRouter', provider: 'nvidia', raw: { id: 'nvidia/llama:free', pricing: { prompt: '0', completion: '0' } } }],
       fetchedAt: new Date().toISOString(),
@@ -325,7 +325,7 @@ describe('local proxy server', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-mixed-provider-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['nvidia/meta/llama-3.1-8b-instruct', 'model-b:free']);
+    store.updateModelGroup('default', ['nvidia/meta/llama-3.1-8b-instruct', 'model-b:free']);
     store.writeModelCache({
       models: [
         { id: 'nvidia/meta/llama-3.1-8b-instruct', upstreamId: 'meta/llama-3.1-8b-instruct', name: 'Llama', provider: 'nvidia', source: 'nvidia' },
@@ -369,7 +369,7 @@ describe('local proxy server', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-missing-key-retries-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['nvidia/one', 'nvidia/two', 'openrouter/usable:free']);
+    store.updateModelGroup('default', ['nvidia/one', 'nvidia/two', 'openrouter/usable:free']);
     store.writeModelCache({
       models: [
         { id: 'nvidia/one', upstreamId: 'one', name: 'N1', provider: 'nvidia', source: 'nvidia' },
@@ -462,7 +462,7 @@ describe('streaming behavior', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-anthropic-stream-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['nvidia/streamer']);
+    store.updateModelGroup('default', ['nvidia/streamer']);
     store.writeModelCache({
       models: [{ id: 'nvidia/streamer', upstreamId: 'streamer', name: 'Streamer', provider: 'nvidia', source: 'nvidia' }],
       fetchedAt: new Date().toISOString(),
@@ -506,7 +506,7 @@ describe('streaming behavior', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-anthropic-tool-stream-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['nvidia/streamer']);
+    store.updateModelGroup('default', ['nvidia/streamer']);
     store.writeModelCache({
       models: [{ id: 'nvidia/streamer', upstreamId: 'streamer', name: 'Streamer', provider: 'nvidia', source: 'nvidia' }],
       fetchedAt: new Date().toISOString(),
@@ -555,7 +555,7 @@ describe('streaming behavior', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-anthropic-mixed-stream-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['nvidia/streamer']);
+    store.updateModelGroup('default', ['nvidia/streamer']);
     store.writeModelCache({
       models: [{ id: 'nvidia/streamer', upstreamId: 'streamer', name: 'Streamer', provider: 'nvidia', source: 'nvidia' }],
       fetchedAt: new Date().toISOString(),
@@ -607,7 +607,7 @@ describe('free-model request boundary', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-paid-'));
     roots.push(root);
     const store = new ConfigStore(root);
-    store.updateSelectedModelIds(['paid/model']);
+    store.updateModelGroup('default', ['paid/model']);
     store.writeModelCache({ models: [{ id: 'paid/model', name: 'Paid', provider: 'paid', raw: { id: 'paid/model', pricing: { prompt: '1', completion: '1' } } }], fetchedAt: new Date().toISOString() });
     let called = false;
     const mockFetch: FetchLike = async () => {

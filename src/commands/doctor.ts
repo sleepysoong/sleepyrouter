@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { readLocalEnv } from '../config/env.js';
 import { getEnvPath } from '../config/paths.js';
 import { ConfigStore } from '../config/store.js';
+import { allGroupModelIds } from '../model-groups.js';
 
 interface OutputLike {
   write(chunk: string): unknown;
@@ -19,7 +20,7 @@ export interface DoctorStatus {
   envPath: string;
   envFileExists: boolean;
   providers: DoctorProviderStatus[];
-  selectedModelCount: number;
+  modelCount: number;
   cachedModelCount: number;
   cacheFetchedAt?: string;
   groupNames: string[];
@@ -65,7 +66,7 @@ export function getDoctorStatus(options: { store?: ConfigStore; env?: NodeJS.Pro
         validPrefix: validPrefix(key.value, provider.prefix),
       };
     }),
-    selectedModelCount: config.selectedModelIds.length,
+    modelCount: allGroupModelIds(config.modelGroups).length,
     cachedModelCount: cache?.models.length ?? 0,
     cacheFetchedAt: cache?.fetchedAt,
     groupNames: Object.keys(config.modelGroups),
@@ -88,7 +89,7 @@ export function printDoctorStatus(options: { store?: ConfigStore; env?: NodeJS.P
   for (const provider of status.providers) {
     stdout.write(`- ${provider.name}: ${prefixLabel(provider)}\n`);
   }
-  stdout.write(`선택된 모델: ${status.selectedModelCount}개\n`);
+  stdout.write(`선택된 모델: ${status.modelCount}개\n`);
   stdout.write(`캐시된 모델: ${status.cachedModelCount}개${status.cacheFetchedAt ? ` (가져온 시간: ${status.cacheFetchedAt})` : ''}\n`);
   if (status.groupNames.length > 0) {
     stdout.write(`그룹: ${status.groupNames.join(', ')}\n`);

@@ -1,7 +1,5 @@
 import { ModelGroups } from './types.js';
 
-export const DEFAULT_MODEL_GROUPS: ModelGroups = {};
-
 const LEGACY_ALIASES: Record<string, string> = {
   haiku: 'fast',
   sonnet: 'balanced',
@@ -26,14 +24,26 @@ export function normalizeModelGroups(value: unknown): ModelGroups {
   return result;
 }
 
-export function selectedGroupModelIds(selectedModelIds: string[], modelGroups: ModelGroups, requestedModel?: string): string[] | undefined {
+export function allGroupModelIds(modelGroups: ModelGroups): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const ids of Object.values(modelGroups)) {
+    for (const id of ids) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        result.push(id);
+      }
+    }
+  }
+  return result;
+}
+
+export function selectedGroupModelIds(modelGroups: ModelGroups, requestedModel?: string): string[] | undefined {
   const group = normalizeModelGroupName(requestedModel);
   if (!group) return undefined;
   const ids = modelGroups[group];
   if (!ids || ids.length === 0) return undefined;
-  const selected = new Set(selectedModelIds);
-  const filtered = ids.filter((id) => selected.has(id));
-  return filtered.length > 0 ? filtered : undefined;
+  return ids.length > 0 ? ids : undefined;
 }
 
 export function resolveDefaultGroup(modelGroups: ModelGroups, defaultGroup?: string): string | undefined {

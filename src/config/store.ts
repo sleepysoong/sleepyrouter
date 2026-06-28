@@ -62,7 +62,6 @@ export class ConfigStore {
     const config = readJson<Partial<OmfmConfig>>(this.paths.configPath, {});
     return {
       port: typeof config.port === 'number' ? config.port : DEFAULT_PORT,
-      selectedModelIds: Array.isArray(config.selectedModelIds) ? config.selectedModelIds.filter((x): x is string => typeof x === 'string') : [],
       modelGroups: normalizeModelGroups(config.modelGroups),
       defaultGroup: typeof config.defaultGroup === 'string' ? config.defaultGroup : undefined,
     };
@@ -72,19 +71,11 @@ export class ConfigStore {
     writeJson(this.paths.configPath, config);
   }
 
-  updateSelectedModelIds(selectedModelIds: string[]): OmfmConfig {
-    const config = this.readConfig();
-    const next = { ...config, selectedModelIds: [...new Set(selectedModelIds)] };
-    this.writeConfig(next);
-    return next;
-  }
-
   updateModelGroup(group: string, modelIds: string[]): OmfmConfig {
     const config = this.readConfig();
     const groupIds = [...new Set(modelIds)];
     const next = {
       ...config,
-      selectedModelIds: [...new Set([...config.selectedModelIds, ...groupIds])],
       modelGroups: { ...config.modelGroups, [group]: groupIds },
     };
     this.writeConfig(next);
