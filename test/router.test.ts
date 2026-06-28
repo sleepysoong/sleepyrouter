@@ -2,30 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { chooseGroupedModel, chooseModel, orderedCandidates } from '../src/latency/router.js';
 import { allGroupModelIds, selectedGroupModelIds } from '../src/model-groups.js';
 
-describe('config-order router', () => {
-  it('honors requested selected model', () => {
-    const groups = { default: ['a', 'b'] };
-    expect(chooseModel(groups, 'b')).toEqual({ modelId: 'b', reason: 'requested-selected' });
+describe('group-name router', () => {
+  it('routes to group when requestedModel matches group name', () => {
+    const groups = { fast: ['a', 'b'], balanced: ['c'] };
+    expect(chooseModel(groups, 'fast')).toEqual({ modelId: 'a', reason: 'model-group' });
   });
 
-  it('uses config order for generic request', () => {
-    const groups = { default: ['a', 'b'] };
-    expect(chooseModel(groups, 'auto')).toEqual({ modelId: 'a', reason: 'model-group' });
+  it('falls back to defaultGroup when requestedModel is not a group', () => {
+    const groups = { fast: ['a', 'b'], balanced: ['c'] };
+    expect(orderedCandidates(groups, 'auto')).toEqual(['a', 'b']);
   });
 
-  it('falls back deterministically when no request', () => {
+  it('falls back to first group when no request', () => {
     const groups = { default: ['z', 'a'] };
-    expect(chooseModel(groups, undefined)).toEqual({ modelId: 'z', reason: 'model-group' });
+    expect(chooseModel(groups, undefined)).toEqual({ modelId: 'z', reason: 'fallback-order' });
   });
 
-  it('orders retry candidates by config order', () => {
+  it('returns group order as candidates', () => {
     const groups = { default: ['a', 'b', 'c'] };
     expect(orderedCandidates(groups)).toEqual(['a', 'b', 'c']);
-  });
-
-  it('returns group order as-is for requested model in group', () => {
-    const groups = { default: ['b', 'a', 'c'] };
-    expect(orderedCandidates(groups, 'c')).toEqual(['b', 'a', 'c']);
   });
 
   it('routes group aliases within the configured group only', () => {
@@ -36,10 +31,6 @@ describe('config-order router', () => {
 
   it('returns empty array when all groups are empty', () => {
     expect(orderedCandidates({ fast: [], balanced: [], capable: [] }, 'opus')).toEqual([]);
-  });
-
-  it('prefers an exact selected model id over a group alias', () => {
-    expect(orderedCandidates({ fast: [], balanced: [], capable: ['b'] }, 'b')).toEqual(['b']);
   });
 });
 
@@ -56,7 +47,7 @@ describe('configurable groups', () => {
       .toEqual(['model-a', 'model-b', 'model-c']);
   });
 
-  it('falls back to defaultGroup when requested model is not a group or selected model', () => {
+  it('falls back to defaultGroup when requested model is not a group name', () => {
     const groups = { coding: ['model-a', 'model-b'], default: ['model-c', 'model-d'] };
     expect(orderedCandidates(groups, 'unknown-model', 'default'))
       .toEqual(['model-c', 'model-d']);
@@ -72,12 +63,6 @@ describe('configurable groups', () => {
     const groups = { fast: ['model-a'], default: ['model-b', 'model-c'] };
     expect(orderedCandidates(groups, 'auto', 'default'))
       .toEqual(['model-b', 'model-c']);
-  });
-
-  it('still routes exact model even if it matches a group name', () => {
-    const groups = { coding: ['coding', 'model-a', 'model-b'] };
-    expect(orderedCandidates(groups, 'coding'))
-      .toEqual(['coding', 'model-a', 'model-b']);
   });
 
   it('ignores slr/ prefix on group names', () => {
