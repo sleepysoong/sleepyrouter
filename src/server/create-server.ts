@@ -4,7 +4,7 @@ import { requireAnyProviderApiKey } from '../config/env.js';
 import { loadModelCatalog } from '../providers/catalog.js';
 import { postNvidiaChatCompletion } from '../providers/nvidia.js';
 import { isFreeOpenRouterModel, postOpenRouterAnthropicMessage, postOpenRouterChatCompletion } from '../providers/openrouter.js';
-import { FetchLike, ModelGroups, OmfmModel, ProviderApiKeys, sourceOf } from '../types.js';
+import { FetchLike, ModelGroups, ModelSource, OmfmModel, ProviderApiKeys, sourceOf } from '../types.js';
 import { orderedCandidates, RouteChoice } from '../latency/router.js';
 import { allGroupModelIds } from '../model-groups.js';
 import { anthropicToOpenAI, openAIToAnthropic } from './translate.js';
@@ -112,11 +112,26 @@ async function selectedModelSelection(store: ConfigStore, apiKeys: ProviderApiKe
   const config = store.readConfig();
   const freeModels = await availableFreeModels(store, apiKeys, fetchImpl);
   const allIds = allGroupModelIds(config.modelGroups);
-  const selectedById = new Map(freeModels.filter((model) => allIds.includes(model.id)).map((model) => [model.id, model]));
-  const models = allIds.map((id) => selectedById.get(id)).filter((model): model is OmfmModel => Boolean(model));
+  const freeById = new Map(freeModels.map((model) => [model.id, model]));
+  const cache = store.readModelCache();
+  const cacheIds = new Set(cache?.models.map((m) => m.id) ?? []);
+  const models: OmfmModel[] = [];
+  const byId = new Map<string, OmfmModel>();
+  for (const id of allIds) {
+    const free = freeById.get(id);
+    if (free) {
+      models.push(free);
+      byId.set(id, free);
+    } else if (!cacheIds.has(id)) {
+      const source: ModelSource = id.startsWith('nvidia/') ? 'nvidia' : 'openrouter';
+      const stub: OmfmModel = { id, name: id, provider: source, source };
+      models.push(stub);
+      byId.set(id, stub);
+    }
+  }
   return {
     models,
-    byId: new Map(models.map((model) => [model.id, model])),
+    byId,
     ids: models.map((model) => model.id),
     modelGroups: config.modelGroups,
     defaultGroup: config.defaultGroup,
