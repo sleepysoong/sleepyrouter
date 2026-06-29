@@ -294,6 +294,13 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
               return;
             }
             const data = await upstream.json() as Record<string, any>;
+            // ponytail: 빈 choices는 실패로 간주하고 다음 모델 시도
+            if (!Array.isArray(data.choices) || data.choices.length === 0) {
+              upstreamError = 'empty choices';
+              lastError = `[${modelId}] empty choices`;
+              recordSuccessfulUsage(store, model, upstream.status);
+              continue;
+            }
             const usage = usageFromResponse(data);
             lastInputTokens = usage.inputTokens;
             lastOutputTokens = usage.outputTokens;
@@ -377,6 +384,14 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
               return;
             }
             const data = await upstream.json() as Record<string, any>;
+            // ponytail: 빈 choices/content는 실패로 간주
+            const empty = !Array.isArray(data.choices) && !Array.isArray(data.content);
+            if (empty) {
+              upstreamError = 'empty response';
+              lastError = `[${modelId}] empty response`;
+              recordSuccessfulUsage(store, model, upstream.status);
+              continue;
+            }
             const usage = usageFromResponse(data);
             lastInputTokens = usage.inputTokens;
             lastOutputTokens = usage.outputTokens;
