@@ -105,14 +105,6 @@ async function availableFreeModels(store: ConfigStore, apiKeys: ProviderApiKeys,
   return catalog.models.filter(isCachedFreeModel);
 }
 
-// ponytail: modelId로 소속 그룹 역추적
-function findGroupForModel(modelGroups: ModelGroups, modelId: string): string | undefined {
-  for (const [group, ids] of Object.entries(modelGroups)) {
-    if (ids.includes(modelId)) return group;
-  }
-  return undefined;
-}
-
 interface SelectedModelsResult {
   models: OmfmModel[];
   byId: Map<string, OmfmModel>;
