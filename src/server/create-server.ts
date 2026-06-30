@@ -218,7 +218,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
     const startedAt = Date.now();
     let requestedModel: string | undefined;
     let routedModel: string | undefined;
-    let routeReason: RouteChoice['reason'] | 'failover' | undefined;
+    let routeReason: RouteChoice['reason'] | undefined;
     let stream: boolean | undefined;
     let lastInputTokens: number | undefined;
     let lastOutputTokens: number | undefined;
@@ -318,9 +318,9 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
             const data = await upstream.json() as Record<string, any>;
             // ponytail: 빈 choices는 실패로 간주하고 다음 모델 시도
             if (!Array.isArray(data.choices) || data.choices.length === 0) {
-              upstreamError = '.choices가 비어있어요';
+              upstreamError = `choices가 비어있어요 (${upstream.status})`;
               lastError = `[${modelId}] choices가 비어있어요`;
-              recordSuccessfulUsage(store, model, upstream.status);
+              store.appendUsage({ ts: new Date().toISOString(), model: model.usageId ?? model.id, inputTokens: 0, outputTokens: 0, success: false });
               continue;
             }
             const usage = usageFromResponse(data);
@@ -421,9 +421,9 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
             // ponytail: 빈 choices/content는 실패로 간주
             const empty = !Array.isArray(data.choices) && !Array.isArray(data.content);
             if (empty) {
-              upstreamError = 'choices와 content가 모두 비어있어요';
+              upstreamError = `choices와 content가 모두 비어있어요 (${upstream.status})`;
               lastError = `[${modelId}] choices와 content가 모두 비어있어요`;
-              recordSuccessfulUsage(store, model, upstream.status);
+              store.appendUsage({ ts: new Date().toISOString(), model: model.usageId ?? model.id, inputTokens: 0, outputTokens: 0, success: false });
               continue;
             }
             const usage = usageFromResponse(data);
@@ -451,7 +451,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
       const method = req.method ?? 'GET';
       const path = req.url ?? '/';
       const msg = error instanceof Error ? error.message : String(error);
-      json(res, statusCode, { error: { message: `${msg}`, request: `${method} ${path}` } });
+      json(res, statusCode, { error: { message: msg, request: `${method} ${path}` } });
     }
   });
 }

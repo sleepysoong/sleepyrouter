@@ -1,7 +1,7 @@
 import { ConfigStore } from '../config/store.js';
 import { createOmfmServer, formatServerLogEvent, listen } from '../server/create-server.js';
 import { allGroupModelIds } from '../model-groups.js';
-import { requireAnyProviderApiKey } from '../config/env.js';
+import { requireAnyProviderApiKey, resolveProviderApiKeys } from '../config/env.js';
 import { VERSION } from '../version.js';
 import { getConfigPath, getEnvPath } from '../config/paths.js';
 import Table from 'cli-table3';
@@ -14,8 +14,9 @@ export async function runStartCommand(options: { port?: number; store?: ConfigSt
   if (config.port !== port) store.writeConfig({ ...config, port });
 
   const env = process.env;
-  const hasNvidiaKey = Boolean(env.NVIDIA_API_KEY?.trim());
-  const hasOpenRouterKey = Boolean(env.OPENROUTER_API_KEY?.trim());
+  const keys = resolveProviderApiKeys(env, store.paths.root);
+  const hasNvidiaKey = Boolean(keys.nvidia);
+  const hasOpenRouterKey = Boolean(keys.openrouter);
 
   console.log(`\nslr v${VERSION}`);
   console.log(`  config: ${getConfigPath(store.paths.root)}`);
