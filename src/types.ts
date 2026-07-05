@@ -1,9 +1,11 @@
-export type ModelSource = 'openrouter' | 'nvidia';
+export type ModelSource = 'openrouter' | 'nvidia' | 'copilot';
 
 export type ModelGroups = Record<string, string[]>;
 
 export function sourceOf(model: OmfmModel): ModelSource {
-  return model.source === 'nvidia' ? 'nvidia' : 'openrouter';
+  if (model.source === 'nvidia') return 'nvidia';
+  if (model.source === 'copilot') return 'copilot';
+  return 'openrouter';
 }
 
 export interface OmfmModel {

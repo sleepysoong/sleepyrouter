@@ -25,11 +25,13 @@ Free tier 코딩 에이전트는 스펙 시트에서는 멀쩡해 보이지만, 
 
 ## API 키 발급
 
-`slr`은 트래픽만 전달합니다. 두 provider 중 하나 또는 둘 모두에서 직접 키를 발급받아야 합니다.
+`slr`은 트래픽만 전달합니다. 지원되는 provider(OpenRouter, NVIDIA, GitHub Copilot) 중 하나 이상에서 직접 키를 발급받아야 합니다.
 
 **OpenRouter** — [openrouter.ai](https://openrouter.ai)에서 가입한 뒤 Keys 메뉴에서 키를 발급받습니다(prefix `sk-or-`). `:free` 모델은 하루 50회까지 사용할 수 있고, 크레딧을 $10 이상 충전하면 하루 1,000회로 늘어납니다. 무료 한도에는 신용카드가 필요하지 않습니다.
 
 **NVIDIA** — [build.nvidia.com](https://build.nvidia.com)(NVIDIA Developer Program)에서 가입한 뒤 모델 카드의 "Get API Key" 버튼으로 발급받습니다(prefix `nvapi-`). 신용카드는 필요하지 않으며, rate-limit은 모델별로 적용됩니다.
+
+**GitHub Copilot** — [GitHub Settings > Developer settings](https://github.com/settings/tokens)에서 Personal Access Token (PAT)을 발급받습니다. 토큰 환경 변수명은 `GITHUB_COPILOT_TOKEN` 입니다. GitHub Copilot Free/Pro 등 사용자 플랜에 따라 사용할 수 있는 모델 목록(gpt-4o, claude-sonnet-4 등)이 다릅니다.
 
 가지고 있는 키를 `~/.sleepy-llm-router/.env`에 넣어 두면, `slr`은 키가 설정된 provider만 사용합니다.
 

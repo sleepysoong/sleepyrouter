@@ -2,6 +2,7 @@ import http, { IncomingMessage, ServerResponse } from 'node:http';
 import { ConfigStore } from '../config/store.js';
 import { requireAnyProviderApiKey } from '../config/env.js';
 import { loadModelCatalog } from '../providers/catalog.js';
+import { postCopilotChatCompletion } from '../providers/copilot.js';
 import { postNvidiaChatCompletion } from '../providers/nvidia.js';
 import { isFreeOpenRouterModel, postOpenRouterAnthropicMessage, postOpenRouterChatCompletion } from '../providers/openrouter.js';
 import { FetchLike, ModelGroups, ModelSource, OmfmModel, ProviderApiKeys, sourceOf } from '../types.js';
@@ -91,11 +92,13 @@ async function readBody(req: IncomingMessage): Promise<any> {
 }
 
 function upstreamId(model: OmfmModel): string {
-  return model.upstreamId ?? (sourceOf(model) === 'nvidia' ? model.id.replace(/^nvidia\//, '') : model.id);
+  const source = sourceOf(model);
+  return model.upstreamId ?? (source === 'nvidia' ? model.id.replace(/^nvidia\//, '') : source === 'copilot' ? model.id.replace(/^copilot\//, '') : model.id);
 }
 
 function isCachedFreeModel(model: OmfmModel): boolean {
   if (sourceOf(model) === 'nvidia') return true;
+  if (sourceOf(model) === 'copilot') return true;
   if (model.id.endsWith(':free')) return true;
   return Boolean(model.raw && typeof model.raw === 'object' && isFreeOpenRouterModel(model.raw as Parameters<typeof isFreeOpenRouterModel>[0]));
 }
@@ -128,7 +131,7 @@ async function selectedModelSelection(store: ConfigStore, apiKeys: ProviderApiKe
       models.push(free);
       byId.set(id, free);
     } else if (!cacheIds.has(id)) {
-      const source: ModelSource = id.startsWith('nvidia/') ? 'nvidia' : 'openrouter';
+      const source: ModelSource = id.startsWith('nvidia/') ? 'nvidia' : id.startsWith('copilot/') ? 'copilot' : 'openrouter';
       const stub: OmfmModel = { id, name: id, provider: source, source };
       models.push(stub);
       byId.set(id, stub);
@@ -150,7 +153,8 @@ function assertSelectedFree(models: OmfmModel[]): void {
 }
 
 function missingKeyMessage(model: OmfmModel): string {
-  const keyName = sourceOf(model) === 'nvidia' ? 'NVIDIA_API_KEY' : 'OPENROUTER_API_KEY';
+  const source = sourceOf(model);
+  const keyName = source === 'nvidia' ? 'NVIDIA_API_KEY' : source === 'copilot' ? 'GITHUB_COPILOT_TOKEN' : 'OPENROUTER_API_KEY';
   return `${keyName}가 없어서 ${model.id}을(를) 사용할 수 없어요. 환경변수 또는 .env 파일에 키를 추가하세요.`;
 }
 
@@ -302,9 +306,12 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
           triedAny = true;
           triedCount += 1;
           const upstreamBody = withUpstreamModel(body, model, stream);
-          const upstream = sourceOf(model) === 'nvidia'
+          const source = sourceOf(model);
+          const upstream = source === 'nvidia'
             ? await postNvidiaChatCompletion({ apiKey, body: upstreamBody, fetchImpl })
-            : await postOpenRouterChatCompletion({ apiKey, body: upstreamBody, stream, fetchImpl });
+            : source === 'copilot'
+              ? await postCopilotChatCompletion({ apiKey, body: upstreamBody, fetchImpl })
+              : await postOpenRouterChatCompletion({ apiKey, body: upstreamBody, stream, fetchImpl });
           if (upstream.ok) {
             if (stream) {
               res.writeHead(upstream.status, { 'Content-Type': upstream.headers.get('content-type') ?? 'text/event-stream; charset=utf-8' });
@@ -372,9 +379,12 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
           }
           triedAny = true;
           triedCount += 1;
-          if (sourceOf(model) === 'nvidia') {
+          const source = sourceOf(model);
+          if (source === 'nvidia' || source === 'copilot') {
             const fallbackBody = anthropicToOpenAI(body, upstreamId(model));
-            const upstream = await postNvidiaChatCompletion({ apiKey, body: fallbackBody, fetchImpl });
+            const upstream = source === 'nvidia'
+              ? await postNvidiaChatCompletion({ apiKey, body: fallbackBody, fetchImpl })
+              : await postCopilotChatCompletion({ apiKey, body: fallbackBody, fetchImpl });
             if (upstream.ok) {
               logTriedCount = triedCount;
               await writeOpenAIAsAnthropic(upstream, res, body, modelId, (data) => {

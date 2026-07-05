@@ -1,5 +1,6 @@
 import { ConfigStore, isModelCacheFresh } from '../config/store.js';
 import { FetchLike, OmfmModel, ProviderApiKeys, sourceOf } from '../types.js';
+import { listCopilotFreeModels } from './copilot.js';
 import { listNvidiaFreeModels } from './nvidia.js';
 import { listOpenRouterFreeModels } from './openrouter.js';
 
@@ -48,6 +49,10 @@ export async function listAvailableFreeModels(options: { apiKeys: ProviderApiKey
   if (options.apiKeys.nvidia) {
     labels.push('NVIDIA');
     tasks.push(listNvidiaFreeModels({ apiKey: options.apiKeys.nvidia, fetchImpl: options.fetchImpl }));
+  }
+  if (options.apiKeys.copilot) {
+    labels.push('Copilot');
+    tasks.push(listCopilotFreeModels({ apiKey: options.apiKeys.copilot, fetchImpl: options.fetchImpl }));
   }
 
   const start = Date.now();

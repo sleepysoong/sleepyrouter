@@ -37,19 +37,26 @@ export function resolveNvidiaApiKey(env: NodeJS.ProcessEnv = process.env, root =
   return local.NVIDIA_API_KEY?.trim() || undefined;
 }
 
+export function resolveCopilotApiKey(env: NodeJS.ProcessEnv = process.env, root = getConfigRoot(env)): string | undefined {
+  if (env.GITHUB_COPILOT_TOKEN && env.GITHUB_COPILOT_TOKEN.trim()) return env.GITHUB_COPILOT_TOKEN.trim();
+  const local = readLocalEnv(root);
+  return local.GITHUB_COPILOT_TOKEN?.trim() || undefined;
+}
+
 export function resolveProviderApiKeys(env: NodeJS.ProcessEnv = process.env, root = getConfigRoot(env)): ProviderApiKeys {
   return {
     openrouter: resolveOpenRouterApiKey(env, root),
     nvidia: resolveNvidiaApiKey(env, root),
+    copilot: resolveCopilotApiKey(env, root),
   };
 }
 
 export function requireAnyProviderApiKey(env: NodeJS.ProcessEnv = process.env, root = getConfigRoot(env)): ProviderApiKeys {
   const keys = resolveProviderApiKeys(env, root);
-  if (!keys.openrouter && !keys.nvidia) {
+  if (!keys.openrouter && !keys.nvidia && !keys.copilot) {
     throw new Error(
       `API 키가 설정되지 않았어요.\n` +
-      `  NVIDIA_API_KEY 또는 OPENROUTER_API_KEY 중 하나 이상이 필요해요.\n` +
+      `  NVIDIA_API_KEY, OPENROUTER_API_KEY, 또는 GITHUB_COPILOT_TOKEN 중 하나 이상이 필요해요.\n` +
       `  설정 방법:\n` +
       `    1. 환경변수: export NVIDIA_API_KEY=nvapi-...\n` +
       `    2. .env 파일: echo "NVIDIA_API_KEY=nvapi-..." > ${getEnvPath(root)}`

@@ -4,12 +4,13 @@
 
 ## 현재 프로바이더 모델
 
-- 소스 앵커: [src/providers/openrouter.ts](../src/providers/openrouter.ts), [src/providers/nvidia.ts](../src/providers/nvidia.ts), [src/providers/catalog.ts](../src/providers/catalog.ts).
+- 소스 앵커: [src/providers/openrouter.ts](../src/providers/openrouter.ts), [src/providers/nvidia.ts](../src/providers/nvidia.ts), [src/providers/copilot.ts](../src/providers/copilot.ts), [src/providers/catalog.ts](../src/providers/catalog.ts).
 - `src/providers/catalog.ts`의 `listAvailableFreeModels`는 `src/server/create-server.ts`에서 사용되는 멀티 프로바이더 진입점이에요. 새 프로바이더는 여기에 등록해야 해요.
 - OpenRouter 모델 적격성은 `:free` ID 또는 텍스트 출력 지원이 있는 영(0) 프롬프트/완료/요청 가격을 허용해요.
 - NVIDIA 모델 적격성은 업스트림 `/v1/models` 목록을 채팅 유사 항목으로 필터링해요: ID, 이름, 유형, 작업, 태그가 비채팅 패턴(임베드/리랭크/오디오/음성/비디오/번역/안전 등)과 일치하면 안 되고, 명시적 `task`가 채팅/생성/완료/인스트럭트로 읽혀야 해요.
-- 프로바이더 컨텍스트 길이는 `model-metadata` 브랜치의 원시 메타데이터 카탈로그에서 보강돼요. 카탈로그는 `npm run metadata:update`와 일일 `.github/workflows/update-model-metadata.yml` 워크플로우에서 공개 OpenRouter 및 NVIDIA 메타데이터 엔드포인트에서 새로고침돼요.
-- NVIDIA 모델은 업스트림 모델 ID를 API 호출에 보존하면서 로컬 `nvidia/` ID로 노출돼요.
+- Copilot 모델 적격성은 공식 `/v1/models` 엔드포인트가 없기 때문에 하드코딩된 알려진 무료 모델 목록(gpt-4o, claude-sonnet-4 등)을 사용해요.
+- 프로바이더 컨텍스트 길이는 `model-metadata` 브랜치의 원시 메타데이터 카탈로그에서 보강돼요. 카탈로그는 `npm run metadata:update`와 일일 `.github/workflows/update-model-metadata.yml` 워크플로우에서 공개 OpenRouter 및 NVIDIA 메타데이터 엔드포인트에서 새로고침돼요. Copilot 모델은 하드코딩된 컨텍스트 길이를 사용해요.
+- NVIDIA와 Copilot 모델은 업스트림 모델 ID를 API 호출에 보존하면서 각각 로컬 `nvidia/` 및 `copilot/` ID로 노출돼요.
 - 프로바이더 모델 카탈로그는 5분간 캐시되고, 로컬 모델 ID로 중복 제거되며, 현재 구성된 API 키가 있는 프로바이더로 필터링된 후 재사용돼요. 오래된 카탈로그는 정상 사용 전에 새로고침되고, 프로바이더 카탈로그 가져오기 실패 시에만 오래된 캐시 대체가 사용돼요.
 - 프로바이더 요청 헬퍼는 지원되는 곳에서 채팅 완료와 Anthropic 호환 메시지를 전달해요.
 
@@ -24,6 +25,7 @@
 4. 테스트를 확인하세요:
    - `test/openrouter.test.ts`
    - `test/nvidia.test.ts`
+   - `test/copilot.test.ts`
    - `test/catalog.test.ts`
    - `test/server.test.ts`의 프로바이더 관련 커버리지
 5. 구현 전에 검증을 정의하세요: 프로바이더 단위 테스트, 서버 선택된 모델 필터링, 비밀 처리.
