@@ -257,7 +257,7 @@ export function createOmfmServer(options: ServerOptions = {}): http.Server {
         });
       }
       if (method === 'GET' && url.pathname === '/health') {
-        json(res, 200, { ok: true, service: 'sleepy-llm-router', version: VERSION, uptime: Math.floor(process.uptime()) });
+        json(res, 200, { ok: true, service: 'sleepyrouter', version: VERSION, uptime: Math.floor(process.uptime()) });
         return;
       }
 

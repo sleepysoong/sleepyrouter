@@ -1,4 +1,4 @@
-# Agent Guide — sleepy-llm-router
+# Agent Guide — sleepyrouter
 
 This repository is a TypeScript/Node local proxy that exposes free models from supported providers (currently OpenRouter and NVIDIA) through OpenAI-compatible and Anthropic-compatible client surfaces. Keep this file short: it is a route map, not the source of truth.
 

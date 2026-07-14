@@ -1,13 +1,13 @@
 # 설치 및 설정
 
-`sleepy-llm-router` (`slr`) 설치부터 클라이언트 연결까지 순서대로 설명합니다. 프로젝트의 목적과 배경은 [README](./README.md)를 보세요.
+`sleepyrouter` (`slr`) 설치부터 클라이언트 연결까지 순서대로 설명합니다. 프로젝트의 목적과 배경은 [README](./README.md)를 보세요.
 
 ## 1. 설치
 
 ### npm으로 설치 (권장)
 
 ```bash
-npm install -g sleepy-llm-router
+npm install -g sleepyrouter
 ```
 
 ### 로컬 파일로 설치
@@ -16,8 +16,8 @@ npm install -g sleepy-llm-router
 
 ```bash
 # 1. 저장소 clone
-git clone https://github.com/sleepysoong/sleepy-llm-router
-cd sleepy-llm-router
+git clone https://github.com/sleepysoong/sleepyrouter
+cd sleepyrouter
 
 # 2. 의존성 설치 및 빌드
 npm install
@@ -25,7 +25,7 @@ npm run build
 
 # 3-1. npm pack으로 설치 (tarball 생성 후 전역 설치)
 npm pack
-npm install -g ./sleepy-llm-router-*.tgz
+npm install -g ./sleepyrouter-*.tgz
 
 # 3-2. npm link로 설치 (개발용, 소스 변경 시 자동 반영)
 npm link
@@ -46,9 +46,9 @@ Node.js 20 이상이 필요합니다.
 `slr` 은 provider 키를 다음 순서로 읽습니다.
 
 1. 프로세스/전역 환경의 `OPENROUTER_API_KEY` / `NVIDIA_API_KEY`
-2. `~/.sleepy-llm-router/.env`
+2. `~/.sleepyrouter/.env`
 
-`~/.sleepy-llm-router/.env` 예시는 아래와 같습니다.
+`~/.sleepyrouter/.env` 예시는 아래와 같습니다.
 
 ```bash
 OPENROUTER_API_KEY=sk-or-...
@@ -59,7 +59,7 @@ NVIDIA_API_KEY=nvapi-...
 
 ## 3. 모델 설정
 
-`slr`은 설정 파일(`~/.sleepy-llm-router/config.json`)의 `modelGroups`에 정의된 모델만 라우팅 후보로 사용합니다. 각 그룹에 모델을 넣으면 해당 그룹 순서대로 라우팅됩니다. `defaultGroup`으로 지정된 그룹은 인식할 수 없는 모델 요청이 들어올 때 사용됩니다.
+`slr`은 설정 파일(`~/.sleepyrouter/config.json`)의 `modelGroups`에 정의된 모델만 라우팅 후보로 사용합니다. 각 그룹에 모델을 넣으면 해당 그룹 순서대로 라우팅됩니다. `defaultGroup`으로 지정된 그룹은 인식할 수 없는 모델 요청이 들어올 때 사용됩니다.
 
 ## 4. 로컬 프록시 실행
 
@@ -117,7 +117,7 @@ export ANTHROPIC_API_KEY=
 | `slr usage --date 20260203` | 특정 날짜의 사용량만 출력합니다. |
 | `slr usage --week 27` | 특정 주의 사용량만 출력합니다. (올해 기준) |
 
-사용 기록은 `~/.sleepy-llm-router/usage.jsonl`에 JSONL 형식으로 저장됩니다.
+사용 기록은 `~/.sleepyrouter/usage.jsonl`에 JSONL 형식으로 저장됩니다.
 
 ## 7. 라우팅 규칙
 
@@ -134,8 +134,8 @@ export ANTHROPIC_API_KEY=
 
 | 명령어 | 용도 |
 | --- | --- |
-| `git clone https://github.com/sleepysoong/sleepy-llm-router` | 저장소를 clone합니다. |
-| `cd sleepy-llm-router` | 프로젝트 디렉터리로 이동합니다. |
+| `git clone https://github.com/sleepysoong/sleepyrouter` | 저장소를 clone합니다. |
+| `cd sleepyrouter` | 프로젝트 디렉터리로 이동합니다. |
 | `npm install` | 의존성을 설치합니다. |
 | `npm test` | 테스트 전체를 실행합니다. |
 | `npm run typecheck` | TypeScript 타입 검사를 실행합니다. |

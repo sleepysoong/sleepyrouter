@@ -70,7 +70,7 @@ async function fetchOpenRouterModels(options: { apiKey: string; fetchImpl: Fetch
   const response = await options.fetchImpl(url, {
     headers: {
       Authorization: `Bearer ${options.apiKey}`,
-      'User-Agent': `sleepy-llm-router/${VERSION}`,
+      'User-Agent': `sleepyrouter/${VERSION}`,
     },
   });
   if (!response.ok) {
@@ -110,8 +110,8 @@ export async function postOpenRouterChatCompletion(options: {
     headers: {
       Authorization: `Bearer ${options.apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://github.com/hakilee/sleepy-llm-router',
-      'X-OpenRouter-Title': 'sleepy-llm-router',
+      'HTTP-Referer': 'https://github.com/hakilee/sleepyrouter',
+      'X-OpenRouter-Title': 'sleepyrouter',
     },
     body: JSON.stringify(options.body),
   });
@@ -131,8 +131,8 @@ export async function postOpenRouterAnthropicMessage(options: {
       Authorization: `Bearer ${options.apiKey}`,
       'Content-Type': 'application/json',
       'anthropic-version': anthropicVersion,
-      'HTTP-Referer': 'https://github.com/hakilee/sleepy-llm-router',
-      'X-OpenRouter-Title': 'sleepy-llm-router',
+      'HTTP-Referer': 'https://github.com/hakilee/sleepyrouter',
+      'X-OpenRouter-Title': 'sleepyrouter',
     },
     body: JSON.stringify(options.body),
   });

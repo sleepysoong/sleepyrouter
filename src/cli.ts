@@ -33,7 +33,7 @@ function parsePort(value: string | boolean | undefined): number | undefined {
 }
 
 function help(): void {
-  console.log(`sleepy-llm-router ${VERSION}\n\n사용법:\n  slr start [--port 4567]\n  slr usage [--date YYYYMMDD|--week NN]\n  slr --version\n`);
+  console.log(`sleepyrouter ${VERSION}\n\n사용법:\n  slr start [--port 4567]\n  slr usage [--date YYYYMMDD|--week NN]\n  slr --version\n`);
 }
 
 async function main(): Promise<void> {

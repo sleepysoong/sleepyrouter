@@ -7,7 +7,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputPath = join(root, 'data', 'model-metadata.json');
 const requestHeaders = {
   Accept: 'application/json,text/html;q=0.9,*/*;q=0.8',
-  'User-Agent': 'sleepy-llm-router/metadata-update',
+  'User-Agent': 'sleepyrouter/metadata-update',
 };
 
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';

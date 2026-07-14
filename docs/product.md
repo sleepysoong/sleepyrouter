@@ -1,6 +1,6 @@
 # 제품
 
-`sleepy-llm-router`(`slr`)은 코딩 에이전트를 위한 로컬 무료 모델 프록시예요. OpenAI 호환 및 Anthropic 호환 도구에 로컬호스트 엔드포인트를 제공하면서, 설정 파일 순서에 따라 사용자 승인된 무료 모델을 선택해요. 사용자 대상 개요는 [README.md](../README.md)에, 전체 설정은 [INSTALLATION.md](INSTALLATION.md)에 있어요.
+`sleepyrouter`(`slr`)은 코딩 에이전트를 위한 로컬 무료 모델 프록시예요. OpenAI 호환 및 Anthropic 호환 도구에 로컬호스트 엔드포인트를 제공하면서, 설정 파일 순서에 따라 사용자 승인된 무료 모델을 선택해요. 사용자 대상 개요는 [README.md](../README.md)에, 전체 설정은 [INSTALLATION.md](INSTALLATION.md)에 있어요.
 
 ## 제공하는 것
 
@@ -11,7 +11,7 @@
 - `http://localhost:4567/anthropic`의 Anthropic 호환 경로:
   - `POST /anthropic/v1/messages`
   - `POST /anthropic/messages`
-- `~/.sleepy-llm-router` 아래의 로컬 선택 상태와 사용량 카운터.
+- `~/.sleepyrouter` 아래의 로컬 선택 상태와 사용량 카운터.
 
 ## 제품 불변식
 

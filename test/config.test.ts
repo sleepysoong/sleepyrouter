@@ -20,7 +20,7 @@ describe('config/env', () => {
     expect(resolveOpenRouterApiKey({ OPENROUTER_API_KEY: 'global' } as NodeJS.ProcessEnv, root)).toBe('global');
   });
 
-  it('falls back to ~/.sleepy-llm-router/.env equivalent', () => {
+  it('falls back to ~/.sleepyrouter/.env equivalent', () => {
     const root = tempRoot();
     fs.writeFileSync(path.join(root, '.env'), 'OPENROUTER_API_KEY="local-key"\n');
     expect(resolveOpenRouterApiKey({} as NodeJS.ProcessEnv, root)).toBe('local-key');

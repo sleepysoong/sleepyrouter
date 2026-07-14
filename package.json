@@ -1,14 +1,14 @@
 {
-  "name": "sleepy-llm-router",
+  "name": "sleepyrouter",
   "version": "0.0.4",
   "description": "Route your coding agent to the fastest free LLM in real time.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sleepysoong/sleepy-llm-router.git"
+    "url": "git+https://github.com/sleepysoong/sleepyrouter.git"
   },
-  "homepage": "https://github.com/sleepysoong/sleepy-llm-router",
-  "bugs": "https://github.com/sleepysoong/sleepy-llm-router/issues",
+  "homepage": "https://github.com/sleepysoong/sleepyrouter",
+  "bugs": "https://github.com/sleepysoong/sleepyrouter/issues",
   "type": "module",
   "bin": {
     "slr": "dist/cli.js"
@@ -18,7 +18,7 @@
     "docs",
     "README.md",
     "LICENSE.md",
-    "sleepy-llm-router-character.png"
+    "sleepyrouter-character.png"
   ],
   "scripts": {
     "docs:check": "node scripts/check-docs.mjs",

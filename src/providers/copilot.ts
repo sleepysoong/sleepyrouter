@@ -46,7 +46,7 @@ async function exchangeToken(apiKey: string, fetchImpl: FetchLike): Promise<Copi
   const response = await fetchImpl(COPILOT_TOKEN_URL, {
     headers: {
       Authorization: `token ${apiKey}`,
-      'User-Agent': `sleepy-llm-router/${VERSION}`,
+      'User-Agent': `sleepyrouter/${VERSION}`,
     },
   });
   if (!response.ok) {

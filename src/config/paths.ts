@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 export function getConfigRoot(env: NodeJS.ProcessEnv = process.env): string {
-  return env.SLR_HOME || path.join(os.homedir(), '.sleepy-llm-router');
+  return env.SLR_HOME || path.join(os.homedir(), '.sleepyrouter');
 }
 
 export function getConfigPath(root = getConfigRoot()): string {

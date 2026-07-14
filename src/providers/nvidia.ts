@@ -63,7 +63,7 @@ export async function listNvidiaFreeModels(options: { apiKey: string; fetchImpl?
   const response = await fetchImpl('https://integrate.api.nvidia.com/v1/models', {
     headers: {
       Authorization: `Bearer ${options.apiKey}`,
-      'User-Agent': `sleepy-llm-router/${VERSION}`,
+      'User-Agent': `sleepyrouter/${VERSION}`,
     },
   });
   if (!response.ok) {

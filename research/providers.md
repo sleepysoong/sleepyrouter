@@ -11,7 +11,7 @@ Update this page when provider credentials, endpoints, model metadata, supported
 ## Current findings
 
 - The package supports OpenRouter, NVIDIA, and GitHub Copilot chat model adapters in version `0.0.1`.
-- API-key lookup is documented as provider-specific process/global environment variables, then `~/.sleepy-llm-router/.env`. Copilot uses `GITHUB_COPILOT_TOKEN`.
+- API-key lookup is documented as provider-specific process/global environment variables, then `~/.sleepyrouter/.env`. Copilot uses `GITHUB_COPILOT_TOKEN`.
 - Provider work should preserve OpenAI-compatible and Anthropic-compatible proxy behavior unless the task explicitly changes compatibility.
 - OpenRouter rows without explicit `source` metadata should continue to route through OpenRouter, even when a model ID contains a provider-like prefix.
 - NVIDIA and Copilot rows use local `nvidia/` and `copilot/` IDs respectively, and preserve upstream IDs for provider API calls.

@@ -1,6 +1,6 @@
-# sleepy-llm-router
+# sleepyrouter
 
-`sleepy-llm-router` (`slr`) 는 코딩 에이전트를 여러 무료 provider 중 설정된 순서대로 라우팅하는 로컬 프록시입니다. OpenAI 또는 Anthropic 호환 에이전트의 baseURL을 `localhost` 로 바꾸고 free 모델 몇 개를 골라두면, rate-limit이나 quota 문제가 생겨도 `slr` 이 요청을 계속 흘려보냅니다.
+`sleepyrouter` (`slr`) 는 코딩 에이전트를 여러 무료 provider 중 설정된 순서대로 라우팅하는 로컬 프록시입니다. OpenAI 또는 Anthropic 호환 에이전트의 baseURL을 `localhost` 로 바꾸고 free 모델 몇 개를 골라두면, rate-limit이나 quota 문제가 생겨도 `slr` 이 요청을 계속 흘려보냅니다.
 
 ## 왜 필요한가
 
@@ -31,13 +31,13 @@ Free tier 코딩 에이전트는 스펙 시트에서는 멀쩡해 보이지만, 
 
 **NVIDIA** — [build.nvidia.com](https://build.nvidia.com)(NVIDIA Developer Program)에서 가입한 뒤 모델 카드의 "Get API Key" 버튼으로 발급받습니다(prefix `nvapi-`). 신용카드는 필요하지 않으며, rate-limit은 모델별로 적용됩니다.
 
-가지고 있는 키를 `~/.sleepy-llm-router/.env`에 넣어 두면, `slr`은 키가 설정된 provider만 사용합니다.
+가지고 있는 키를 `~/.sleepyrouter/.env`에 넣어 두면, `slr`은 키가 설정된 provider만 사용합니다.
 
 ## 30초 만에 시도하기
 
 ```bash
-npm install -g sleepy-llm-router
-mkdir -p ~/.sleepy-llm-router && echo 'OPENROUTER_API_KEY=sk-or-...' > ~/.sleepy-llm-router/.env
+npm install -g sleepyrouter
+mkdir -p ~/.sleepyrouter && echo 'OPENROUTER_API_KEY=sk-or-...' > ~/.sleepyrouter/.env
 slr start        # http://localhost:4567 서빙
 ```
 
