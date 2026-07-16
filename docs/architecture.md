@@ -6,11 +6,11 @@
 
 | 영역 | 소스 앵커 | 책임 | 검증 |
 | --- | --- | --- | --- |
-| CLI 진입점 | [main.go](../main.go), [start_cmd.go](../start_cmd.go), [usage_cmd.go](../usage_cmd.go) | `sleepyrouter` 명령어(start, usage)를 파싱해요. | `usage_test.go`, `config_test.go` 등 |
-| 설정/저장소 | [config.go](../config.go) | 선택된 모델 ID, 사용량 카운터, API 키 조회를 저장해요. | `config_test.go` |
-| 프로바이더 어댑터 | [openrouter.go](../openrouter.go), [nvidia.go](../nvidia.go), [copilot.go](../copilot.go), [catalog.go](../catalog.go) | 적격 무료 모델을 나열하고 정규화하고, `listAvailableFreeModels`로 집계하고, 프로바이더별 ID를 보존하고, 프로바이더 요청을 전달해요. | `openrouter_test.go`, `nvidia_test.go`, `catalog_test.go` |
-| 라우팅 계층 | [router.go](../router.go) | 요청 매칭, 구성 가능한 그룹 매칭, 기본 그룹 대체, 또는 결정론적 설정 순서 기반으로 선택된 모델을 골라요. | `router_test.go` |
-| 로컬 서버 | [server.go](../server.go), [translate.go](../translate.go), [sse.go](../sse.go) | `/v1`과 `/anthropic` 경로를 노출하고, 대체 페이로드를 번역하고, SSE 응답을 스트리밍해요. | `server_test.go`, `translate_test.go` |
+| CLI 진입점 | [main.go](../internal/cli/main.go), [start_cmd.go](../internal/cli/start_cmd.go), [usage_cmd.go](../internal/cli/usage_cmd.go) | `sleepyrouter` 명령어(start, usage)를 파싱해요. | `usage_test.go`, `config_test.go` 등 |
+| 설정/저장소 | [config.go](../internal/core/config.go) | 선택된 모델 ID, 사용량 카운터, API 키 조회를 저장해요. | `config_test.go` |
+| 프로바이더 어댑터 | [openrouter.go](../internal/core/openrouter.go), [nvidia.go](../internal/core/nvidia.go), [copilot.go](../internal/core/copilot.go), [catalog.go](../internal/core/catalog.go) | 적격 무료 모델을 나열하고 정규화하고, `listAvailableFreeModels`로 집계하고, 프로바이더별 ID를 보존하고, 프로바이더 요청을 전달해요. | `openrouter_test.go`, `nvidia_test.go`, `catalog_test.go` |
+| 라우팅 계층 | [router.go](../internal/core/router.go) | 요청 매칭, 구성 가능한 그룹 매칭, 기본 그룹 대체, 또는 결정론적 설정 순서 기반으로 선택된 모델을 골라요. | `router_test.go` |
+| 로컬 서버 | [server.go](../internal/core/server.go), [translate.go](../internal/core/translate.go), [sse.go](../internal/core/sse.go) | `/v1`과 `/anthropic` 경로를 노출하고, 대체 페이로드를 번역하고, SSE 응답을 스트리밍해요. | `server_test.go`, `translate_test.go` |
 
 ## 경계 규칙
 

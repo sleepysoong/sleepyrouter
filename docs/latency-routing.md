@@ -25,8 +25,8 @@
 
 ## 소스 및 연구
 
-- 라우터: [router.go](../router.go)
-- 테스트: [router_test.go](../router_test.go)
+- 라우터: [router.go](../internal/core/router.go)
+- 테스트: [router_test.go](../internal/core/router_test.go)
 - 연구: [연구 노트](../research/latency-routing.md)
 
 ## 업데이트 규칙

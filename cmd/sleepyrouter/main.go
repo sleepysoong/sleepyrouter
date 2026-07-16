@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/sleepysoong/sleepyrouter"
 	"os"
+
+	"github.com/sleepysoong/sleepyrouter/internal/cli"
 )
 
 func main() {
 	os.Args[0] = "sleepyrouter"
-	sleepyrouter.Main()
+	cli.Main()
 }
