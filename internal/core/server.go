@@ -637,16 +637,13 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 				triedCount++
 				upstreamBody := withUpstreamModel(body, model, stream)
 				source := types.SourceOf(model)
-				var upstream *http.Response
-				var upstreamErr error
-				switch source {
-				case types.SourceNVIDIA:
-					upstream, upstreamErr = PostNVIDIAChatCompletion(ctx, apiKey, upstreamBody, client)
-				case types.SourceCopilot:
-					upstream, upstreamErr = PostCopilotChatCompletion(ctx, apiKey, upstreamBody, client)
-				default:
-					upstream, upstreamErr = postOpenRouterChatCompletionWithStream(ctx, apiKey, upstreamBody, stream, client)
+				p := GetProvider(source)
+				if p == nil {
+					upstreamError = fmt.Sprintf("unsupported provider: %s", source)
+					lastError = upstreamError
+					continue
 				}
+				upstream, upstreamErr := p.ChatCompletion(ctx, apiKey, upstreamBody, stream, client)
 				if upstreamErr != nil {
 					upstreamError = upstreamErr.Error()
 					lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
@@ -773,16 +770,112 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 				triedAny = true
 				triedCount++
 				source := types.SourceOf(model)
+				p := GetProvider(source)
+				if p == nil {
+					upstreamError = fmt.Sprintf("unsupported provider: %s", source)
+					lastError = upstreamError
+					continue
+				}
 
-				if source == types.SourceNVIDIA || source == types.SourceCopilot {
-					fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
-					var upstream *http.Response
-					var upstreamErr error
-					if source == types.SourceNVIDIA {
-						upstream, upstreamErr = PostNVIDIAChatCompletion(ctx, apiKey, fallbackBody, client)
-					} else {
-						upstream, upstreamErr = PostCopilotChatCompletion(ctx, apiKey, fallbackBody, client)
+				var upstream *http.Response
+				var upstreamErr error
+
+				if p.MessageProtocol() == ProtocolAnthropic {
+					upstreamBody := withUpstreamModel(body, model, stream)
+					upstream, upstreamErr = p.Messages(ctx, apiKey, upstreamBody, stream, client)
+					if upstreamErr == nil && !utils.IsOK(upstream) && (upstream.StatusCode == 404 || upstream.StatusCode == 405) {
+						fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
+						if stream {
+							fallbackBody["stream_options"] = map[string]any{"include_usage": true}
+						}
+						upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, stream, client)
+						if upstreamErr == nil && utils.IsOK(upstream) {
+							t := triedCount
+							logTriedCount = &t
+							if stream {
+								recordSuccessfulUsage(store, model, nil)
+								PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
+							} else {
+								data, err := utils.ResponseJSON(upstream)
+								if err != nil {
+									upstreamError = err.Error()
+									lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+									continue
+								}
+								in, out, _ := usageFromResponse(data)
+								lastInputTokens = in
+								lastOutputTokens = out
+								recordSuccessfulUsage(store, model, data)
+								writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
+							}
+							return
+						}
 					}
+					if upstreamErr != nil {
+						upstreamError = upstreamErr.Error()
+						lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+						continue
+					}
+					if utils.IsOK(upstream) {
+						if stream {
+							contentType := upstream.Header.Get("Content-Type")
+							if contentType == "" {
+								contentType = "text/event-stream; charset=utf-8"
+							}
+							w.Header().Set("Content-Type", contentType)
+							w.WriteHeader(upstream.StatusCode)
+							streamUsage := PipeWebStreamToNode(upstream.Body, w)
+							lastInputTokens = streamUsage.InputTokens
+							lastOutputTokens = streamUsage.OutputTokens
+							usageID := model.UsageID
+							if usageID == "" {
+								usageID = model.ID
+							}
+							in := 0
+							out := 0
+							if streamUsage.InputTokens != nil {
+								in = *streamUsage.InputTokens
+							}
+							if streamUsage.OutputTokens != nil {
+								out = *streamUsage.OutputTokens
+							}
+							_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: in, OutputTokens: out, Success: true})
+							t := triedCount
+							logTriedCount = &t
+							return
+						}
+						data, err := utils.ResponseJSON(upstream)
+						if err != nil {
+							upstreamError = err.Error()
+							lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+							continue
+						}
+						// empty choices/content check for Anthropic route
+						_, hasChoicesArr := data["choices"].([]any)
+						_, hasContentArr := data["content"].([]any)
+						empty := !hasChoicesArr && !hasContentArr
+						if empty {
+							upstreamError = fmt.Sprintf("choices와 content가 모두 비어있어요 (%d)", upstream.StatusCode)
+							lastError = fmt.Sprintf("[%s] choices와 content가 모두 비어있어요", modelID)
+							usageID := model.UsageID
+							if usageID == "" {
+								usageID = model.ID
+							}
+							_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
+							continue
+						}
+						in, out, _ := usageFromResponse(data)
+						lastInputTokens = in
+						lastOutputTokens = out
+						recordSuccessfulUsage(store, model, data)
+						t := triedCount
+						logTriedCount = &t
+						writeJSON(w, upstream.StatusCode, data)
+						return
+					}
+				} else { // ProtocolOpenAI
+					fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
+					upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, stream, client)
 					if upstreamErr != nil {
 						upstreamError = upstreamErr.Error()
 						lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
@@ -809,108 +902,6 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 						}
 						return
 					}
-					upstreamError = recordUpstreamFailure(store, model, upstream)
-					lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-					continue
-				}
-
-				// OpenRouter source
-				upstreamBody := withUpstreamModel(body, model, stream)
-				upstream, upstreamErr := PostOpenRouterAnthropicMessage(ctx, apiKey, upstreamBody, client)
-				if upstreamErr != nil {
-					upstreamError = upstreamErr.Error()
-					lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-					continue
-				}
-				if !utils.IsOK(upstream) && (upstream.StatusCode == 404 || upstream.StatusCode == 405) {
-					fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
-					if stream {
-						fallbackBody["stream_options"] = map[string]any{"include_usage": true}
-					}
-					upstream, upstreamErr = PostOpenRouterChatCompletion(ctx, apiKey, fallbackBody, client)
-					if upstreamErr != nil {
-						upstreamError = upstreamErr.Error()
-						lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-						continue
-					}
-					if utils.IsOK(upstream) {
-						t := triedCount
-						logTriedCount = &t
-						if stream {
-							recordSuccessfulUsage(store, model, nil)
-							PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
-						} else {
-							data, err := utils.ResponseJSON(upstream)
-							if err != nil {
-								upstreamError = err.Error()
-								lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-								continue
-							}
-							in, out, _ := usageFromResponse(data)
-							lastInputTokens = in
-							lastOutputTokens = out
-							recordSuccessfulUsage(store, model, data)
-							writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
-						}
-						return
-					}
-				}
-				if utils.IsOK(upstream) {
-					if stream {
-						contentType := upstream.Header.Get("Content-Type")
-						if contentType == "" {
-							contentType = "text/event-stream; charset=utf-8"
-						}
-						w.Header().Set("Content-Type", contentType)
-						w.WriteHeader(upstream.StatusCode)
-						streamUsage := PipeWebStreamToNode(upstream.Body, w)
-						lastInputTokens = streamUsage.InputTokens
-						lastOutputTokens = streamUsage.OutputTokens
-						usageID := model.UsageID
-						if usageID == "" {
-							usageID = model.ID
-						}
-						in := 0
-						out := 0
-						if streamUsage.InputTokens != nil {
-							in = *streamUsage.InputTokens
-						}
-						if streamUsage.OutputTokens != nil {
-							out = *streamUsage.OutputTokens
-						}
-						_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: in, OutputTokens: out, Success: true})
-						t := triedCount
-						logTriedCount = &t
-						return
-					}
-					data, err := utils.ResponseJSON(upstream)
-					if err != nil {
-						upstreamError = err.Error()
-						lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-						continue
-					}
-					// empty choices/content check for Anthropic route
-					_, hasChoicesArr := data["choices"].([]any)
-					_, hasContentArr := data["content"].([]any)
-					empty := !hasChoicesArr && !hasContentArr
-					if empty {
-						upstreamError = fmt.Sprintf("choices와 content가 모두 비어있어요 (%d)", upstream.StatusCode)
-						lastError = fmt.Sprintf("[%s] choices와 content가 모두 비어있어요", modelID)
-						usageID := model.UsageID
-						if usageID == "" {
-							usageID = model.ID
-						}
-						_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
-						continue
-					}
-					in, out, _ := usageFromResponse(data)
-					lastInputTokens = in
-					lastOutputTokens = out
-					recordSuccessfulUsage(store, model, data)
-					t := triedCount
-					logTriedCount = &t
-					writeJSON(w, upstream.StatusCode, data)
-					return
 				}
 				upstreamError = recordUpstreamFailure(store, model, upstream)
 				lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
@@ -937,10 +928,6 @@ func Listen(server *http.Server, port int) (int, error) {
 	}
 	go server.Serve(ln)
 	return ln.Addr().(*net.TCPAddr).Port, nil
-}
-
-func postOpenRouterChatCompletionWithStream(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
-	return PostOpenRouterChatCompletion(ctx, apiKey, body, client)
 }
 
 func truncate(s string, max int) string {

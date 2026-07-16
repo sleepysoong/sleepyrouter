@@ -86,55 +86,46 @@ func uniqueModelsByID(models []types.SleepyRouterModel) []types.SleepyRouterMode
 }
 
 func ListAvailableFreeModels(ctx context.Context, apiKeys types.ProviderAPIKeys, client types.HTTPDoer) ProviderCatalogResult {
-	var wg sync.WaitGroup
-	var openrouterModels, nvidiaModels, copilotModels []types.SleepyRouterModel
-	var openrouterErr, nvidiaErr, copilotErr error
-	labels := []string{}
-	models := []types.SleepyRouterModel{}
-	errors := []string{}
+	type fetchResult struct {
+		providerName string
+		models       []types.SleepyRouterModel
+		err          error
+	}
 
-	if apiKeys.OpenRouter != "" {
-		labels = append(labels, "OpenRouter")
+	allProvs := AllProviders()
+	results := make([]fetchResult, len(allProvs))
+	var wg sync.WaitGroup
+
+	for i, p := range allProvs {
+		apiKey := apiKeys.For(p.Source())
+		if apiKey == "" {
+			continue
+		}
+
 		wg.Add(1)
-		go func() {
+		go func(index int, prov Provider, key string) {
 			defer wg.Done()
-			openrouterModels, openrouterErr = ListOpenRouterFreeModels(ctx, apiKeys.OpenRouter, client)
-		}()
-	}
-	if apiKeys.NVIDIA != "" {
-		labels = append(labels, "NVIDIA")
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			nvidiaModels, nvidiaErr = ListNVIDIAFreeModels(ctx, apiKeys.NVIDIA, client)
-		}()
-	}
-	if apiKeys.Copilot != "" {
-		labels = append(labels, "Copilot")
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			copilotModels, copilotErr = ListCopilotFreeModels(ctx, apiKeys.Copilot, client)
-		}()
+			m, err := prov.ListFreeModels(ctx, key, client)
+			results[index] = fetchResult{
+				providerName: prov.Name(),
+				models:       m,
+				err:          err,
+			}
+		}(i, p, apiKey)
 	}
 	wg.Wait()
 
-	// Collect results matching the original enrollment order
-	for _, label := range labels {
-		var m []types.SleepyRouterModel
-		var e error
-		switch label {
-		case "OpenRouter":
-			m, e = openrouterModels, openrouterErr
-		case "NVIDIA":
-			m, e = nvidiaModels, nvidiaErr
-		case "Copilot":
-			m, e = copilotModels, copilotErr
+	var models []types.SleepyRouterModel
+	var errors []string
+
+	for _, res := range results {
+		if res.providerName == "" {
+			continue // Skip providers that were not fetched (no API key)
 		}
-		if e != nil {
-			errors = append(errors, catalogErrorMessage(label, e))
+		if res.err != nil {
+			errors = append(errors, catalogErrorMessage(res.providerName, res.err))
 		} else {
-			models = append(models, m...)
+			models = append(models, res.models...)
 		}
 	}
 

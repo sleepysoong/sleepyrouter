@@ -116,12 +116,12 @@ func PostCopilotChatCompletion(ctx context.Context, apiKey string, body any, cli
 		return nil, err
 	}
 	req, err := utils.JSONRequest(ctx, http.MethodPost, CopilotChatCompletionsURL, map[string]string{
-		"Authorization":               "Bearer " + sessionToken,
-		"Content-Type":                "application/json",
-		"Copilot-Integration-Id":      "vscode-chat",
-		"Editor-types.Version":        "vscode/1.99.0",
-		"Editor-Plugin-types.Version": "copilot-chat/0.26.7",
-		"x-github-api-version":        "2025-04-01",
+		"Authorization":          "Bearer " + sessionToken,
+		"Content-Type":           "application/json",
+		"Copilot-Integration-Id": "vscode-chat",
+		"Editor-Version":         "vscode/1.99.0",
+		"Editor-Plugin-Version":  "copilot-chat/0.26.7",
+		"x-github-api-version":   "2025-04-01",
 	}, body)
 	if err != nil {
 		return nil, err
@@ -133,4 +133,34 @@ func ResetCopilotTokenCache() {
 	copilotTokenCache.Lock()
 	copilotTokenCache.token = nil
 	copilotTokenCache.Unlock()
+}
+
+type CopilotProvider struct{}
+
+func (p *CopilotProvider) Name() string {
+	return "Copilot"
+}
+
+func (p *CopilotProvider) Source() types.ModelSource {
+	return types.SourceCopilot
+}
+
+func (p *CopilotProvider) ListFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
+	return ListCopilotFreeModels(ctx, apiKey, client)
+}
+
+func (p *CopilotProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
+	return PostCopilotChatCompletion(ctx, apiKey, body, client)
+}
+
+func (p *CopilotProvider) Messages(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
+	return nil, fmt.Errorf("Messages not supported natively by Copilot provider")
+}
+
+func (p *CopilotProvider) MessageProtocol() MessageProtocol {
+	return ProtocolOpenAI
+}
+
+func init() {
+	RegisterProvider(types.SourceCopilot, &CopilotProvider{})
 }

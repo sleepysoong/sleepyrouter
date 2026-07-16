@@ -141,3 +141,33 @@ func PostNVIDIAChatCompletion(ctx context.Context, apiKey string, body any, clie
 	}
 	return utils.HTTPClient(client).Do(req)
 }
+
+type NVIDIAProvider struct{}
+
+func (p *NVIDIAProvider) Name() string {
+	return "NVIDIA"
+}
+
+func (p *NVIDIAProvider) Source() types.ModelSource {
+	return types.SourceNVIDIA
+}
+
+func (p *NVIDIAProvider) ListFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
+	return ListNVIDIAFreeModels(ctx, apiKey, client)
+}
+
+func (p *NVIDIAProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
+	return PostNVIDIAChatCompletion(ctx, apiKey, body, client)
+}
+
+func (p *NVIDIAProvider) Messages(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
+	return nil, fmt.Errorf("Messages not supported natively by NVIDIA provider")
+}
+
+func (p *NVIDIAProvider) MessageProtocol() MessageProtocol {
+	return ProtocolOpenAI
+}
+
+func init() {
+	RegisterProvider(types.SourceNVIDIA, &NVIDIAProvider{})
+}
