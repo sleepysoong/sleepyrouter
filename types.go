@@ -15,7 +15,7 @@ const (
 
 type ModelGroups map[string][]string
 
-type OmfmModel struct {
+type SleepyRouterModel struct {
 	ID                  string          `json:"id"`
 	UpstreamID          string          `json:"upstreamId,omitempty"`
 	Name                string          `json:"name"`
@@ -28,7 +28,7 @@ type OmfmModel struct {
 	Raw                 json.RawMessage `json:"raw,omitempty"`
 }
 
-func SourceOf(model OmfmModel) ModelSource {
+func SourceOf(model SleepyRouterModel) ModelSource {
 	if model.Source == SourceNVIDIA {
 		return SourceNVIDIA
 	}
@@ -46,7 +46,7 @@ type UsageLogEntry struct {
 	Success      bool   `json:"success"`
 }
 
-type OmfmConfig struct {
+type SleepyRouterConfig struct {
 	Port         int         `json:"port"`
 	ModelGroups  ModelGroups `json:"modelGroups"`
 	DefaultGroup string      `json:"defaultGroup,omitempty"`
@@ -54,8 +54,8 @@ type OmfmConfig struct {
 }
 
 type ModelCache struct {
-	Models    []OmfmModel `json:"models"`
-	FetchedAt string      `json:"fetchedAt"`
+	Models    []SleepyRouterModel `json:"models"`
+	FetchedAt string              `json:"fetchedAt"`
 }
 
 type ProviderAPIKeys struct {

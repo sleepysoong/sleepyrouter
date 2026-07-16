@@ -9,12 +9,12 @@ import (
 )
 
 type ProviderCatalogResult struct {
-	Models []OmfmModel
+	Models []SleepyRouterModel
 	Errors []string
 }
 
 type LoadedModelCatalog struct {
-	Models []OmfmModel
+	Models []SleepyRouterModel
 	Source string // "fresh", "fetched", "stale"
 	Errors []string
 }
@@ -26,8 +26,8 @@ func catalogErrorMessage(source string, err error) string {
 	return source + ": " + err.Error()
 }
 
-func modelsForConfiguredProviders(models []OmfmModel, apiKeys ProviderAPIKeys) []OmfmModel {
-	filtered := make([]OmfmModel, 0, len(models))
+func modelsForConfiguredProviders(models []SleepyRouterModel, apiKeys ProviderAPIKeys) []SleepyRouterModel {
+	filtered := make([]SleepyRouterModel, 0, len(models))
 	for _, model := range models {
 		if apiKeys.For(SourceOf(model)) != "" {
 			filtered = append(filtered, model)
@@ -36,7 +36,7 @@ func modelsForConfiguredProviders(models []OmfmModel, apiKeys ProviderAPIKeys) [
 	return uniqueModelsByID(filtered)
 }
 
-func compareByPopularity(a, b OmfmModel) bool {
+func compareByPopularity(a, b SleepyRouterModel) bool {
 	aRank, bRank := int(^uint(0)>>1), int(^uint(0)>>1)
 	if a.PopularityRank != nil {
 		aRank = *a.PopularityRank
@@ -67,8 +67,8 @@ func compareByPopularity(a, b OmfmModel) bool {
 	return a.ID < b.ID
 }
 
-func uniqueModelsByID(models []OmfmModel) []OmfmModel {
-	byID := make(map[string]OmfmModel)
+func uniqueModelsByID(models []SleepyRouterModel) []SleepyRouterModel {
+	byID := make(map[string]SleepyRouterModel)
 	order := make([]string, 0, len(models))
 	for _, model := range models {
 		if _, exists := byID[model.ID]; !exists {
@@ -76,7 +76,7 @@ func uniqueModelsByID(models []OmfmModel) []OmfmModel {
 			order = append(order, model.ID)
 		}
 	}
-	result := make([]OmfmModel, 0, len(order))
+	result := make([]SleepyRouterModel, 0, len(order))
 	for _, id := range order {
 		result = append(result, byID[id])
 	}
@@ -85,10 +85,10 @@ func uniqueModelsByID(models []OmfmModel) []OmfmModel {
 
 func ListAvailableFreeModels(ctx context.Context, apiKeys ProviderAPIKeys, client HTTPDoer) ProviderCatalogResult {
 	var wg sync.WaitGroup
-	var openrouterModels, nvidiaModels, copilotModels []OmfmModel
+	var openrouterModels, nvidiaModels, copilotModels []SleepyRouterModel
 	var openrouterErr, nvidiaErr, copilotErr error
 	labels := []string{}
-	models := []OmfmModel{}
+	models := []SleepyRouterModel{}
 	errors := []string{}
 
 	if apiKeys.OpenRouter != "" {
@@ -119,7 +119,7 @@ func ListAvailableFreeModels(ctx context.Context, apiKeys ProviderAPIKeys, clien
 
 	// Collect results matching the original enrollment order
 	for _, label := range labels {
-		var m []OmfmModel
+		var m []SleepyRouterModel
 		var e error
 		switch label {
 		case "OpenRouter":
@@ -148,7 +148,7 @@ func ListAvailableFreeModels(ctx context.Context, apiKeys ProviderAPIKeys, clien
 
 func LoadModelCatalog(ctx context.Context, apiKeys ProviderAPIKeys, client HTTPDoer, store *ConfigStore) (*LoadedModelCatalog, error) {
 	cache, _ := store.ReadModelCache()
-	var cachedModels []OmfmModel
+	var cachedModels []SleepyRouterModel
 	if cache != nil {
 		cachedModels = modelsForConfiguredProviders(cache.Models, apiKeys)
 	}

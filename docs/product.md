@@ -1,10 +1,10 @@
 # 제품
 
-`sleepyrouter`(`slr`)은 코딩 에이전트를 위한 로컬 무료 모델 프록시예요. OpenAI 호환 및 Anthropic 호환 도구에 로컬호스트 엔드포인트를 제공하면서, 설정 파일 순서에 따라 사용자 승인된 무료 모델을 선택해요. 사용자 대상 개요는 [README.md](../README.md)에, 전체 설정은 [INSTALLATION.md](INSTALLATION.md)에 있어요.
+`sleepyrouter`은 코딩 에이전트를 위한 로컬 무료 모델 프록시예요. OpenAI 호환 및 Anthropic 호환 도구에 로컬호스트 엔드포인트를 제공하면서, 설정 파일 순서에 따라 사용자 승인된 무료 모델을 선택해요. 사용자 대상 개요는 [README.md](../README.md)에, 전체 설정은 [INSTALLATION.md](INSTALLATION.md)에 있어요.
 
 ## 제공하는 것
 
-- 시작, 사용량 확인을 위한 `slr` CLI.
+- 시작, 사용량 확인을 위한 `sleepyrouter` CLI.
 - `http://localhost:4567/v1`의 OpenAI 호환 경로:
   - `GET /v1/models`
   - `POST /v1/chat/completions`
@@ -15,7 +15,7 @@
 
 ## 제품 불변식
 
-- 설치 시 자동 시작하지 않아요. 사용자가 명시적으로 `slr start`를 실행해야 해요.
+- 설치 시 자동 시작하지 않아요. 사용자가 명시적으로 `sleepyrouter start`를 실행해야 해요.
 - 설정 파일의 `modelGroups`에 나열된 모델만 요청 라우팅에 적격이에요.
 - 요청이 등록된 그룹 이름이면 해당 그룹의 모델을 순서대로 시도해요. 그 외 전부는 `defaultGroup`으로 라우팅돼요.
 - 모델 그룹은 설정 파일의 `modelGroups`에서 구성할 수 있어요. 각 그룹은 모델 ID의 정렬된 목록을 가져요. 요청이 그룹 이름을 지정하면 라우터는 해당 그룹의 모델을 순서대로 시도해요. `defaultGroup` 설정은 알 수 없는 모델 이름을 대체 그룹으로 라우팅해요.

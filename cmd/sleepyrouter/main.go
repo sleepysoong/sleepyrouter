@@ -6,6 +6,6 @@ import (
 )
 
 func main() {
-	os.Args[0] = "slr"
+	os.Args[0] = "sleepyrouter"
 	sleepyrouter.Main()
 }

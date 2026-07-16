@@ -10,8 +10,8 @@ func TestNormalizeModelGroupName(t *testing.T) {
 		expected string
 	}{
 		{"fast", "fast"},
-		{"slr/fast", "fast"},
-		{"SLR/Fast", "fast"},
+		{"sleepyrouter/fast", "fast"},
+		{"SLEEPYROUTER/Fast", "fast"},
 		{"haiku", "fast"},
 		{"sonnet", "balanced"},
 		{"opus", "capable"},

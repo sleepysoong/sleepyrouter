@@ -6,10 +6,10 @@
 
 | 질문 | 답변 |
 | --- | --- |
-| 이 레포는 뭔가요? | 선택된 무료 OpenRouter/NVIDIA 모델로 코딩 에이전트 요청을 라우팅하는 `slr`이라는 이름의 Go 로컬 프록시예요. |
+| 이 레포는 뭔가요? | 선택된 무료 OpenRouter/NVIDIA 모델로 코딩 에이전트 요청을 라우팅하는 `sleepyrouter`라는 이름의 Go 로컬 프록시예요. |
 | 뭘 노출하나요? | 기본 포트 `4567`에서 OpenAI 호환 `/v1`과 Anthropic 호환 `/anthropic` 로컬 서피스를 제공해요. |
-| 어떻게 사용하나요? | 전역 설치 후 `OPENROUTER_API_KEY` 또는 `NVIDIA_API_KEY`를 설정하고, `~/.sleepyrouter/config.json`에서 선택된 모델을 구성한 다음 `slr start`를 실행하세요. |
-| 런타임 동작은 어디에? | `main.go`, `cmd/slr/main.go`, `server.go`, `router.go`, `catalog.go` 등에 있어요. |
+| 어떻게 사용하나요? | 전역 설치 후 `OPENROUTER_API_KEY` 또는 `NVIDIA_API_KEY`를 설정하고, `~/.sleepyrouter/config.json`에서 선택된 모델을 구성한 다음 `sleepyrouter start`를 실행하세요. |
+| 런타임 동작은 어디에? | `main.go`, `cmd/sleepyrouter/main.go`, `server.go`, `router.go`, `catalog.go` 등에 있어요. |
 | 사용자 설명서는 어디에? | 루트 `README.md`에 개요가, `docs/INSTALLATION.md`에 설정과 명령어가 있어요. |
 
 ## 경로

@@ -178,7 +178,7 @@ func TestCopilot_NormalizeModelID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var gpt4o *OmfmModel
+	var gpt4o *SleepyRouterModel
 	for i, m := range models {
 		if m.ID == "copilot/gpt-4o" {
 			gpt4o = &models[i]

@@ -13,13 +13,13 @@
  요청              → 처리
 ──────────────────────────────────────
  "A"               → 그룹 A의 모델 순서대로
- "slr/A"           → slr/ 제거 후 → 그룹 A
+ "sleepyrouter/A"  → sleepyrouter/ 제거 후 → 그룹 A
  "deepseek-v4-pro" → defaultGroup (모델ID는 매칭 안 됨)
  "auto"            → defaultGroup
  ""                → defaultGroup
 ```
 
-- `slr/` 접두사는 매칭 전에 제거돼요 (예: `slr/coding` → 그룹 `coding`).
+- `sleepyrouter/` 접두사는 매칭 전에 제거돼요 (예: `sleepyrouter/coding` → 그룹 `coding`).
 - 레거시 별칭 `haiku`→`fast`, `sonnet`→`balanced`, `opus`→`capable`은 여전히 지원돼요.
 - `defaultGroup`이 없으면 첫 번째 그룹이 기본값이에요.
 

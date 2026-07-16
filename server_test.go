@@ -51,7 +51,7 @@ func withTestServerHandler(store *ConfigStore, client HTTPDoer, env Environment,
 	if opts.Env == nil {
 		opts.Env = Environment{}
 	}
-	server := CreateOmfmServer(opts)
+	server := CreateSleepyRouterServer(opts)
 	handler := server.Handler
 	fn(handler)
 }
@@ -68,14 +68,14 @@ func testRequest(handler http.Handler, method, path string, body io.Reader) *tes
 
 func tempServerStore(t *testing.T) (*ConfigStore, func()) {
 	t.Helper()
-	root, err := os.MkdirTemp("", "slr-server-test-")
+	root, err := os.MkdirTemp("", "sleepyrouter-server-test-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	store := NewConfigStore(root)
 	_, _ = store.UpdateModelGroup("default", []string{"model-a:free", "model-b:free"})
 	_ = store.WriteModelCache(ModelCache{
-		Models: []OmfmModel{
+		Models: []SleepyRouterModel{
 			{ID: "model-a:free", Name: "Model A", Provider: "test"},
 			{ID: "model-b:free", Name: "Model B", Provider: "test"},
 		},
@@ -113,7 +113,7 @@ func TestServer_AnthropicCountTokens(t *testing.T) {
 	defer cleanup()
 	withTestServerHandler(store, nil, Environment{}, func(handler http.Handler) {
 		reqBody, _ := json.Marshal(map[string]any{
-			"model":    "slr/balanced",
+			"model":    "sleepyrouter/balanced",
 			"messages": []any{map[string]any{"role": "user", "content": "hello world"}},
 		})
 		w := testRequest(handler, "POST", "/anthropic/v1/messages/count_tokens", bytes.NewReader(reqBody))
@@ -154,7 +154,7 @@ func TestServer_ReturnsSelectedModels(t *testing.T) {
 }
 
 func TestServer_NonFreeModelRejected(t *testing.T) {
-	root, err := os.MkdirTemp("", "slr-paid-test-")
+	root, err := os.MkdirTemp("", "sleepyrouter-paid-test-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestServer_NonFreeModelRejected(t *testing.T) {
 	store := NewConfigStore(root)
 	_, _ = store.UpdateModelGroup("default", []string{"paid/model"})
 	_ = store.WriteModelCache(ModelCache{
-		Models: []OmfmModel{
+		Models: []SleepyRouterModel{
 			{ID: "paid/model", Name: "Paid", Provider: "paid", Raw: mustJSON(t, map[string]any{
 				"id": "paid/model", "pricing": map[string]any{"prompt": "1", "completion": "1"},
 			})},
@@ -263,19 +263,19 @@ func mockResponse(status int, body any) *http.Response {
 
 func TestModelUpstreamID_MultiSlash(t *testing.T) {
 	// NVIDIA: "nvidia/b/c" → upstream "b/c"
-	nvidiaModel := OmfmModel{ID: "nvidia/b/c", Provider: "nvidia", Source: SourceNVIDIA}
+	nvidiaModel := SleepyRouterModel{ID: "nvidia/b/c", Provider: "nvidia", Source: SourceNVIDIA}
 	if got := modelUpstreamID(nvidiaModel); got != "b/c" {
 		t.Fatalf("nvidia modelUpstreamID: got %q, want b/c", got)
 	}
 
 	// OpenRouter: uses UpstreamID if present
-	orModel := OmfmModel{ID: "openrouter/b/c", UpstreamID: "b/c", Provider: "openrouter", Source: SourceOpenRouter}
+	orModel := SleepyRouterModel{ID: "openrouter/b/c", UpstreamID: "b/c", Provider: "openrouter", Source: SourceOpenRouter}
 	if got := modelUpstreamID(orModel); got != "b/c" {
 		t.Fatalf("openrouter modelUpstreamID: got %q, want b/c", got)
 	}
 
 	// Copilot: "copilot/b/c" → upstream "b/c"
-	copilotModel := OmfmModel{ID: "copilot/b/c", Provider: "copilot", Source: SourceCopilot}
+	copilotModel := SleepyRouterModel{ID: "copilot/b/c", Provider: "copilot", Source: SourceCopilot}
 	if got := modelUpstreamID(copilotModel); got != "b/c" {
 		t.Fatalf("copilot modelUpstreamID: got %q, want b/c", got)
 	}
@@ -287,7 +287,7 @@ func TestServer_RoutesNVIDIAAnthropic(t *testing.T) {
 	// Override group to include an nvidia model
 	_, _ = store.UpdateModelGroup("default", []string{"nvidia/meta/llama-4"})
 	_ = store.WriteModelCache(ModelCache{
-		Models: []OmfmModel{
+		Models: []SleepyRouterModel{
 			{ID: "nvidia/meta/llama-4", Name: "Meta Llama 4", Provider: "nvidia", Source: SourceNVIDIA, UsageID: "nvidia/llama-4"},
 		},
 		FetchedAt: time.Now().UTC().Format(time.RFC3339),
@@ -354,7 +354,7 @@ func TestServer_RejectsEmptyChoicesAndRetries(t *testing.T) {
 	// Three models: bad returns empty choices, good returns real response
 	_, _ = store.UpdateModelGroup("default", []string{"model-empty:free", "model-good:free"})
 	_ = store.WriteModelCache(ModelCache{
-		Models: []OmfmModel{
+		Models: []SleepyRouterModel{
 			{ID: "model-empty:free", Name: "Empty", Provider: "test"},
 			{ID: "model-good:free", Name: "Good", Provider: "test"},
 		},

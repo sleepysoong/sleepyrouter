@@ -13,7 +13,7 @@ import (
 
 func tempCatalogStore(t *testing.T) (*ConfigStore, func()) {
 	t.Helper()
-	root, err := os.MkdirTemp("", "slr-catalog-test-")
+	root, err := os.MkdirTemp("", "sleepyrouter-catalog-test-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestCatalog_DeduplicatesFreshCachedModels(t *testing.T) {
 	store, cleanup := tempCatalogStore(t)
 	defer cleanup()
 
-	duplicate := OmfmModel{
+	duplicate := SleepyRouterModel{
 		ID:         "nvidia/deepseek-ai/deepseek-v4-pro",
 		UpstreamID: "deepseek-ai/deepseek-v4-pro",
 		Name:       "deepseek-v4-pro",
@@ -70,7 +70,7 @@ func TestCatalog_DeduplicatesFreshCachedModels(t *testing.T) {
 		Source:     SourceNVIDIA,
 	}
 	_ = store.WriteModelCache(ModelCache{
-		Models:    []OmfmModel{duplicate, duplicate},
+		Models:    []SleepyRouterModel{duplicate, duplicate},
 		FetchedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 
@@ -94,7 +94,7 @@ func TestCatalog_FreshCacheFiltersByConfiguredProviders(t *testing.T) {
 	store, cleanup := tempCatalogStore(t)
 	defer cleanup()
 
-	models := []OmfmModel{
+	models := []SleepyRouterModel{
 		{ID: "nvidia/foo", Provider: "nvidia", Source: SourceNVIDIA},
 		{ID: "openrouter/bar", Provider: "test", Source: SourceOpenRouter},
 	}

@@ -42,7 +42,7 @@ func RunStartCommand(options struct {
 	hasNvidiaKey := keys.NVIDIA != ""
 	hasOpenRouterKey := keys.OpenRouter != ""
 
-	fmt.Printf("\nslr v%s\n", Version)
+	fmt.Printf("\nsleepyrouter v%s\n", Version)
 	fmt.Printf("  config: %s\n", GetConfigPath(store.Paths.Root))
 	fmt.Printf("  env: %s\n", GetEnvPath(store.Paths.Root))
 	fmt.Printf("  NVIDIA_API_KEY: %s\n", boolCheck(hasNvidiaKey))
@@ -91,7 +91,7 @@ func RunStartCommand(options struct {
 		fmt.Println()
 	}
 
-	server := CreateOmfmServer(ServerOptions{
+	server := CreateSleepyRouterServer(ServerOptions{
 		Store:         store,
 		RequestLogger: func(event ServerLogEvent) { fmt.Println(FormatServerLogEvent(event, isTerminal(os.Stdout))) },
 	})
@@ -99,7 +99,7 @@ func RunStartCommand(options struct {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("slr가 http://localhost:%d에서 실행 중이에요.\n", actualPort)
+	fmt.Printf("sleepyrouter가 http://localhost:%d에서 실행 중이에요.\n", actualPort)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

@@ -51,7 +51,7 @@ func parsePort(value any) (int, error) {
 }
 
 func helpText() string {
-	return fmt.Sprintf("sleepyrouter %s\n\n사용법:\n  slr start [--port 4567]\n  slr usage [--date YYYYMMDD|--week NN]\n  slr --version\n", Version)
+	return fmt.Sprintf("sleepyrouter %s\n\n사용법:\n  sleepyrouter start [--port 4567]\n  sleepyrouter usage [--date YYYYMMDD|--week NN]\n  sleepyrouter --version\n", Version)
 }
 
 func Main() {

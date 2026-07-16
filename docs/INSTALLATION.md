@@ -1,6 +1,6 @@
 # 설치 및 설정
 
-`sleepyrouter` (`slr`) 설치부터 클라이언트 연결까지 순서대로 설명합니다. 프로젝트의 목적과 배경은 [README](./README.md)를 보세요.
+`sleepyrouter` 설치부터 클라이언트 연결까지 순서대로 설명합니다. 프로젝트의 목적과 배경은 [README](./README.md)를 보세요.
 
 ## 1. 설치
 
@@ -31,10 +31,10 @@ npm install -g ./sleepyrouter-*.tgz
 npm link
 ```
 
-설치 후 `slr` 명령어를 사용할 수 있습니다.
+설치 후 `sleepyrouter` 명령어를 사용할 수 있습니다.
 
 ```bash
-slr --version
+sleepyrouter --version
 ```
 
 설치 시 백그라운드 프로세스가 자동으로 뜨지 **않습니다**. 필요할 때 직접 실행하세요.
@@ -43,7 +43,7 @@ Node.js 20 이상이 필요합니다.
 
 ## 2. Provider API 키 설정
 
-`slr` 은 provider 키를 다음 순서로 읽습니다.
+`sleepyrouter` 은 provider 키를 다음 순서로 읽습니다.
 
 1. 프로세스/전역 환경의 `OPENROUTER_API_KEY` / `NVIDIA_API_KEY`
 2. `~/.sleepyrouter/.env`
@@ -59,12 +59,12 @@ NVIDIA_API_KEY=nvapi-...
 
 ## 3. 모델 설정
 
-`slr`은 설정 파일(`~/.sleepyrouter/config.json`)의 `modelGroups`에 정의된 모델만 라우팅 후보로 사용합니다. 각 그룹에 모델을 넣으면 해당 그룹 순서대로 라우팅됩니다. `defaultGroup`으로 지정된 그룹은 인식할 수 없는 모델 요청이 들어올 때 사용됩니다.
+`sleepyrouter`은 설정 파일(`~/.sleepyrouter/config.json`)의 `modelGroups`에 정의된 모델만 라우팅 후보로 사용합니다. 각 그룹에 모델을 넣으면 해당 그룹 순서대로 라우팅됩니다. `defaultGroup`으로 지정된 그룹은 인식할 수 없는 모델 요청이 들어올 때 사용됩니다.
 
 ## 4. 로컬 프록시 실행
 
 ```bash
-slr start
+sleepyrouter start
 ```
 
 프록시를 foreground로 실행하고 request/response 라우팅 로그를 출력합니다. `Ctrl+C` 로 종료합니다.
@@ -72,7 +72,7 @@ slr start
 기본 포트는 `4567` 입니다. 필요하면 포트를 바꿀 수 있습니다.
 
 ```bash
-slr start --port 4600    # 프록시를 4600 포트에서 실행
+sleepyrouter start --port 4600    # 프록시를 4600 포트에서 실행
 ```
 
 ## 5. 클라이언트 연결
@@ -96,7 +96,7 @@ baseURL=http://localhost:4567/v1
 
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:4567/anthropic
-export ANTHROPIC_AUTH_TOKEN=slr-local
+export ANTHROPIC_AUTH_TOKEN=sleepyrouter-local
 export ANTHROPIC_API_KEY=
 ```
 
@@ -107,15 +107,15 @@ export ANTHROPIC_API_KEY=
 - `POST /anthropic/v1/messages/count_tokens`
 - `POST /anthropic/messages/count_tokens` (alias)
 
-`slr` 은 로컬 Anthropic 인증 헤더를 받아서 선택된 모델에 맞는 provider 키로 요청을 forward합니다. provider가 자체 Anthropic 호환 엔드포인트를 노출하면 (예: OpenRouter의 Anthropic surface) `slr` 은 그쪽을 우선 사용하고, 그렇지 않으면 텍스트와 일반적인 클라이언트 tool-use 흐름을 Anthropic/OpenAI 형태로 번역해 fallback합니다. Token count는 provider tokenizer의 정확한 값이 아니라 로컬 호환성 추정치입니다.
+`sleepyrouter` 은 로컬 Anthropic 인증 헤더를 받아서 선택된 모델에 맞는 provider 키로 요청을 forward합니다. provider가 자체 Anthropic 호환 엔드포인트를 노출하면 (예: OpenRouter의 Anthropic surface) `sleepyrouter` 은 그쪽을 우선 사용하고, 그렇지 않으면 텍스트와 일반적인 클라이언트 tool-use 흐름을 Anthropic/OpenAI 형태로 번역해 fallback합니다. Token count는 provider tokenizer의 정확한 값이 아니라 로컬 호환성 추정치입니다.
 
 ## 6. 사용량 확인
 
 | 명령어 | 용도 |
 | --- | --- |
-| `slr usage` | 모델별 누적 요청 수, 실패 수, 토큰 사용량을 테이블로 출력합니다. |
-| `slr usage --date 20260203` | 특정 날짜의 사용량만 출력합니다. |
-| `slr usage --week 27` | 특정 주의 사용량만 출력합니다. (올해 기준) |
+| `sleepyrouter usage` | 모델별 누적 요청 수, 실패 수, 토큰 사용량을 테이블로 출력합니다. |
+| `sleepyrouter usage --date 20260203` | 특정 날짜의 사용량만 출력합니다. |
+| `sleepyrouter usage --week 27` | 특정 주의 사용량만 출력합니다. (올해 기준) |
 
 사용 기록은 `~/.sleepyrouter/usage.jsonl`에 JSONL 형식으로 저장됩니다.
 
@@ -126,17 +126,15 @@ export ANTHROPIC_API_KEY=
 1. **등록된 그룹 이름** → 해당 그룹의 모델을 순서대로 시도
 2. **그 외 전부** → `defaultGroup`으로 라우팅
 
-`slr/` 접두사는 매칭 전에 제거돼요. 모델 ID는 매칭되지 않아요 — 그룹명만 라우팅에 사용돼요. 레거시 별칭 `haiku`/`sonnet`/`opus`도 지원돼요.
+`sleepyrouter/` 접두사는 매칭 전에 제거돼요. 모델 ID는 매칭되지 않아요 — 그룹명만 라우팅에 사용돼요. 레거시 별칭 `haiku`/`sonnet`/`opus`도 지원돼요.
 
 ## 8. 개발
 
-`slr` 자체를 작업할 때는 아래 명령어를 사용합니다.
+`sleepyrouter` 자체를 작업할 때는 아래 명령어를 사용합니다.
 
 | 명령어 | 용도 |
 | --- | --- |
 | `git clone https://github.com/sleepysoong/sleepyrouter` | 저장소를 clone합니다. |
 | `cd sleepyrouter` | 프로젝트 디렉터리로 이동합니다. |
-| `npm install` | 의존성을 설치합니다. |
-| `npm test` | 테스트 전체를 실행합니다. |
-| `npm run typecheck` | TypeScript 타입 검사를 실행합니다. |
-| `npm run build` | `dist` 를 빌드합니다. |
+| `go test ./...` | 테스트 전체를 실행합니다. |
+| `go build` | 빌드를 실행합니다. |

@@ -89,7 +89,7 @@ func openRouterUsageID(id string) string {
 	return "openrouter/" + strings.TrimSuffix(modelName, ":free")
 }
 
-func NormalizeOpenRouterModel(model OpenRouterModel, popularityRank *int, catalog ProviderMetadataCatalog) OmfmModel {
+func NormalizeOpenRouterModel(model OpenRouterModel, popularityRank *int, catalog ProviderMetadataCatalog) SleepyRouterModel {
 	rawID := model.ID
 	if rawID == "" {
 		rawID = model.CanonicalSlug
@@ -110,7 +110,7 @@ func NormalizeOpenRouterModel(model OpenRouterModel, popularityRank *int, catalo
 	if name == "" {
 		name = rawID
 	}
-	return OmfmModel{
+	return SleepyRouterModel{
 		ID:                  "openrouter/" + rawID,
 		UpstreamID:          rawID,
 		Name:                name,
@@ -171,7 +171,7 @@ func fetchOpenRouterModels(ctx context.Context, apiKey, category string, client 
 	return models, nil
 }
 
-func ListOpenRouterFreeModels(ctx context.Context, apiKey string, client HTTPDoer) ([]OmfmModel, error) {
+func ListOpenRouterFreeModels(ctx context.Context, apiKey string, client HTTPDoer) ([]SleepyRouterModel, error) {
 	var allModels []OpenRouterModel
 	var programmingModels []OpenRouterModel
 	var allError error
@@ -200,7 +200,7 @@ func ListOpenRouterFreeModels(ctx context.Context, apiKey string, client HTTPDoe
 			popularityByID[model.ID] = index
 		}
 	}
-	models := make([]OmfmModel, 0)
+	models := make([]SleepyRouterModel, 0)
 	for index, model := range allModels {
 		if !IsFreeOpenRouterModel(model) {
 			continue

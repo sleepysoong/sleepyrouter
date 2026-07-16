@@ -37,8 +37,8 @@ func normalizeCopilotModel(def struct {
 	ID            string
 	Name          string
 	ContextLength int
-}) OmfmModel {
-	return OmfmModel{
+}) SleepyRouterModel {
+	return SleepyRouterModel{
 		ID:            "copilot/" + def.ID,
 		UpstreamID:    def.ID,
 		Name:          def.Name,
@@ -96,11 +96,11 @@ func copilotSessionToken(ctx context.Context, apiKey string, client HTTPDoer) (s
 	return token.Token, nil
 }
 
-func ListCopilotFreeModels(ctx context.Context, apiKey string, client HTTPDoer) ([]OmfmModel, error) {
+func ListCopilotFreeModels(ctx context.Context, apiKey string, client HTTPDoer) ([]SleepyRouterModel, error) {
 	if _, err := exchangeCopilotToken(ctx, apiKey, client); err != nil {
 		return nil, err
 	}
-	models := make([]OmfmModel, 0, len(knownCopilotModels))
+	models := make([]SleepyRouterModel, 0, len(knownCopilotModels))
 	for _, model := range knownCopilotModels {
 		models = append(models, normalizeCopilotModel(model))
 	}

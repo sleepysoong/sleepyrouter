@@ -52,7 +52,7 @@ func nvidiaUsageID(upstreamID string) string {
 	return "nvidia/" + pattern.ReplaceAllString(modelName, "")
 }
 
-func NormalizeNVIDIAModel(model map[string]any, catalog ProviderMetadataCatalog) OmfmModel {
+func NormalizeNVIDIAModel(model map[string]any, catalog ProviderMetadataCatalog) SleepyRouterModel {
 	upstreamID := stringFromUnknown(model["id"])
 	if upstreamID == "" {
 		upstreamID = "unknown"
@@ -70,7 +70,7 @@ func NormalizeNVIDIAModel(model map[string]any, catalog ProviderMetadataCatalog)
 	if contextLength == nil {
 		contextLength = metadata.ContextLength
 	}
-	return OmfmModel{
+	return SleepyRouterModel{
 		ID:            "nvidia/" + upstreamID,
 		UpstreamID:    upstreamID,
 		Name:          name,
@@ -82,7 +82,7 @@ func NormalizeNVIDIAModel(model map[string]any, catalog ProviderMetadataCatalog)
 	}
 }
 
-func ListNVIDIAFreeModels(ctx context.Context, apiKey string, client HTTPDoer) ([]OmfmModel, error) {
+func ListNVIDIAFreeModels(ctx context.Context, apiKey string, client HTTPDoer) ([]SleepyRouterModel, error) {
 	metadataChannel := make(chan ProviderMetadataCatalog, 1)
 	go func() { metadataChannel <- LoadModelMetadataCatalog(ctx, client) }()
 	req, err := getRequest(ctx, nvidiaModelsURL, map[string]string{
@@ -111,7 +111,7 @@ func ListNVIDIAFreeModels(ctx context.Context, apiKey string, client HTTPDoer) (
 		rows, _ = arrayValue(body["data"])
 	}
 	metadata := <-metadataChannel
-	models := make([]OmfmModel, 0, len(rows))
+	models := make([]SleepyRouterModel, 0, len(rows))
 	for _, row := range rows {
 		model, ok := objectValue(row)
 		if !ok || !IsChatLikeNVIDIAModel(model) {

@@ -15,7 +15,7 @@ func NormalizeModelGroupName(value string) string {
 	if value == "" {
 		return ""
 	}
-	normalized := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(value)), "slr/")
+	normalized := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(value)), "sleepyrouter/")
 	if alias, ok := legacyAliases[normalized]; ok {
 		return alias
 	}

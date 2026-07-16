@@ -37,7 +37,7 @@ func GetConfigRoot(env Environment) string {
 	if env == nil {
 		env = CurrentEnvironment()
 	}
-	if root := env["SLR_HOME"]; root != "" {
+	if root := env["SLEEPYROUTER_HOME"]; root != "" {
 		return root
 	}
 	home, err := os.UserHomeDir()
@@ -51,7 +51,7 @@ func GetConfigPath(root string) string     { return filepath.Join(root, configFi
 func GetUsagePath(root string) string      { return filepath.Join(root, usageFileName) }
 func GetModelCachePath(root string) string { return filepath.Join(root, modelCacheFileName) }
 func GetEnvPath(root string) string        { return filepath.Join(root, ".env") }
-func GetLogPath(root string) string        { return filepath.Join(root, "slr.log") }
+func GetLogPath(root string) string        { return filepath.Join(root, "sleepyrouter.log") }
 
 type StorePaths struct {
 	Root           string
@@ -123,7 +123,7 @@ func writeFileJSON(path string, value any) error {
 	return os.Rename(tempName, path)
 }
 
-func (config OmfmConfig) MarshalJSON() ([]byte, error) {
+func (config SleepyRouterConfig) MarshalJSON() ([]byte, error) {
 	groups := config.ModelGroups
 	if groups == nil {
 		groups = ModelGroups{}
@@ -162,16 +162,16 @@ func (config OmfmConfig) MarshalJSON() ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func (store *ConfigStore) ReadConfig() (OmfmConfig, error) {
+func (store *ConfigStore) ReadConfig() (SleepyRouterConfig, error) {
 	var raw map[string]json.RawMessage
 	exists, err := readFileJSON(store.Paths.ConfigPath, &raw)
 	if err != nil {
-		return OmfmConfig{}, err
+		return SleepyRouterConfig{}, err
 	}
 	if !exists {
-		return OmfmConfig{Port: DefaultPort, ModelGroups: ModelGroups{}}, nil
+		return SleepyRouterConfig{Port: DefaultPort, ModelGroups: ModelGroups{}}, nil
 	}
-	config := OmfmConfig{Port: DefaultPort, ModelGroups: ModelGroups{}}
+	config := SleepyRouterConfig{Port: DefaultPort, ModelGroups: ModelGroups{}}
 	if portRaw, ok := raw["port"]; ok {
 		var port float64
 		if json.Unmarshal(portRaw, &port) == nil && port == float64(int(port)) {
@@ -218,7 +218,7 @@ func objectKeysInJSON(data []byte) []string {
 	return keys
 }
 
-func (store *ConfigStore) WriteConfig(config OmfmConfig) error {
+func (store *ConfigStore) WriteConfig(config SleepyRouterConfig) error {
 	if config.Port == 0 {
 		config.Port = DefaultPort
 	}
@@ -229,10 +229,10 @@ func (store *ConfigStore) WriteConfig(config OmfmConfig) error {
 	return writeFileJSON(store.Paths.ConfigPath, config)
 }
 
-func (store *ConfigStore) UpdateModelGroup(group string, modelIDs []string) (OmfmConfig, error) {
+func (store *ConfigStore) UpdateModelGroup(group string, modelIDs []string) (SleepyRouterConfig, error) {
 	config, err := store.ReadConfig()
 	if err != nil {
-		return OmfmConfig{}, err
+		return SleepyRouterConfig{}, err
 	}
 	if config.ModelGroups == nil {
 		config.ModelGroups = ModelGroups{}
@@ -251,7 +251,7 @@ func (store *ConfigStore) UpdateModelGroup(group string, modelIDs []string) (Omf
 		config.GroupOrder = append(config.GroupOrder, group)
 	}
 	if err := store.WriteConfig(config); err != nil {
-		return OmfmConfig{}, err
+		return SleepyRouterConfig{}, err
 	}
 	return config, nil
 }
@@ -305,7 +305,7 @@ func (store *ConfigStore) ReadUsageLogs() ([]UsageLogEntry, error) {
 		entries = append(entries, entry)
 	}
 	if skipped > 0 {
-		fmt.Fprintf(os.Stderr, "[slr] 경고: 사용 기록 파일에서 %d줄이 손상되어 건너뛰었어요.\n", skipped)
+		fmt.Fprintf(os.Stderr, "[sleepyrouter] 경고: 사용 기록 파일에서 %d줄이 손상되어 건너뛰었어요.\n", skipped)
 	}
 	return entries, nil
 }

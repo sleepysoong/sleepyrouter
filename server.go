@@ -151,7 +151,7 @@ func readBody(r *http.Request) (map[string]any, error) {
 	return body, nil
 }
 
-func modelUpstreamID(model OmfmModel) string {
+func modelUpstreamID(model SleepyRouterModel) string {
 	source := SourceOf(model)
 	if model.UpstreamID != "" {
 		return model.UpstreamID
@@ -166,7 +166,7 @@ func modelUpstreamID(model OmfmModel) string {
 	}
 }
 
-func isCachedFreeModel(model OmfmModel) bool {
+func isCachedFreeModel(model SleepyRouterModel) bool {
 	source := SourceOf(model)
 	if source == SourceNVIDIA || source == SourceCopilot {
 		return true
@@ -257,8 +257,8 @@ func parseFloat(s string) (float64, error) {
 }
 
 type selectedModelsResult struct {
-	Models       []OmfmModel
-	ByID         map[string]OmfmModel
+	Models       []SleepyRouterModel
+	ByID         map[string]SleepyRouterModel
 	IDs          []string
 	ModelGroups  ModelGroups
 	GroupOrder   []string
@@ -274,14 +274,14 @@ func selectedModelSelection(ctx context.Context, store *ConfigStore, apiKeys Pro
 	if err != nil {
 		return nil, err
 	}
-	var freeModels []OmfmModel
+	var freeModels []SleepyRouterModel
 	for _, m := range catalog.Models {
 		if isCachedFreeModel(m) {
 			freeModels = append(freeModels, m)
 		}
 	}
 	allIDs := AllGroupModelIDs(config.ModelGroups, config.GroupOrder...)
-	freeByID := make(map[string]OmfmModel, len(freeModels))
+	freeByID := make(map[string]SleepyRouterModel, len(freeModels))
 	for _, m := range freeModels {
 		freeByID[m.ID] = m
 	}
@@ -292,8 +292,8 @@ func selectedModelSelection(ctx context.Context, store *ConfigStore, apiKeys Pro
 			cacheIDs[m.ID] = true
 		}
 	}
-	models := make([]OmfmModel, 0, len(allIDs))
-	byID := make(map[string]OmfmModel, len(allIDs))
+	models := make([]SleepyRouterModel, 0, len(allIDs))
+	byID := make(map[string]SleepyRouterModel, len(allIDs))
 	for _, id := range allIDs {
 		if free, ok := freeByID[id]; ok {
 			models = append(models, free)
@@ -305,7 +305,7 @@ func selectedModelSelection(ctx context.Context, store *ConfigStore, apiKeys Pro
 			} else if strings.HasPrefix(id, "copilot/") {
 				source = SourceCopilot
 			}
-			stub := OmfmModel{ID: id, Name: id, Provider: string(source), Source: source}
+			stub := SleepyRouterModel{ID: id, Name: id, Provider: string(source), Source: source}
 			models = append(models, stub)
 			byID[id] = stub
 		}
@@ -320,7 +320,7 @@ func selectedModelSelection(ctx context.Context, store *ConfigStore, apiKeys Pro
 	}, nil
 }
 
-func modelIDs(models []OmfmModel) []string {
+func modelIDs(models []SleepyRouterModel) []string {
 	ids := make([]string, 0, len(models))
 	for _, m := range models {
 		ids = append(ids, m.ID)
@@ -328,14 +328,14 @@ func modelIDs(models []OmfmModel) []string {
 	return ids
 }
 
-func assertSelectedFree(models []OmfmModel) error {
+func assertSelectedFree(models []SleepyRouterModel) error {
 	if len(models) == 0 {
 		return &httpError{StatusCode: 400, Message: "선택된 무료 모델이 없어요. config.json의 modelGroups에 사용할 모델을 하나 이상 추가하세요. (예: \"nvidia/z-ai/glm-5.1\")"}
 	}
 	return nil
 }
 
-func missingKeyMessage(model OmfmModel) string {
+func missingKeyMessage(model SleepyRouterModel) string {
 	source := SourceOf(model)
 	keyName := "OPENROUTER_API_KEY"
 	switch source {
@@ -347,7 +347,7 @@ func missingKeyMessage(model OmfmModel) string {
 	return fmt.Sprintf("%s가 없어서 %s을(를) 사용할 수 없어요. 환경변수 또는 .env 파일에 키를 추가하세요.", keyName, model.ID)
 }
 
-func withUpstreamModel(body map[string]any, model OmfmModel, stream bool) map[string]any {
+func withUpstreamModel(body map[string]any, model SleepyRouterModel, stream bool) map[string]any {
 	result := cloneObject(body)
 	result["model"] = modelUpstreamID(model)
 	if stream {
@@ -356,7 +356,7 @@ func withUpstreamModel(body map[string]any, model OmfmModel, stream bool) map[st
 	return result
 }
 
-func requestedModelForRouting(models []OmfmModel, requestedModel any) string {
+func requestedModelForRouting(models []SleepyRouterModel, requestedModel any) string {
 	s, ok := requestedModel.(string)
 	if !ok || s == "" {
 		return ""
@@ -406,7 +406,7 @@ func usageFromResponse(data map[string]any) (inputTokens, outputTokens, totalTok
 	return
 }
 
-func recordSuccessfulUsage(store *ConfigStore, model OmfmModel, data map[string]any) {
+func recordSuccessfulUsage(store *ConfigStore, model SleepyRouterModel, data map[string]any) {
 	inputTokens, outputTokens, _ := usageFromResponse(data)
 	in := 0
 	out := 0
@@ -423,7 +423,7 @@ func recordSuccessfulUsage(store *ConfigStore, model OmfmModel, data map[string]
 	_ = store.AppendUsage(UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: in, OutputTokens: out, Success: true})
 }
 
-func recordUpstreamFailure(store *ConfigStore, model OmfmModel, response *http.Response) string {
+func recordUpstreamFailure(store *ConfigStore, model SleepyRouterModel, response *http.Response) string {
 	text, _ := io.ReadAll(response.Body)
 	usageID := model.UsageID
 	if usageID == "" {
@@ -451,7 +451,7 @@ func estimateInputTokens(body any) int {
 	return maxInt(1, (len(text)+3)/4)
 }
 
-func CreateOmfmServer(options ServerOptions) *http.Server {
+func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 	store := options.Store
 	if store == nil {
 		store = NewConfigStore("")

@@ -46,7 +46,7 @@ func TestRouter_GroupOrderAsCandidates(t *testing.T) {
 
 func TestRouter_GroupAliases(t *testing.T) {
 	groups := ModelGroups{"fast": {"b"}, "balanced": {"a"}, "capable": {"c"}}
-	choice, err := ChooseGroupedModel(groups, "slr/fast", "")
+	choice, err := ChooseGroupedModel(groups, "sleepyrouter/fast", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,9 +109,9 @@ func TestRouter_DefaultGroupForAuto(t *testing.T) {
 	}
 }
 
-func TestRouter_IgnoreSlrPrefix(t *testing.T) {
+func TestRouter_IgnoreSleepyRouterPrefix(t *testing.T) {
 	groups := ModelGroups{"coding": {"model-a", "model-b"}}
-	choice, err := ChooseGroupedModel(groups, "slr/coding", "")
+	choice, err := ChooseGroupedModel(groups, "sleepyrouter/coding", "")
 	if err != nil {
 		t.Fatal(err)
 	}

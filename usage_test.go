@@ -7,7 +7,7 @@ import (
 )
 
 func TestRunUsageCommand_Empty(t *testing.T) {
-	root, err := os.MkdirTemp("", "slr-usage-test-")
+	root, err := os.MkdirTemp("", "sleepyrouter-usage-test-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -17,7 +17,7 @@ func TestRunUsageCommand_Empty(t *testing.T) {
 }
 
 func TestRunUsageCommand_Aggregated(t *testing.T) {
-	root, err := os.MkdirTemp("", "slr-usage-test-")
+	root, err := os.MkdirTemp("", "sleepyrouter-usage-test-")
 	if err != nil {
 		t.Fatal(err)
 	}

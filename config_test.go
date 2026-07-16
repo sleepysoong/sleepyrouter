@@ -8,7 +8,7 @@ import (
 
 func tempConfigStore(t *testing.T) (*ConfigStore, func()) {
 	t.Helper()
-	root, err := os.MkdirTemp("", "slr-config-")
+	root, err := os.MkdirTemp("", "sleepyrouter-config-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestConfigStore_ReadConfig_Defaults(t *testing.T) {
 func TestConfigStore_WriteAndReadConfig(t *testing.T) {
 	store, cleanup := tempConfigStore(t)
 	defer cleanup()
-	config := OmfmConfig{
+	config := SleepyRouterConfig{
 		Port:         4567,
 		ModelGroups:  ModelGroups{"fast": {"a:free", "b:free"}},
 		DefaultGroup: "fast",
@@ -121,7 +121,7 @@ func TestConfigStore_ModelCacheFresh(t *testing.T) {
 	store, cleanup := tempConfigStore(t)
 	defer cleanup()
 	_ = store.WriteModelCache(ModelCache{
-		Models:    []OmfmModel{{ID: "m:free", Name: "M"}},
+		Models:    []SleepyRouterModel{{ID: "m:free", Name: "M"}},
 		FetchedAt: "2026-06-28T10:00:00Z",
 	})
 	cache, err := store.ReadModelCache()
