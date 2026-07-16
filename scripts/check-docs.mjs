@@ -7,15 +7,8 @@ const root = process.cwd();
 const requiredFiles = [
   'AGENTS.md',
   'README.md',
-  'docs/README.ko.md',
-  'docs/README.zh-CN.md',
-  'docs/README.zh-TW.md',
-  'docs/README.ja.md',
+  'docs/README.md',
   'docs/INSTALLATION.md',
-  'docs/INSTALLATION.ko.md',
-  'docs/INSTALLATION.zh-CN.md',
-  'docs/INSTALLATION.zh-TW.md',
-  'docs/INSTALLATION.ja.md',
   'docs/index.md',
   'docs/architecture.md',
   'docs/product.md',
@@ -39,6 +32,14 @@ const removedDocs = [
   'INSTALLATION.zh-CN.md',
   'INSTALLATION.zh-TW.md',
   'INSTALLATION.ja.md',
+  'docs/README.ko.md',
+  'docs/README.zh-CN.md',
+  'docs/README.zh-TW.md',
+  'docs/README.ja.md',
+  'docs/INSTALLATION.ko.md',
+  'docs/INSTALLATION.zh-CN.md',
+  'docs/INSTALLATION.zh-TW.md',
+  'docs/INSTALLATION.ja.md',
   'docs/agent-orientation.md',
   'docs/quality-score.md',
   'docs/tech-debt.md',
@@ -47,17 +48,17 @@ const removedDocs = [
 
 const expectedRoutes = new Map([
   ['AGENTS.md', ['docs/index.md', 'README.md', 'docs/INSTALLATION.md']],
-  ['README.md', ['docs/README.ko.md', 'docs/README.zh-CN.md', 'docs/README.zh-TW.md', 'docs/README.ja.md', 'docs/INSTALLATION.md']],
+  ['README.md', ['docs/INSTALLATION.md']],
   ['docs/index.md', ['provider-guide.md', 'latency-routing.md', 'client-compatibility.md', 'product.md', 'architecture.md']],
-  ['docs/provider-guide.md', ['research/providers.md', 'src/providers', 'test/openrouter.test.ts', 'test/nvidia.test.ts']],
-  ['docs/latency-routing.md', ['research/latency-routing.md', 'src/latency', 'test/router.test.ts', 'test/probe.test.ts', 'test/probe-scheduler.test.ts']],
-  ['docs/client-compatibility.md', ['research/client-compatibility.md', 'src/server', 'test/server.test.ts', 'test/translate.test.ts']],
+  ['docs/provider-guide.md', ['research/providers.md', 'catalog.go', 'openrouter_test.go', 'nvidia_test.go']],
+  ['docs/latency-routing.md', ['research/latency-routing.md', 'router.go', 'router_test.go']],
+  ['docs/client-compatibility.md', ['research/client-compatibility.md', 'server.go', 'server_test.go', 'translate_test.go']],
   ['research/index.md', ['providers.md', 'latency-routing.md', 'client-compatibility.md', 'decisions/README.md']],
 ]);
 
 const userFacingDocs = new Set(requiredFiles.filter((file) => /^docs\/(README|INSTALLATION)(\.|$)/.test(file)));
 const freshnessFiles = requiredFiles.filter((file) => (file.startsWith('docs/') || file.startsWith('research/')) && !userFacingDocs.has(file));
-const freshnessTerms = /update|fresh|maintain|review|refresh|when changing/i;
+const freshnessTerms = /update|fresh|maintain|review|refresh|when changing|업데이트|유지보수/i;
 const compactLineLimit = 180;
 const failures = [];
 

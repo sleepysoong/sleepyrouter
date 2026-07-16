@@ -24,11 +24,9 @@
 
 ## 작업별 경로
 
-| 작업 | 여기서 시작 | 그 다음 확인 |
-| --- | --- | --- |
-| 프로바이더 지원 또는 모델 카탈로그 동작 | `docs/provider-guide.md` | `research/providers.md`, `src/providers`, 프로바이더 테스트 |
-| 라우팅 또는 후보 선택 | `docs/latency-routing.md` | `src/latency/router.ts`, `test/router.test.ts` |
-| OpenAI/Anthropic 클라이언트 호환성 | `docs/client-compatibility.md` | `research/client-compatibility.md`, `src/server`, 서버 및 번역 테스트 |
+| 프로바이더 지원 또는 모델 카탈로그 동작 | `docs/provider-guide.md` | `research/providers.md`, `catalog.go`, `openrouter.go` 등, 프로바이더 테스트 |
+| 라우팅 또는 후보 선택 | `docs/latency-routing.md` | `router.go`, `router_test.go` |
+| OpenAI/Anthropic 클라이언트 호환성 | `docs/client-compatibility.md` | `research/client-compatibility.md`, `server.go`, `translate.go`, `sse.go`, 서버 및 번역 테스트 |
 
 ## 업데이트 규칙
 

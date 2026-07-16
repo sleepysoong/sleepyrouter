@@ -1,6 +1,6 @@
 # Agent Guide — sleepyrouter
 
-This repository is a TypeScript/Node local proxy that exposes free models from supported providers (currently OpenRouter and NVIDIA) through OpenAI-compatible and Anthropic-compatible client surfaces. Keep this file short: it is a route map, not the source of truth.
+This repository is a Go local proxy that exposes free models from supported providers (currently OpenRouter and NVIDIA) through OpenAI-compatible and Anthropic-compatible client surfaces. Keep this file short: it is a route map, not the source of truth.
 
 ## Start Here
 
@@ -11,15 +11,15 @@ This repository is a TypeScript/Node local proxy that exposes free models from s
 
 | Task | Read first | Source anchors | Verification anchors |
 | --- | --- | --- | --- |
-| Provider support | `docs/provider-guide.md`, `research/providers.md` | `src/providers/*` | `test/openrouter.test.ts`, `test/nvidia.test.ts`; add/update provider-specific tests when providers change |
-| Latency routing | `docs/latency-routing.md`, `research/latency-routing.md` | `src/latency/*` | `test/router.test.ts`, `test/probe.test.ts`, `test/probe-scheduler.test.ts` |
-| Client compatibility | `docs/client-compatibility.md`, `research/client-compatibility.md` | `src/server/*`, `src/server/translate.ts` | `test/server.test.ts`, `test/translate.test.ts` |
+| Provider support | `docs/provider-guide.md`, `research/providers.md` | `catalog.go`, `nvidia.go`, `openrouter.go`, `copilot.go`, `metadata.go` | `openrouter_test.go`, `nvidia_test.go`, `catalog_test.go`; add/update provider-specific tests when providers change |
+| Latency routing | `docs/latency-routing.md`, `research/latency-routing.md` | `router.go` | `router_test.go` |
+| Client compatibility | `docs/client-compatibility.md`, `research/client-compatibility.md` | `server.go`, `translate.go`, `sse.go` | `server_test.go`, `translate_test.go` |
 
 ## Project Boundaries
 
 - Do not introduce runtime behavior changes from docs-only tasks.
-- Do not change `src/providers/*` or `src/latency/*` unless the active task explicitly owns provider or latency implementation.
-- Do not add dependencies unless the task explicitly requires and justifies them.
+- Do not change provider adapter files or routing logic files unless the active task explicitly owns provider or latency implementation.
+- Do not add Go dependencies unless the task explicitly requires and justifies them.
 - Keep documentation compact and route-oriented; prefer links to maintained route pages over duplicating details.
 
 ## Local Verification
@@ -27,13 +27,13 @@ This repository is a TypeScript/Node local proxy that exposes free models from s
 Run the smallest proof first, then broaden as needed:
 
 ```bash
-npm run docs:check
-npm test
-npm run typecheck
-npm run build
+node scripts/check-docs.mjs
+go test ./...
+go build
+go vet
 ```
 
-Use `npm run docs:check` for documentation structure once the docs harness is present. If `package.json` or scripts change, run `npm test`, `npm run typecheck`, and `npm run build` before reporting completion.
+Use `node scripts/check-docs.mjs` for documentation structure once the docs harness is present. If `go.mod` or scripts change, run Go tests and builds before reporting completion.
 
 ## Freshness Rule
 
@@ -51,7 +51,7 @@ When you change provider, latency, or client compatibility behavior, update the 
 When documentation changes:
 
 1. Keep all documentation in Korean. Code blocks, commands, env vars, file paths, port numbers, and model IDs must remain as-is — only prose is in Korean.
-2. `npm run docs:check` validates link integrity for required files.
+2. `node scripts/check-docs.mjs` validates link integrity for required files.
 
 ## Behavioral Principles
 

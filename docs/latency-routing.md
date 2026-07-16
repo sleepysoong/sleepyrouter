@@ -23,7 +23,12 @@
 - 레거시 별칭 `haiku`→`fast`, `sonnet`→`balanced`, `opus`→`capable`은 여전히 지원돼요.
 - `defaultGroup`이 없으면 첫 번째 그룹이 기본값이에요.
 
-## 소스
+## 소스 및 연구
 
-- 라우터: `src/latency/router.ts`
-- 테스트: `test/router.test.ts`
+- 라우터: [router.go](../router.go)
+- 테스트: [router_test.go](../router_test.go)
+- 연구: [연구 노트](../research/latency-routing.md)
+
+## 업데이트 규칙
+
+라우팅 우선순위, 후보 정렬 로직, 또는 레거시 별칭 매핑이 변경되면 이 문서와 `research/latency-routing.md`를 업데이트하세요.
