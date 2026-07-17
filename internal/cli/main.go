@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/sleepysoong/sleepyrouter/internal/core"
+	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
@@ -75,7 +75,7 @@ func Main() {
 		}
 		if err := RunStartCommand(struct {
 			Port  int
-			Store *core.ConfigStore
+			Store *cfg.ConfigStore
 		}{Port: port}); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)

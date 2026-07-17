@@ -1,4 +1,4 @@
-package core
+package providers
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 )
 
 func copilotMockClient(fn func(req *http.Request) (*http.Response, error)) types.HTTPDoer {
-	return httpClientFunc(fn)
+	return utils.HTTPClientFunc(fn)
 }
 
 func copilotJSONResponse(status int, body any) *http.Response {
@@ -100,7 +100,7 @@ func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
 		if url == CopilotChatCompletionsURL {
 			capturedURL = url
 			capturedAuth = req.Header.Get("Authorization")
-			capturedBody, _ = readBody(req)
+			capturedBody, _ = utils.ReadBody(req)
 			return copilotJSONResponse(200, map[string]any{
 				"choices": []any{map[string]any{"message": map[string]any{"content": "ok"}}},
 			}), nil
@@ -127,7 +127,7 @@ func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
 	if capturedBody["model"] != "gpt-4o" {
 		t.Fatalf("body model: %v", capturedBody["model"])
 	}
-	if reqHeader := mock.(httpClientFunc); reqHeader != nil {
+	if reqHeader := mock.(utils.HTTPClientFunc); reqHeader != nil {
 		// no-op, just ensuring the mock is used
 	}
 	// Check Copilot-Integration-Id header

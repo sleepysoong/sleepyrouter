@@ -1,4 +1,4 @@
-package core
+package srv
 
 import (
 	"bytes"
@@ -6,9 +6,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
@@ -43,7 +45,7 @@ func (r *testResponseRecorder) WriteHeader(code int) {
 
 func (r *testResponseRecorder) Flush() {}
 
-func withTestServerHandler(store *ConfigStore, client types.HTTPDoer, env utils.Environment, fn func(handler http.Handler)) {
+func withTestServerHandler(store *cfg.ConfigStore, client types.HTTPDoer, env utils.Environment, fn func(handler http.Handler)) {
 	logger := func(event ServerLogEvent) {}
 	opts := ServerOptions{
 		Store:         store,
@@ -69,13 +71,13 @@ func testRequest(handler http.Handler, method, path string, body io.Reader) *tes
 	return w
 }
 
-func tempServerStore(t *testing.T) (*ConfigStore, func()) {
+func tempServerStore(t *testing.T) (*cfg.ConfigStore, func()) {
 	t.Helper()
 	root, err := os.MkdirTemp("", "sleepyrouter-server-test-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := NewConfigStore(root)
+	store := cfg.NewConfigStore(root)
 	_, _ = store.UpdateModelGroup("default", []string{"model-a:free", "model-b:free"})
 	_ = store.WriteModelCache(types.ModelCache{
 		Models: []types.SleepyRouterModel{
@@ -162,7 +164,7 @@ func TestServer_NonFreeModelRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(root)
-	store := NewConfigStore(root)
+	store := cfg.NewConfigStore(root)
 	_, _ = store.UpdateModelGroup("default", []string{"paid/model"})
 	_ = store.WriteModelCache(types.ModelCache{
 		Models: []types.SleepyRouterModel{
@@ -173,7 +175,7 @@ func TestServer_NonFreeModelRejected(t *testing.T) {
 		FetchedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 	called := false
-	mock := httpClientFunc(func(req *http.Request) (*http.Response, error) {
+	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
 		called = true
 		return mockResponse(200, map[string]any{}), nil
 	})
@@ -199,8 +201,8 @@ func TestServer_RoutesOpenAIChat(t *testing.T) {
 	store, cleanup := tempServerStore(t)
 	defer cleanup()
 	var seenBody map[string]any
-	mock := httpClientFunc(func(req *http.Request) (*http.Response, error) {
-		body, _ := readBody(req)
+	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
+		body, _ := utils.ReadBody(req)
 		seenBody = body
 		return mockResponse(200, map[string]any{
 			"id":    "chatcmpl_1",
@@ -249,11 +251,7 @@ func TestServer_RoutesOpenAIChat(t *testing.T) {
 	})
 }
 
-type httpClientFunc func(*http.Request) (*http.Response, error)
 
-func (f httpClientFunc) Do(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
 
 func mockResponse(status int, body any) *http.Response {
 	data, _ := json.Marshal(body)
@@ -297,8 +295,8 @@ func TestServer_RoutesNVIDIAAnthropic(t *testing.T) {
 	})
 
 	var seenBody map[string]any
-	mock := httpClientFunc(func(req *http.Request) (*http.Response, error) {
-		body, _ := readBody(req)
+	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
+		body, _ := utils.ReadBody(req)
 		seenBody = body
 		return mockResponse(200, map[string]any{
 			"id":    "chatcmpl_n1",
@@ -364,9 +362,9 @@ func TestServer_RejectsEmptyChoicesAndRetries(t *testing.T) {
 		FetchedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 	callCount := 0
-	mock := httpClientFunc(func(req *http.Request) (*http.Response, error) {
+	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
 		callCount++
-		body, _ := readBody(req)
+		body, _ := utils.ReadBody(req)
 		model := body["model"].(string)
 		if model == "model-empty:free" {
 			// Empty choices → should be treated as failure and retried
@@ -421,4 +419,38 @@ func TestServer_RejectsEmptyChoicesAndRetries(t *testing.T) {
 			t.Fatalf("usage logs mismatch: %v", logs)
 		}
 	})
+}
+
+
+func TestFormatServerLogEvent(t *testing.T) {
+	event := ServerLogEvent{
+		Type:           "response",
+		ID:             1,
+		Method:         "POST",
+		Path:           "/v1/chat/completions",
+		StatusCode:     200,
+		DurationMs:     42,
+		RequestedModel: "auto",
+		ModelID:        "model-a:free",
+		RouteReason:    "fallback-order",
+	}
+	text := FormatServerLogEvent(event, false)
+	if text == "" {
+		t.Fatal("empty log")
+	}
+	// Must not contain ANSI codes when color is false
+	for _, c := range "\x1b" {
+		if len(text) > 0 && text[0] == byte(c) {
+			t.Fatalf("has ANSI codes: %q", text)
+		}
+	}
+}
+
+func TestSafeLogValue(t *testing.T) {
+	if got := safeLogValue("hello"); got != "hello" {
+		t.Fatalf("got %q", got)
+	}
+	if got := safeLogValue(strings.Repeat("x", 300)); len(got) > 203 {
+		t.Fatalf("too long: %d", len(got))
+	}
 }

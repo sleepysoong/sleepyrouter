@@ -1,4 +1,4 @@
-package core
+package cfg
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
@@ -108,7 +109,7 @@ func (store *ConfigStore) ReadConfig() (types.SleepyRouterConfig, error) {
 	if groupsRaw, ok := raw["modelGroups"]; ok {
 		var value any
 		if json.Unmarshal(groupsRaw, &value) == nil {
-			config.ModelGroups, config.GroupOrder = NormalizeModelGroupsOrdered(value)
+			config.ModelGroups, config.GroupOrder = routing.NormalizeModelGroupsOrdered(value)
 			if keys := objectKeysInJSON(groupsRaw); len(keys) > 0 {
 				config.GroupOrder = keys
 			}

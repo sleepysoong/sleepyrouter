@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sleepysoong/sleepyrouter/internal/core"
+	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
@@ -15,7 +15,7 @@ func TestRunUsageCommand_Empty(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(root)
-	store := core.NewConfigStore(root)
+	store := cfg.NewConfigStore(root)
 	RunUsageCommand(UsageCommandOptions{Store: store})
 }
 
@@ -25,7 +25,7 @@ func TestRunUsageCommand_Aggregated(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(root)
-	store := core.NewConfigStore(root)
+	store := cfg.NewConfigStore(root)
 	_ = store.AppendUsage(types.UsageLogEntry{TS: "2026-06-28T10:00:00Z", Model: "beta", InputTokens: 0, OutputTokens: 0, Success: true})
 	_ = store.AppendUsage(types.UsageLogEntry{TS: "2026-06-28T10:01:00Z", Model: "alpha", InputTokens: 1, OutputTokens: 2, Success: true})
 	_ = store.AppendUsage(types.UsageLogEntry{TS: "2026-06-28T10:02:00Z", Model: "alpha", InputTokens: 0, OutputTokens: 0, Success: false})

@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sleepysoong/sleepyrouter/internal/core"
+	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
 type UsageCommandOptions struct {
 	Date  string
 	Week  int
-	Store *core.ConfigStore
+	Store *cfg.ConfigStore
 }
 
 func getWeekNumber(d time.Time) int {
@@ -96,7 +96,7 @@ func aggregateUsage(logs []types.UsageLogEntry) []usageAggregateRow {
 func RunUsageCommand(options UsageCommandOptions) {
 	store := options.Store
 	if store == nil {
-		store = core.NewConfigStore("")
+		store = cfg.NewConfigStore("")
 	}
 	logs, _ := store.ReadUsageLogs()
 	logs = filterUsageLogs(logs, options.Date, options.Week)

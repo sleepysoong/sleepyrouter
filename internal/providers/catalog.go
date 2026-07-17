@@ -1,13 +1,17 @@
-package core
+package providers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
+	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
 type ProviderCatalogResult struct {
@@ -139,13 +143,13 @@ func ListAvailableFreeModels(ctx context.Context, apiKeys types.ProviderAPIKeys,
 	}
 }
 
-func LoadModelCatalog(ctx context.Context, apiKeys types.ProviderAPIKeys, client types.HTTPDoer, store *ConfigStore) (*LoadedModelCatalog, error) {
+func LoadModelCatalog(ctx context.Context, apiKeys types.ProviderAPIKeys, client types.HTTPDoer, store *cfg.ConfigStore) (*LoadedModelCatalog, error) {
 	cache, _ := store.ReadModelCache()
 	var cachedModels []types.SleepyRouterModel
 	if cache != nil {
 		cachedModels = modelsForConfiguredProviders(cache.Models, apiKeys)
 	}
-	if cache != nil && IsModelCacheFresh(*cache, time.Now()) && len(cachedModels) > 0 {
+	if cache != nil && cfg.IsModelCacheFresh(*cache, time.Now()) && len(cachedModels) > 0 {
 		return &LoadedModelCatalog{Models: cachedModels, Source: "fresh", Errors: nil}, nil
 	}
 
@@ -173,3 +177,94 @@ func JoinStrings(items []string, sep string) string {
 	}
 	return result
 }
+
+func IsCachedFreeModel(model types.SleepyRouterModel) bool {
+	source := types.SourceOf(model)
+	if source == types.SourceNVIDIA || source == types.SourceCopilot {
+		return true
+	}
+	if strings.HasSuffix(model.ID, ":free") {
+		return true
+	}
+	if len(model.Raw) > 0 {
+		var raw map[string]any
+		if json.Unmarshal(model.Raw, &raw) == nil {
+			return IsFreeOpenRouterModelRaw(raw)
+		}
+	}
+	return false
+}
+
+func IsFreeOpenRouterModelRaw(raw map[string]any) bool {
+	modelID := utils.StringFromUnknown(raw["id"])
+	if modelID == "" {
+		return false
+	}
+	arch, _ := raw["architecture"].(map[string]any)
+	outputs, _ := arch["output_modalities"].([]any)
+	isTextOutput := len(outputs) == 0
+	if !isTextOutput {
+		for _, m := range outputs {
+			if s, ok := m.(string); ok && s == "text" {
+				isTextOutput = true
+				break
+			}
+		}
+	}
+	if !isTextOutput {
+		return false
+	}
+	if strings.HasSuffix(modelID, ":free") {
+		return true
+	}
+	pricing, _ := raw["pricing"].(map[string]any)
+	if pricing == nil {
+		pricing = map[string]any{}
+	}
+	_, hasRequest := pricing["request"]
+	requestVal := float64(0)
+	if !hasRequest {
+		requestVal = 0
+	} else {
+		requestVal = toFloat(pricing["request"])
+	}
+	return priceIsZeroRaw(pricing["prompt"]) && priceIsZeroRaw(pricing["completion"]) && priceIsZeroRaw(requestVal)
+}
+
+func toFloat(value any) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case string:
+		f, _ := parseFloat(v)
+		return f
+	default:
+		return 0
+	}
+}
+
+func priceIsZeroRaw(value any) bool {
+	if value == nil || value == "" {
+		return false
+	}
+	switch v := value.(type) {
+	case float64:
+		return v == 0
+	case int:
+		return v == 0
+	case string:
+		f, err := parseFloat(v)
+		return err == nil && f == 0
+	default:
+		return false
+	}
+}
+
+func parseFloat(s string) (float64, error) {
+	var f float64
+	_, err := fmt.Sscanf(s, "%f", &f)
+	return f, err
+}
+

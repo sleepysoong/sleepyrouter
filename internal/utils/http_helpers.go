@@ -134,3 +134,26 @@ func NumberValue(value any) *int {
 	}
 	return nil
 }
+
+type HTTPClientFunc func(*http.Request) (*http.Response, error)
+
+func (f HTTPClientFunc) Do(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func ReadBody(r *http.Request) (map[string]any, error) {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	text := string(data)
+	if text == "" {
+		return map[string]any{}, nil
+	}
+	var body map[string]any
+	if json.Unmarshal(data, &body) != nil {
+		return nil, fmt.Errorf("요청 본문을 파싱할 수 없어요. 유효한 JSON을 보내주세요. (%d바이트 수신)", len(text))
+	}
+	return body, nil
+}
+

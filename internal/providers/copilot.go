@@ -1,4 +1,4 @@
-package core
+package providers
 
 import (
 	"context"
@@ -119,8 +119,8 @@ func PostCopilotChatCompletion(ctx context.Context, apiKey string, body any, cli
 		"Authorization":          "Bearer " + sessionToken,
 		"Content-Type":           "application/json",
 		"Copilot-Integration-Id": "vscode-chat",
-		"Editor-Version":         "vscode/1.99.0",
-		"Editor-Plugin-Version":  "copilot-chat/0.26.7",
+		"Editor-types.Version":         "vscode/1.99.0",
+		"Editor-Plugin-types.Version":  "copilot-chat/0.26.7",
 		"x-github-api-version":   "2025-04-01",
 	}, body)
 	if err != nil {

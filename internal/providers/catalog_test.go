@@ -1,4 +1,4 @@
-package core
+package providers
 
 import (
 	"bytes"
@@ -10,20 +10,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
+	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
-func tempCatalogStore(t *testing.T) (*ConfigStore, func()) {
+func tempCatalogStore(t *testing.T) (*cfg.ConfigStore, func()) {
 	t.Helper()
 	root, err := os.MkdirTemp("", "sleepyrouter-catalog-test-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewConfigStore(root), func() { os.RemoveAll(root) }
+	return cfg.NewConfigStore(root), func() { os.RemoveAll(root) }
 }
 
 func catalogMockClient(fn func(req *http.Request) (*http.Response, error)) types.HTTPDoer {
-	return httpClientFunc(fn)
+	return utils.HTTPClientFunc(fn)
 }
 
 func catalogJSONResponse(status int, body any) *http.Response {

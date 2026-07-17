@@ -7,18 +7,21 @@ import (
 	"sort"
 	"syscall"
 
-	"github.com/sleepysoong/sleepyrouter/internal/core"
+	"github.com/sleepysoong/sleepyrouter/internal/cfg"
+	"github.com/sleepysoong/sleepyrouter/internal/providers"
+	"github.com/sleepysoong/sleepyrouter/internal/routing"
+	"github.com/sleepysoong/sleepyrouter/internal/srv"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
 func RunStartCommand(options struct {
 	Port  int
-	Store *core.ConfigStore
+	Store *cfg.ConfigStore
 }) error {
 	store := options.Store
 	if store == nil {
-		store = core.NewConfigStore("")
+		store = cfg.NewConfigStore("")
 	}
 	if err := store.EnsureRoot(); err != nil {
 		return err
@@ -32,7 +35,7 @@ func RunStartCommand(options struct {
 		port = config.Port
 	}
 	if port == 0 {
-		port = core.DefaultPort
+		port = cfg.DefaultPort
 	}
 	if config.Port != port {
 		config.Port = port
@@ -42,7 +45,7 @@ func RunStartCommand(options struct {
 	}
 
 	env := utils.CurrentEnvironment()
-	keys := core.ResolveProviderAPIKeys(env, store.Paths.Root)
+	keys := cfg.ResolveProviderAPIKeys(env, store.Paths.Root)
 	hasNvidiaKey := keys.NVIDIA != ""
 	hasOpenRouterKey := keys.OpenRouter != ""
 
@@ -52,7 +55,7 @@ func RunStartCommand(options struct {
 	fmt.Printf("  NVIDIA_API_KEY: %s\n", boolCheck(hasNvidiaKey))
 	fmt.Printf("  OPENROUTER_API_KEY: %s\n", boolCheck(hasOpenRouterKey))
 
-	if _, err := core.RequireAnyProviderAPIKey(env, store.Paths.Root); err != nil {
+	if _, err := cfg.RequireAnyProviderAPIKey(env, store.Paths.Root); err != nil {
 		return err
 	}
 
@@ -80,14 +83,14 @@ func RunStartCommand(options struct {
 	}
 
 	if len(groupNames) > 0 {
-		totalModels := len(core.AllGroupModelIDs(config.ModelGroups, config.GroupOrder...))
+		totalModels := len(routing.AllGroupModelIDs(config.ModelGroups, config.GroupOrder...))
 		fmt.Printf("\n모델 그룹 (%d개 모델, %d개 그룹)\n", totalModels, len(groupNames))
 		for _, name := range groupNames {
 			marker := ""
 			if name == config.DefaultGroup {
 				marker = " (기본)"
 			}
-			fmt.Printf("  %s%s: %s\n", name, marker, core.JoinStrings(config.ModelGroups[name], ", "))
+			fmt.Printf("  %s%s: %s\n", name, marker, providers.JoinStrings(config.ModelGroups[name], ", "))
 		}
 		if config.DefaultGroup != "" {
 			fmt.Printf("\n기본 그룹: %s\n", config.DefaultGroup)
@@ -95,13 +98,13 @@ func RunStartCommand(options struct {
 		fmt.Println()
 	}
 
-	server := core.CreateSleepyRouterServer(core.ServerOptions{
+	server := srv.CreateSleepyRouterServer(srv.ServerOptions{
 		Store: store,
-		RequestLogger: func(event core.ServerLogEvent) {
-			fmt.Println(core.FormatServerLogEvent(event, utils.IsTerminal(os.Stdout)))
+		RequestLogger: func(event srv.ServerLogEvent) {
+			fmt.Println(srv.FormatServerLogEvent(event, utils.IsTerminal(os.Stdout)))
 		},
 	})
-	actualPort, err := core.Listen(server, port)
+	actualPort, err := srv.Listen(server, port)
 	if err != nil {
 		return err
 	}
