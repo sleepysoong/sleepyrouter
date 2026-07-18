@@ -46,7 +46,14 @@ func readHandlerPreamble(ctx context.Context, store *cfg.ConfigStore, env utils.
 	}
 	body, err := readBody(r)
 	if err != nil {
-		panic(err)
+		status := 500
+		msg := err.Error()
+		if he, ok := err.(*httpError); ok {
+			status = he.StatusCode
+			msg = he.Message
+		}
+		writeJSONError(w, status, msg)
+		return nil, false
 	}
 	selected, err := selectedModelSelection(ctx, store, apiKeys, client)
 	if err != nil {
@@ -54,8 +61,13 @@ func readHandlerPreamble(ctx context.Context, store *cfg.ConfigStore, env utils.
 		return nil, false
 	}
 	if err := assertSelectedFree(selected.Models); err != nil {
-		he := err.(*httpError)
-		writeJSONError(w, he.StatusCode, he.Message)
+		status := 500
+		msg := err.Error()
+		if he, ok := err.(*httpError); ok {
+			status = he.StatusCode
+			msg = he.Message
+		}
+		writeJSONError(w, status, msg)
 		return nil, false
 	}
 	routingModel := requestedModelForRouting(selected.Models, body["model"])
@@ -424,7 +436,14 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 		if method == "POST" && (path == "/anthropic/v1/messages/count_tokens" || path == "/anthropic/messages/count_tokens") {
 			body, err := readBody(r)
 			if err != nil {
-				panic(err)
+				status := 500
+				msg := err.Error()
+				if he, ok := err.(*httpError); ok {
+					status = he.StatusCode
+					msg = he.Message
+				}
+				writeJSONError(w, status, msg)
+				return
 			}
 			st.requestedModel = utils.StringFromUnknown(body["model"])
 			writeJSON(w, 200, map[string]any{"input_tokens": estimateInputTokens(body)})
@@ -474,7 +493,11 @@ func Listen(server *http.Server, port int) (int, error) {
 		return 0, err
 	}
 	go server.Serve(ln)
-	return ln.Addr().(*net.TCPAddr).Port, nil
+	if tcpAddr, ok := ln.Addr().(*net.TCPAddr); ok {
+		// ponytail: constants defined in RFCs
+		return tcpAddr.Port, nil
+	}
+	return 0, fmt.Errorf("listen address is not a TCP address: %v", ln.Addr())
 }
 
 type responseRecorder struct {
