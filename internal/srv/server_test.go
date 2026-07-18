@@ -78,7 +78,15 @@ func tempServerStore(t *testing.T) (*cfg.ConfigStore, func()) {
 		t.Fatal(err)
 	}
 	store := cfg.NewConfigStore(root)
-	_, _ = store.UpdateModelGroup("default", []string{"model-a:free", "model-b:free"})
+	config := types.SleepyRouterConfig{
+		Port:        4567,
+		ModelGroups: types.ModelGroups{"default": {"model-a:free", "model-b:free"}},
+		Models: map[string]types.ModelDefinition{
+			"model-a:free": {Provider: "openrouter", Name: "model-a-free-upstream"},
+			"model-b:free": {Provider: "openrouter", Name: "model-b-free-upstream"},
+		},
+	}
+	_ = store.WriteConfig(config)
 	_ = store.WriteModelCache(types.ModelCache{
 		Models: []types.SleepyRouterModel{
 			{ID: "model-a:free", Name: "Model A", Provider: "test"},
@@ -99,6 +107,17 @@ func TestServer_RouteReasonInLogEvent(t *testing.T) {
 	store, cleanup := tempServerStore(t)
 	defer cleanup()
 	_, _ = store.UpdateModelGroup("fast", []string{"nvidia/fast-model:free", "openrouter/fast-alt:free"})
+	func() {
+		c, err := store.ReadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Models["nvidia/fast-model:free"] = types.ModelDefinition{Provider: "nvidia", Name: "fast-model:free"}
+		c.Models["openrouter/fast-alt:free"] = types.ModelDefinition{Provider: "openrouter", Name: "fast-alt:free"}
+		if err := store.WriteConfig(c); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	_ = store.WriteModelCache(types.ModelCache{
 		Models: []types.SleepyRouterModel{
 			{ID: "model-a:free", Name: "Default A", Provider: "test"},
@@ -183,6 +202,16 @@ func TestServer_NVIDIAAnthropicStream(t *testing.T) {
 	store, cleanup := tempServerStore(t)
 	defer cleanup()
 	_, _ = store.UpdateModelGroup("default", []string{"nvidia/meta/llama-4"})
+	func() {
+		c, err := store.ReadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Models["nvidia/meta/llama-4"] = types.ModelDefinition{Provider: "nvidia", Name: "meta/llama-4"}
+		if err := store.WriteConfig(c); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	_ = store.WriteModelCache(types.ModelCache{
 		Models: []types.SleepyRouterModel{
 			{ID: "nvidia/meta/llama-4", Name: "Meta Llama 4", Provider: "nvidia", Source: types.SourceNVIDIA, UsageID: "nvidia/llama-4"},
@@ -219,6 +248,16 @@ func TestServer_OpenRouterAnthropicFallback(t *testing.T) {
 	store, cleanup := tempServerStore(t)
 	defer cleanup()
 	_, _ = store.UpdateModelGroup("fast", []string{"openrouter/anthropic/claude-3-haiku:free"})
+	func() {
+		c, err := store.ReadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Models["openrouter/anthropic/claude-3-haiku:free"] = types.ModelDefinition{Provider: "openrouter", Name: "anthropic/claude-3-haiku:free"}
+		if err := store.WriteConfig(c); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	_ = store.WriteModelCache(types.ModelCache{
 		Models: []types.SleepyRouterModel{
 			{ID: "openrouter/anthropic/claude-3-haiku:free", Name: "Claude 3 Haiku", Provider: "openrouter", Source: types.SourceOpenRouter},
@@ -267,6 +306,16 @@ func TestServer_AnthropicAllFailed502(t *testing.T) {
 	store, cleanup := tempServerStore(t)
 	defer cleanup()
 	_, _ = store.UpdateModelGroup("default", []string{"nvidia/model-a:free"})
+	func() {
+		c, err := store.ReadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Models["nvidia/model-a:free"] = types.ModelDefinition{Provider: "nvidia", Name: "model-a:free"}
+		if err := store.WriteConfig(c); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	_ = store.WriteModelCache(types.ModelCache{
 		Models: []types.SleepyRouterModel{
 			{ID: "nvidia/model-a:free", Name: "Model A", Provider: "nvidia", Source: types.SourceNVIDIA},
@@ -305,6 +354,17 @@ func TestServer_MissingKeySkipOnAnthropicRoute(t *testing.T) {
 	store, cleanup := tempServerStore(t)
 	defer cleanup()
 	_, _ = store.UpdateModelGroup("default", []string{"openrouter/model-a:free", "nvidia/model-b:free"})
+	func() {
+		c, err := store.ReadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Models["openrouter/model-a:free"] = types.ModelDefinition{Provider: "openrouter", Name: "model-a:free"}
+		c.Models["nvidia/model-b:free"] = types.ModelDefinition{Provider: "nvidia", Name: "model-b:free"}
+		if err := store.WriteConfig(c); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	_ = store.WriteModelCache(types.ModelCache{
 		Models: []types.SleepyRouterModel{
 			{ID: "openrouter/model-a:free", Name: "Model A", Provider: "openrouter", Source: types.SourceOpenRouter},
@@ -472,10 +532,10 @@ func TestServer_RoutesOpenAIChat(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 			t.Fatalf("json: %v", err)
 		}
-		if body["model"] != "model-a:free" {
+		if body["model"] != "model-a-free-upstream" {
 			t.Fatalf("model: %v", body["model"])
 		}
-		if seenBody == nil || seenBody["model"] != "model-a:free" {
+		if seenBody == nil || seenBody["model"] != "model-a-free-upstream" {
 			t.Fatalf("seenBody: %v", seenBody)
 		}
 		// Check usage logging
@@ -509,7 +569,7 @@ func mockResponse(status int, body any) *http.Response {
 
 func TestModelUpstreamID_MultiSlash(t *testing.T) {
 	// NVIDIA: "nvidia/b/c" → upstream "b/c"
-	nvidiaModel := types.SleepyRouterModel{ID: "nvidia/b/c", Provider: "nvidia", Source: types.SourceNVIDIA}
+	nvidiaModel := types.SleepyRouterModel{ID: "nvidia/b/c", UpstreamID: "b/c", Provider: "nvidia", Source: types.SourceNVIDIA}
 	if got := modelUpstreamID(nvidiaModel); got != "b/c" {
 		t.Fatalf("nvidia modelUpstreamID: got %q, want b/c", got)
 	}
@@ -521,7 +581,7 @@ func TestModelUpstreamID_MultiSlash(t *testing.T) {
 	}
 
 	// Copilot: "copilot/b/c" → upstream "b/c"
-	copilotModel := types.SleepyRouterModel{ID: "copilot/b/c", Provider: "copilot", Source: types.SourceCopilot}
+	copilotModel := types.SleepyRouterModel{ID: "copilot/b/c", UpstreamID: "b/c", Provider: "copilot", Source: types.SourceCopilot}
 	if got := modelUpstreamID(copilotModel); got != "b/c" {
 		t.Fatalf("copilot modelUpstreamID: got %q, want b/c", got)
 	}
@@ -532,6 +592,16 @@ func TestServer_RoutesNVIDIAAnthropic(t *testing.T) {
 	defer cleanup()
 	// Override group to include an nvidia model
 	_, _ = store.UpdateModelGroup("default", []string{"nvidia/meta/llama-4"})
+	func() {
+		c, err := store.ReadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Models["nvidia/meta/llama-4"] = types.ModelDefinition{Provider: "nvidia", Name: "meta/llama-4"}
+		if err := store.WriteConfig(c); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	_ = store.WriteModelCache(types.ModelCache{
 		Models: []types.SleepyRouterModel{
 			{ID: "nvidia/meta/llama-4", Name: "Meta Llama 4", Provider: "nvidia", Source: types.SourceNVIDIA, UsageID: "nvidia/llama-4"},
@@ -583,13 +653,13 @@ func TestServer_RoutesNVIDIAAnthropic(t *testing.T) {
 		logs, _ := store.ReadUsageLogs()
 		found := false
 		for _, l := range logs {
-			if l.Model == "nvidia/llama-4" && l.InputTokens == 5 && l.OutputTokens == 10 && l.Success {
+			if l.Model == "nvidia/meta/llama-4" && l.InputTokens == 5 && l.OutputTokens == 10 && l.Success {
 				found = true
 				break
 			}
 		}
 		if !found {
-			t.Fatalf("usage log not found for nvidia/llama-4: %v", logs)
+			t.Fatalf("usage log not found for nvidia/meta/llama-4: %v", logs)
 		}
 	})
 }
@@ -599,6 +669,17 @@ func TestServer_RejectsEmptyChoicesAndRetries(t *testing.T) {
 	defer cleanup()
 	// Three models: bad returns empty choices, good returns real response
 	_, _ = store.UpdateModelGroup("default", []string{"model-empty:free", "model-good:free"})
+	func() {
+		c, err := store.ReadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Models["model-empty:free"] = types.ModelDefinition{Provider: "openrouter", Name: "model-empty:free"}
+		c.Models["model-good:free"] = types.ModelDefinition{Provider: "openrouter", Name: "model-good:free"}
+		if err := store.WriteConfig(c); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	_ = store.WriteModelCache(types.ModelCache{
 		Models: []types.SleepyRouterModel{
 			{ID: "model-empty:free", Name: "Empty", Provider: "test"},

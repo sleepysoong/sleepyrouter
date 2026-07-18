@@ -5,40 +5,28 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
-	"github.com/sleepysoong/sleepyrouter/internal/providers"
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
 func modelUpstreamID(model types.SleepyRouterModel) string {
-	source := types.SourceOf(model)
 	if model.UpstreamID != "" {
 		return model.UpstreamID
 	}
-	switch source {
-	case types.SourceNVIDIA:
-		return strings.TrimPrefix(model.ID, "nvidia/")
-	case types.SourceCopilot:
-		return strings.TrimPrefix(model.ID, "copilot/")
-	case types.SourceZen:
-		return strings.TrimPrefix(model.ID, "zen/")
-	default:
-		return model.ID
-	}
+	return model.ID
 }
 
 type selectedModelsResult struct {
-	Models       []types.SleepyRouterModel
-	ByID         map[string]types.SleepyRouterModel
-	IDs          []string
-	ModelGroups  types.ModelGroups
-	GroupOrder   []string
-	DefaultGroup string
+	Models            []types.SleepyRouterModel
+	ByID              map[string]types.SleepyRouterModel
+	IDs               []string
+	ModelGroups       types.ModelGroups
+	GroupOrder        []string
+	DefaultModelGroup string
 }
 
 func selectedModelSelection(ctx context.Context, store *cfg.ConfigStore, apiKeys types.ProviderAPIKeys, client types.HTTPDoer) (*selectedModelsResult, error) {
@@ -46,55 +34,33 @@ func selectedModelSelection(ctx context.Context, store *cfg.ConfigStore, apiKeys
 	if err != nil {
 		return nil, err
 	}
-	catalog, err := providers.LoadModelCatalog(ctx, apiKeys, client, store)
-	if err != nil {
-		return nil, err
-	}
-	var freeModels []types.SleepyRouterModel
-	for _, m := range catalog.Models {
-		if providers.IsCachedFreeModel(m) {
-			freeModels = append(freeModels, m)
-		}
-	}
 	allIDs := routing.AllGroupModelIDs(config.ModelGroups, config.GroupOrder...)
-	freeByID := make(map[string]types.SleepyRouterModel, len(freeModels))
-	for _, m := range freeModels {
-		freeByID[m.ID] = m
-	}
-	cache, _ := store.ReadModelCache()
-	cacheIDs := make(map[string]bool)
-	if cache != nil {
-		for _, m := range cache.Models {
-			cacheIDs[m.ID] = true
-		}
-	}
 	models := make([]types.SleepyRouterModel, 0, len(allIDs))
 	byID := make(map[string]types.SleepyRouterModel, len(allIDs))
 	for _, id := range allIDs {
-		if free, ok := freeByID[id]; ok {
-			models = append(models, free)
-			byID[id] = free
-		} else if !cacheIDs[id] {
-			source := types.SourceOpenRouter
-			if strings.HasPrefix(id, "nvidia/") {
-				source = types.SourceNVIDIA
-			} else if strings.HasPrefix(id, "copilot/") {
-				source = types.SourceCopilot
-			} else if strings.HasPrefix(id, "zen/") {
-				source = types.SourceZen
-			}
-			stub := types.SleepyRouterModel{ID: id, Name: id, Provider: string(source), Source: source}
-			models = append(models, stub)
-			byID[id] = stub
+		def, ok := config.Models[id]
+		if !ok {
+			continue
 		}
+		source := types.ModelSource(def.Provider)
+		m := types.SleepyRouterModel{
+			ID:         id,
+			UpstreamID: def.Name,
+			Name:       def.Name,
+			Provider:   def.Provider,
+			Source:     source,
+			UsageID:    id,
+		}
+		models = append(models, m)
+		byID[id] = m
 	}
 	return &selectedModelsResult{
-		Models:       models,
-		ByID:         byID,
-		IDs:          modelIDs(models),
-		ModelGroups:  config.ModelGroups,
-		GroupOrder:   config.GroupOrder,
-		DefaultGroup: config.DefaultGroup,
+		Models:            models,
+		ByID:              byID,
+		IDs:               modelIDs(models),
+		ModelGroups:       config.ModelGroups,
+		GroupOrder:        config.GroupOrder,
+		DefaultModelGroup: config.DefaultModelGroup,
 	}, nil
 }
 

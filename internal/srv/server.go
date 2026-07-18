@@ -71,8 +71,8 @@ func readHandlerPreamble(ctx context.Context, store *cfg.ConfigStore, env utils.
 		return nil, false
 	}
 	routingModel := requestedModelForRouting(selected.Models, body["model"])
-	candidates, candidateReason := routing.OrderedCandidates(selected.ModelGroups, routingModel, selected.DefaultGroup, selected.GroupOrder...)
-	logGroup := selected.DefaultGroup
+	candidates, candidateReason := routing.OrderedCandidates(selected.ModelGroups, routingModel, selected.DefaultModelGroup, selected.GroupOrder...)
+	logGroup := selected.DefaultModelGroup
 	if candidateReason == routing.RouteModelGroup {
 		logGroup = routing.NormalizeModelGroupName(routingModel)
 	}
