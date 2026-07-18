@@ -24,34 +24,6 @@ var copilotTokenCache struct {
 	token *copilotToken
 }
 
-var knownCopilotModels = []struct {
-	ID            string
-	Name          string
-	ContextLength int
-}{
-	{"gpt-4o", "GPT-4o", 128000},
-	{"gpt-4o-mini", "GPT-4o Mini", 128000},
-	{"o3-mini", "o3-mini", 200000},
-	{"claude-sonnet-4", "Claude Sonnet 4", 200000},
-	{"gemini-2.5-pro", "Gemini 2.5 Pro", 1000000},
-}
-
-func normalizeCopilotModel(def struct {
-	ID            string
-	Name          string
-	ContextLength int
-}) types.SleepyRouterModel {
-	return types.SleepyRouterModel{
-		ID:            "copilot/" + def.ID,
-		UpstreamID:    def.ID,
-		Name:          def.Name,
-		Provider:      "copilot",
-		Source:        types.SourceCopilot,
-		UsageID:       "copilot/" + def.ID,
-		ContextLength: utils.IntPointer(def.ContextLength),
-	}
-}
-
 func exchangeCopilotToken(ctx context.Context, apiKey string, client types.HTTPDoer) (*copilotToken, error) {
 	req, err := utils.GetRequest(ctx, CopilotTokenURL, map[string]string{
 		"Authorization": "token " + apiKey,
@@ -100,14 +72,7 @@ func copilotSessionToken(ctx context.Context, apiKey string, client types.HTTPDo
 }
 
 func ListCopilotFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
-	if _, err := exchangeCopilotToken(ctx, apiKey, client); err != nil {
-		return nil, err
-	}
-	models := make([]types.SleepyRouterModel, 0, len(knownCopilotModels))
-	for _, model := range knownCopilotModels {
-		models = append(models, normalizeCopilotModel(model))
-	}
-	return models, nil
+	return []types.SleepyRouterModel{}, nil
 }
 
 func PostCopilotChatCompletion(ctx context.Context, apiKey string, body any, client types.HTTPDoer) (*http.Response, error) {

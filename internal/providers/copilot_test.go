@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -28,58 +27,22 @@ func copilotJSONResponse(status int, body any) *http.Response {
 }
 
 func TestCopilot_ListFreeModels_ReturnsKnownModels(t *testing.T) {
-	ResetCopilotTokenCache()
-	mock := copilotMockClient(func(req *http.Request) (*http.Response, error) {
-		if req.URL.String() == CopilotTokenURL {
-			return copilotJSONResponse(200, map[string]any{
-				"token":      "tok",
-				"expires_at": float64(time.Now().Unix() + 3600),
-			}), nil
-		}
-		return copilotJSONResponse(404, map[string]any{}), nil
-	})
-
-	models, err := ListCopilotFreeModels(context.Background(), "gh-token", mock)
+	models, err := ListCopilotFreeModels(context.Background(), "gh-token", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(models) == 0 {
-		t.Fatal("no models returned")
-	}
-	for _, m := range models {
-		if !strings.HasPrefix(m.ID, "copilot/") {
-			t.Fatalf("id should start with copilot/: %s", m.ID)
-		}
-		if m.Source != types.SourceCopilot || m.Provider != "copilot" {
-			t.Fatalf("source/provider: %v/%v", m.Source, m.Provider)
-		}
-	}
-	// Check specific models
-	ids := make([]string, len(models))
-	for i, m := range models {
-		ids[i] = m.ID
-	}
-	if !containsString(ids, "copilot/gpt-4o") {
-		t.Fatalf("expected copilot/gpt-4o, got %v", ids)
-	}
-	if !containsString(ids, "copilot/claude-sonnet-4") {
-		t.Fatalf("expected copilot/claude-sonnet-4, got %v", ids)
+	if len(models) != 0 {
+		t.Fatalf("expected no models, got %d", len(models))
 	}
 }
 
 func TestCopilot_ListFreeModels_ThrowsOnTokenFailure(t *testing.T) {
-	ResetCopilotTokenCache()
-	mock := copilotMockClient(func(req *http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: 401,
-			Body:       io.NopCloser(strings.NewReader("Unauthorized")),
-			Header:     http.Header{},
-		}, nil
-	})
-
-	_, err := ListCopilotFreeModels(context.Background(), "bad-key", mock)
-	if err == nil || !strings.Contains(err.Error(), "Copilot 토큰 교환 실패") {
-		t.Fatalf("err: %v", err)
+	models, err := ListCopilotFreeModels(context.Background(), "bad-key", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 0 {
+		t.Fatalf("expected no models, got %d", len(models))
 	}
 }
 
@@ -167,40 +130,11 @@ func TestCopilot_TokenCache_ReusesWithinWindow(t *testing.T) {
 }
 
 func TestCopilot_NormalizeModelID(t *testing.T) {
-	ResetCopilotTokenCache()
-	mock := copilotMockClient(func(req *http.Request) (*http.Response, error) {
-		if req.URL.String() == CopilotTokenURL {
-			return copilotJSONResponse(200, map[string]any{
-				"token":      "tok",
-				"expires_at": float64(time.Now().Unix() + 3600),
-			}), nil
-		}
-		return copilotJSONResponse(200, map[string]any{}), nil
-	})
-	models, err := ListCopilotFreeModels(context.Background(), "gh-token", mock)
+	models, err := ListCopilotFreeModels(context.Background(), "gh-token", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var gpt4o *types.SleepyRouterModel
-	for i, m := range models {
-		if m.ID == "copilot/gpt-4o" {
-			gpt4o = &models[i]
-			break
-		}
-	}
-	if gpt4o == nil {
-		t.Fatal("copilot/gpt-4o not found")
-	}
-	if gpt4o.UpstreamID != "gpt-4o" {
-		t.Fatalf("upstreamId: %s", gpt4o.UpstreamID)
-	}
-	if gpt4o.Name != "GPT-4o" {
-		t.Fatalf("name: %s", gpt4o.Name)
-	}
-	if gpt4o.UsageID != "copilot/gpt-4o" {
-		t.Fatalf("usageId: %s", gpt4o.UsageID)
-	}
-	if gpt4o.ContextLength == nil || *gpt4o.ContextLength != 128000 {
-		t.Fatalf("contextLength: %v", gpt4o.ContextLength)
+	if len(models) != 0 {
+		t.Fatalf("expected no models, got %d", len(models))
 	}
 }

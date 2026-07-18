@@ -11,36 +11,8 @@ import (
 
 const ZenChatCompletionsURL = "https://opencode.ai/zen/v1/chat/completions"
 
-var knownZenModels = []struct {
-	ID            string
-	Name          string
-	ContextLength int
-}{
-	{"deepseek-v4-flash-free", "DeepSeek V4 Flash Free", 128000},
-}
-
-func normalizeZenModel(def struct {
-	ID            string
-	Name          string
-	ContextLength int
-}) types.SleepyRouterModel {
-	return types.SleepyRouterModel{
-		ID:            "zen/" + def.ID,
-		UpstreamID:    def.ID,
-		Name:          def.Name,
-		Provider:      "zen",
-		Source:        types.SourceZen,
-		UsageID:       "zen/" + def.ID,
-		ContextLength: utils.IntPointer(def.ContextLength),
-	}
-}
-
 func ListZenFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
-	models := make([]types.SleepyRouterModel, 0, len(knownZenModels))
-	for _, m := range knownZenModels {
-		models = append(models, normalizeZenModel(m))
-	}
-	return models, nil
+	return []types.SleepyRouterModel{}, nil
 }
 
 func PostZenChatCompletion(ctx context.Context, apiKey string, body any, client types.HTTPDoer) (*http.Response, error) {
