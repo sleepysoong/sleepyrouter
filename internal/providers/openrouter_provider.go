@@ -21,11 +21,11 @@ func (p *OpenRouterProvider) ListFreeModels(ctx context.Context, apiKey string, 
 	return ListOpenRouterFreeModels(ctx, apiKey, client)
 }
 
-func (p *OpenRouterProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
+func (p *OpenRouterProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
 	return PostOpenRouterChatCompletion(ctx, apiKey, body, client)
 }
 
-func (p *OpenRouterProvider) Messages(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
+func (p *OpenRouterProvider) Messages(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
 	return PostOpenRouterAnthropicMessage(ctx, apiKey, body, client)
 }
 

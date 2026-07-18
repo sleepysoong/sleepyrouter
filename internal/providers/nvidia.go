@@ -156,11 +156,11 @@ func (p *NVIDIAProvider) ListFreeModels(ctx context.Context, apiKey string, clie
 	return ListNVIDIAFreeModels(ctx, apiKey, client)
 }
 
-func (p *NVIDIAProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
+func (p *NVIDIAProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
 	return PostNVIDIAChatCompletion(ctx, apiKey, body, client)
 }
 
-func (p *NVIDIAProvider) Messages(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
+func (p *NVIDIAProvider) Messages(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
 	return nil, fmt.Errorf("Messages not supported natively by NVIDIA provider")
 }
 

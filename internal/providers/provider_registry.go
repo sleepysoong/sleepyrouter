@@ -18,8 +18,8 @@ type Provider interface {
 	Name() string
 	Source() types.ModelSource
 	ListFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error)
-	ChatCompletion(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error)
-	Messages(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error)
+	ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error)
+	Messages(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error)
 	MessageProtocol() MessageProtocol
 }
 

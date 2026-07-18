@@ -113,7 +113,7 @@ func handleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *hand
 			st.lastError = upstreamError
 			continue
 		}
-		upstream, upstreamErr := p.ChatCompletion(ctx, apiKey, upstreamBody, st.stream, client)
+		upstream, upstreamErr := p.ChatCompletion(ctx, apiKey, upstreamBody, client)
 		if upstreamErr != nil {
 			upstreamError = upstreamErr.Error()
 			st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
@@ -201,13 +201,13 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 
 		if p.MessageProtocol() == providers.ProtocolAnthropic {
 			upstreamBody := withUpstreamModel(body, model, st.stream)
-			upstream, upstreamErr = p.Messages(ctx, apiKey, upstreamBody, st.stream, client)
+			upstream, upstreamErr = p.Messages(ctx, apiKey, upstreamBody, client)
 			if upstreamErr == nil && !utils.IsOK(upstream) && (upstream.StatusCode == 404 || upstream.StatusCode == 405) {
 				fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
 				if st.stream {
 					fallbackBody["stream_options"] = map[string]any{"include_usage": true}
 				}
-				upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, st.stream, client)
+				upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, client)
 				if upstreamErr == nil && utils.IsOK(upstream) {
 					t := triedCount
 					st.logTriedCount = &t
@@ -270,7 +270,7 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 			}
 		} else { // providers.ProtocolOpenAI
 			fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
-			upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, st.stream, client)
+			upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, client)
 			if upstreamErr != nil {
 				upstreamError = upstreamErr.Error()
 				st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))

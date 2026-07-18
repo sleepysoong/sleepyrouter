@@ -68,11 +68,11 @@ func (p *ZenProvider) ListFreeModels(ctx context.Context, apiKey string, client 
 	return ListZenFreeModels(ctx, apiKey, client)
 }
 
-func (p *ZenProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
+func (p *ZenProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
 	return PostZenChatCompletion(ctx, apiKey, body, client)
 }
 
-func (p *ZenProvider) Messages(ctx context.Context, apiKey string, body map[string]any, stream bool, client types.HTTPDoer) (*http.Response, error) {
+func (p *ZenProvider) Messages(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
 	return nil, fmt.Errorf("Messages not supported natively by Zen provider")
 }
 
