@@ -16,6 +16,19 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Write(data)
 }
 
+// writeJSONError writes the standard upstream-style error envelope:
+// `{"error": {"message": message}}`, optionally extended with extra keys
+// merged into the inner error object (e.g. "details", "type", "request").
+func writeJSONError(w http.ResponseWriter, status int, message string, extras ...map[string]any) {
+	inner := map[string]any{"message": message}
+	for _, e := range extras {
+		for k, v := range e {
+			inner[k] = v
+		}
+	}
+	writeJSON(w, status, map[string]any{"error": inner})
+}
+
 type httpError struct {
 	StatusCode int
 	Message    string

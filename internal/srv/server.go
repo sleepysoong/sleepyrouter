@@ -41,7 +41,7 @@ type handlerState struct {
 func readHandlerPreamble(ctx context.Context, store *cfg.ConfigStore, env utils.Environment, client types.HTTPDoer, w http.ResponseWriter, r *http.Request) (*handlerPreamble, bool) {
 	apiKeys, err := cfg.RequireAnyProviderAPIKey(env, store.Paths.Root)
 	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": map[string]any{"message": err.Error()}})
+		writeJSONError(w, 500, err.Error())
 		return nil, false
 	}
 	body, err := readBody(r)
@@ -50,12 +50,12 @@ func readHandlerPreamble(ctx context.Context, store *cfg.ConfigStore, env utils.
 	}
 	selected, err := selectedModelSelection(ctx, store, apiKeys, client)
 	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": map[string]any{"message": err.Error()}})
+		writeJSONError(w, 500, err.Error())
 		return nil, false
 	}
 	if err := assertSelectedFree(selected.Models); err != nil {
 		he := err.(*httpError)
-		writeJSON(w, he.StatusCode, map[string]any{"error": map[string]any{"message": he.Message}})
+		writeJSONError(w, he.StatusCode, he.Message)
 		return nil, false
 	}
 	routingModel := requestedModelForRouting(selected.Models, body["model"])
@@ -157,7 +157,7 @@ func handleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *hand
 		noUsableModelResponse(w, upstreamError)
 		return
 	}
-	writeJSON(w, 502, map[string]any{"error": map[string]any{"message": "선택된 모든 무료 모델이 실패했어요.", "details": upstreamError}})
+	writeJSONError(w, 502, "선택된 모든 무료 모델이 실패했어요.", map[string]any{"details": upstreamError})
 }
 
 // handleAnthropicMessage iterates model candidates for POST /anthropic/v1/messages.
@@ -305,7 +305,7 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 		noUsableModelResponse(w, upstreamError)
 		return
 	}
-	writeJSON(w, 502, map[string]any{"error": map[string]any{"type": "api_error", "message": "선택된 모든 무료 모델이 실패했어요.", "details": upstreamError}})
+	writeJSONError(w, 502, "선택된 모든 무료 모델이 실패했어요.", map[string]any{"type": "api_error", "details": upstreamError})
 }
 
 func CreateSleepyRouterServer(options ServerOptions) *http.Server {
@@ -389,8 +389,8 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 				if he, ok := err.(*httpError); ok {
 					statusCode = he.StatusCode
 				}
-				msg := errorString(err)
-				writeJSON(w, statusCode, map[string]any{"error": map[string]any{"message": msg, "request": method + " " + r.URL.String()}})
+			msg := errorString(err)
+			writeJSONError(w, statusCode, msg, map[string]any{"request": method + " " + r.URL.String()})
 			}
 		}()
 
@@ -404,12 +404,12 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 		if method == "GET" && path == "/v1/models" {
 			apiKeys, err := cfg.RequireAnyProviderAPIKey(env, store.Paths.Root)
 			if err != nil {
-				writeJSON(w, 500, map[string]any{"error": map[string]any{"message": err.Error()}})
+				writeJSONError(w, 500, err.Error())
 				return
 			}
 			selected, err := selectedModelSelection(ctx, store, apiKeys, client)
 			if err != nil {
-				writeJSON(w, 500, map[string]any{"error": map[string]any{"message": err.Error()}})
+				writeJSONError(w, 500, err.Error())
 				return
 			}
 			data := make([]map[string]any, 0, len(selected.Models))
@@ -461,7 +461,7 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 			return
 		}
 
-		writeJSON(w, 404, map[string]any{"error": map[string]any{"message": fmt.Sprintf("지원하지 않는 엔드포인트예요: %s %s. 사용 가능한 엔드포인트: GET /health, GET /v1/models, POST /v1/chat/completions, POST /anthropic/v1/messages", method, path)}})
+		writeJSONError(w, 404, fmt.Sprintf("지원하지 않는 엔드포인트예요: %s %s. 사용 가능한 엔드포인트: GET /health, GET /v1/models, POST /v1/chat/completions, POST /anthropic/v1/messages", method, path))
 	})
 
 	return &http.Server{Handler: handler}

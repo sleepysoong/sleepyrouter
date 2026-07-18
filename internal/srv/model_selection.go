@@ -155,7 +155,7 @@ func requestedModelForRouting(models []types.SleepyRouterModel, requestedModel a
 }
 
 func noUsableModelResponse(w http.ResponseWriter, lastError string) {
-	writeJSON(w, 400, map[string]any{"error": map[string]any{"message": "설정된 API 키로 사용 가능한 무료 모델이 없어요. API 키 설정과 모델 ID를 확인하세요.", "details": lastError}})
+	writeJSONError(w, 400, "설정된 API 키로 사용 가능한 무료 모델이 없어요. API 키 설정과 모델 ID를 확인하세요.", map[string]any{"details": lastError})
 }
 
 func usageFromResponse(data map[string]any) (inputTokens, outputTokens, totalTokens *int) {
