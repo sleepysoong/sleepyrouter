@@ -16,10 +16,13 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
-func RunStartCommand(options struct {
+// StartCommandOptions is the parameter struct for RunStartCommand.
+type StartCommandOptions struct {
 	Port  int
 	Store *cfg.ConfigStore
-}) error {
+}
+
+func RunStartCommand(options StartCommandOptions) error {
 	store := options.Store
 	if store == nil {
 		store = cfg.NewConfigStore("")
@@ -70,12 +73,11 @@ func RunStartCommand(options struct {
 	}
 	sort.Strings(groupNames)
 	if len(invalidModels) > 0 {
-		fmt.Fprintln(os.Stderr, "\n모델 ID가 잘못되었어요. nvidia/, openrouter/, copilot/ 또는 zen/ 접두사가 필요해요:")
+		msg := "\n모델 ID가 잘못되었어요. nvidia/, openrouter/, copilot/ 또는 zen/ 접두사가 필요해요:\n"
 		for _, m := range invalidModels {
-			fmt.Fprintf(os.Stderr, "  - %s\n", m)
+			msg += fmt.Sprintf("  - %s\n", m)
 		}
-		fmt.Fprintln(os.Stderr, "\nconfig.json을 수정한 후 다시 시도하세요.")
-		os.Exit(1)
+		return fmt.Errorf("%s\nconfig.json을 수정한 후 다시 시도하세요.", msg)
 	}
 
 	if len(groupNames) > 0 {
@@ -121,7 +123,10 @@ func boolCheck(value bool) string {
 }
 
 func invalidModelIDs(groups types.ModelGroups) []string {
-	prefixes := []string{"nvidia/", "openrouter/", "copilot/", "zen/"}
+	prefixes := make([]string, len(types.AllModelSources))
+	for i, src := range types.AllModelSources {
+		prefixes[i] = string(src) + "/"
+	}
 	names := make([]string, 0, len(groups))
 	for name := range groups {
 		names = append(names, name)

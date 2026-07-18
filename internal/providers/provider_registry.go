@@ -53,8 +53,7 @@ func (b *BaseProvider) Messages(ctx context.Context, apiKey string, body map[str
 }
 
 func AllProviders() []Provider {
-	// Stable order: OpenRouter first, then NVIDIA, then Copilot, then Zen, then any others
-	order := []types.ModelSource{types.SourceOpenRouter, types.SourceNVIDIA, types.SourceCopilot, types.SourceZen}
+	order := types.AllModelSources
 	list := make([]Provider, 0, len(providers))
 	for _, source := range order {
 		if p, ok := providers[source]; ok {

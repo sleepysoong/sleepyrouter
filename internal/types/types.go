@@ -17,6 +17,10 @@ const (
 	SourceZen        ModelSource = "zen"
 )
 
+// AllModelSources is the canonical registration order used by provider_registry
+// and CLI validation. Order affects catalog fetch priority.
+var AllModelSources = []ModelSource{SourceOpenRouter, SourceNVIDIA, SourceCopilot, SourceZen}
+
 type ModelGroups map[string][]string
 
 type SleepyRouterModel struct {
