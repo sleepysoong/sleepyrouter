@@ -30,6 +30,8 @@ type handlerPreamble struct {
 // handlerState carries mutable logging state across handler phases so that
 // extracted handler functions and the deferred logResponse closure stay in sync.
 type handlerState struct {
+	requestID                                                 int
+	requestMethod, requestPath                                string
 	requestedModel, routedModel, routeReason, lastError, logGroup string
 	stream                                                         bool
 	lastInputTokens, lastOutputTokens, logCandidateCount, logTriedCount *int
@@ -125,7 +127,9 @@ func handleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *hand
 			st.lastError = upstreamError
 			continue
 		}
+		attemptStart := time.Now()
 		upstream, upstreamErr := p.ChatCompletion(ctx, apiKey, upstreamBody, client)
+		logUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
 		if upstreamErr != nil {
 			upstreamError = upstreamErr.Error()
 			st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
@@ -213,13 +217,17 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 
 		if p.MessageProtocol() == providers.ProtocolAnthropic {
 			upstreamBody := withUpstreamModel(body, model, st.stream)
+			attemptStart := time.Now()
 			upstream, upstreamErr = p.Messages(ctx, apiKey, upstreamBody, client)
+			logUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
 			if upstreamErr == nil && !utils.IsOK(upstream) && (upstream.StatusCode == 404 || upstream.StatusCode == 405) {
 				fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
 				if st.stream {
 					fallbackBody["stream_options"] = map[string]any{"include_usage": true}
 				}
+				attemptStart := time.Now()
 				upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, client)
+				logUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
 				if upstreamErr == nil && utils.IsOK(upstream) {
 					t := triedCount
 					st.logTriedCount = &t
@@ -282,7 +290,9 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 			}
 		} else { // providers.ProtocolOpenAI
 			fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
+			attemptStart := time.Now()
 			upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, client)
+			logUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
 			if upstreamErr != nil {
 				upstreamError = upstreamErr.Error()
 				st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
@@ -342,7 +352,11 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 		id := int(atomic.AddInt64(nextID, 1))
 		startedAt := time.Now()
 
-		st := &handlerState{}
+		st := &handlerState{
+			requestID:     id,
+			requestMethod: r.Method,
+			requestPath:   r.URL.Path,
+		}
 
 		logRequest := func() {
 			if requestLogger == nil {
@@ -461,6 +475,18 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 			st.logGroup = pre.logGroup
 			candCount := len(pre.candidates)
 			st.logCandidateCount = &candCount
+			if requestLogger != nil {
+				requestLogger(ServerLogEvent{
+					Type:           "route",
+					ID:             id,
+					Method:         r.Method,
+					Path:           r.URL.Path,
+					RequestedModel: st.requestedModel,
+					CandidateCount: &candCount,
+					RouteReason:    string(pre.candidateReason),
+					Group:          pre.logGroup,
+				})
+			}
 			handleChatCompletion(ctx, store, pre, client, w, st, requestLogger)
 			return
 		}
@@ -476,6 +502,18 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 			st.logGroup = pre.logGroup
 			candCount := len(pre.candidates)
 			st.logCandidateCount = &candCount
+			if requestLogger != nil {
+				requestLogger(ServerLogEvent{
+					Type:           "route",
+					ID:             id,
+					Method:         r.Method,
+					Path:           r.URL.Path,
+					RequestedModel: st.requestedModel,
+					CandidateCount: &candCount,
+					RouteReason:    string(pre.candidateReason),
+					Group:          pre.logGroup,
+				})
+			}
 			handleAnthropicMessage(ctx, store, pre, client, w, st, requestLogger)
 			return
 		}

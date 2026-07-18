@@ -1,7 +1,10 @@
 package srv
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -92,10 +95,73 @@ func statusColorCode(statusCode int) int {
 // FormatServerLogEvent renders a single log line. Request events are
 // concise; response events include routing, status, duration, usage,
 // and error context.
+// logUpstreamAttempt fires an "upstream" event for each API call to an
+// upstream provider, giving the operator per-attempt visibility into the
+// retry loop. The response body is re-wrapped so recordUpstreamFailure can
+// still consume it.
+func logUpstreamAttempt(logger func(ServerLogEvent), st *handlerState, modelID string, resp *http.Response, err error, attemptStart time.Time) {
+	if logger == nil {
+		return
+	}
+	elapsed := int(time.Since(attemptStart).Milliseconds())
+	errText := ""
+	statusCode := 0
+	if err != nil {
+		errText = safeLogValue(err.Error())
+	} else if resp != nil {
+		statusCode = resp.StatusCode
+		if !utils.IsOK(resp) {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			errText = safeLogValue(string(bodyBytes))
+		}
+	}
+	logger(ServerLogEvent{
+		Type:           "upstream",
+		ID:             st.requestID,
+		Method:         st.requestMethod,
+		Path:           st.requestPath,
+		ModelID:        modelID,
+		StatusCode:     statusCode,
+		DurationMs:     elapsed,
+		Error:          errText,
+		RequestedModel: st.requestedModel,
+		Group:          st.logGroup,
+	})
+}
+
 func FormatServerLogEvent(event ServerLogEvent, colorEnabled bool) string {
 	c := colorEnabled
 	if event.Type == "request" {
 		return fmt.Sprintf("#%d | %s [%s] %s", event.ID, ansiColor("request", 36, c), ansiColor(event.Method, 35, c), safeLogValue(event.Path))
+	}
+	if event.Type == "route" {
+		cc := ""
+		if event.CandidateCount != nil {
+			cc = fmt.Sprintf("%d candidates ", *event.CandidateCount)
+		}
+		line := fmt.Sprintf("#%d | %s %s%s", event.ID, ansiColor("route", 33, c), cc, ansiColor("route="+event.RouteReason, 90, c))
+		if event.RequestedModel != "" {
+			line += " " + "requested=" + safeLogValue(event.RequestedModel)
+		}
+		if event.Group != "" {
+			line += " " + "group=" + event.Group
+		}
+		return line
+	}
+	if event.Type == "upstream" {
+		sc := statusColorCode(event.StatusCode)
+		line := fmt.Sprintf("#%d | %s %s [%s] %dms", event.ID, ansiColor("upstream", 36, c), safeLogValue(event.ModelID), ansiColor(fmt.Sprintf("%d", event.StatusCode), sc, c), event.DurationMs)
+		if event.RequestedModel != "" {
+			line += " " + "requested=" + safeLogValue(event.RequestedModel)
+		}
+		if event.Group != "" {
+			line += " " + "group=" + event.Group
+		}
+		if event.Error != "" {
+			line += " " + "error=" + safeLogValue(event.Error)
+		}
+		return line
 	}
 	sc := statusColorCode(event.StatusCode)
 	details := []string{
