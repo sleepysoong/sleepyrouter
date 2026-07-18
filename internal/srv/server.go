@@ -27,6 +27,14 @@ type handlerPreamble struct {
 	logGroup        string
 }
 
+// handlerState carries mutable logging state across handler phases so that
+// extracted handler functions and the deferred logResponse closure stay in sync.
+type handlerState struct {
+	requestedModel, routedModel, routeReason, lastError, logGroup string
+	stream                                                         bool
+	lastInputTokens, lastOutputTokens, logCandidateCount, logTriedCount *int
+}
+
 // readHandlerPreamble reads the request body, selects models, and computes
 // route candidates. On error it writes the response to w and returns nil, false.
 // Otherwise returns the preamble and true — the caller should proceed.
@@ -67,6 +75,239 @@ func readHandlerPreamble(ctx context.Context, store *cfg.ConfigStore, env utils.
 	}, true
 }
 
+// handleChatCompletion iterates model candidates for POST /v1/chat/completions.
+// It updates st with the result of the attempt and returns; the calling
+// handler's deferred logResponse will pick up the final values.
+func handleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *handlerPreamble, client types.HTTPDoer, w http.ResponseWriter, st *handlerState, requestLogger func(ServerLogEvent)) {
+	apiKeys := pre.apiKeys
+	body := pre.body
+	selected := pre.selected
+	Candidates := pre.candidates
+	candidateReason := pre.candidateReason
+
+	var upstreamError string
+	triedAny := false
+	triedCount := 0
+	for _, modelID := range Candidates {
+		model, ok := selected.ByID[modelID]
+		if !ok {
+			continue
+		}
+		apiKey := apiKeys.For(types.SourceOf(model))
+		if apiKey == "" {
+			upstreamError = missingKeyMessage(model)
+			st.lastError = upstreamError
+			continue
+		}
+		if requestLogger != nil {
+			st.routedModel = modelID
+			st.routeReason = string(candidateReason)
+		}
+		triedAny = true
+		triedCount++
+		upstreamBody := withUpstreamModel(body, model, st.stream)
+		source := types.SourceOf(model)
+		p := providers.GetProvider(source)
+		if p == nil {
+			upstreamError = fmt.Sprintf("unsupported provider: %s", source)
+			st.lastError = upstreamError
+			continue
+		}
+		upstream, upstreamErr := p.ChatCompletion(ctx, apiKey, upstreamBody, st.stream, client)
+		if upstreamErr != nil {
+			upstreamError = upstreamErr.Error()
+			st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+			continue
+		}
+		if utils.IsOK(upstream) {
+			if st.stream {
+				st.lastInputTokens, st.lastOutputTokens, st.logTriedCount = writeStreamResponse(w, upstream, store, model, triedCount)
+				return
+			}
+			data, err := utils.ResponseJSON(upstream)
+			if err != nil {
+				upstreamError = err.Error()
+				st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+				continue
+			}
+			choices, _ := data["choices"].([]any)
+			if len(choices) == 0 {
+				upstreamError = fmt.Sprintf("choices가 비어있어요 (%d)", upstream.StatusCode)
+				st.lastError = fmt.Sprintf("[%s] choices가 비어있어요", modelID)
+				usageID := model.UsageID
+				if usageID == "" {
+					usageID = model.ID
+				}
+				_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
+				continue
+			}
+			in, out, _ := usageFromResponse(data)
+			st.lastInputTokens = in
+			st.lastOutputTokens = out
+			recordSuccessfulUsage(store, model, data)
+			t := triedCount
+			st.logTriedCount = &t
+			writeJSON(w, upstream.StatusCode, data)
+			return
+		}
+		upstreamError = recordUpstreamFailure(store, model, upstream)
+		st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+	}
+	if !triedAny {
+		noUsableModelResponse(w, upstreamError)
+		return
+	}
+	writeJSON(w, 502, map[string]any{"error": map[string]any{"message": "선택된 모든 무료 모델이 실패했어요.", "details": upstreamError}})
+}
+
+// handleAnthropicMessage iterates model candidates for POST /anthropic/v1/messages.
+func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *handlerPreamble, client types.HTTPDoer, w http.ResponseWriter, st *handlerState, requestLogger func(ServerLogEvent)) {
+	apiKeys := pre.apiKeys
+	body := pre.body
+	selected := pre.selected
+	Candidates := pre.candidates
+	candidateReason := pre.candidateReason
+
+	var upstreamError string
+	triedAny := false
+	triedCount := 0
+	for _, modelID := range Candidates {
+		model, ok := selected.ByID[modelID]
+		if !ok {
+			continue
+		}
+		apiKey := apiKeys.For(types.SourceOf(model))
+		if apiKey == "" {
+			upstreamError = missingKeyMessage(model)
+			st.lastError = upstreamError
+			continue
+		}
+		if requestLogger != nil {
+			st.routedModel = modelID
+			st.routeReason = string(candidateReason)
+		}
+		triedAny = true
+		triedCount++
+		source := types.SourceOf(model)
+		p := providers.GetProvider(source)
+		if p == nil {
+			upstreamError = fmt.Sprintf("unsupported provider: %s", source)
+			st.lastError = upstreamError
+			continue
+		}
+
+		var upstream *http.Response
+		var upstreamErr error
+
+		if p.MessageProtocol() == providers.ProtocolAnthropic {
+			upstreamBody := withUpstreamModel(body, model, st.stream)
+			upstream, upstreamErr = p.Messages(ctx, apiKey, upstreamBody, st.stream, client)
+			if upstreamErr == nil && !utils.IsOK(upstream) && (upstream.StatusCode == 404 || upstream.StatusCode == 405) {
+				fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
+				if st.stream {
+					fallbackBody["stream_options"] = map[string]any{"include_usage": true}
+				}
+				upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, st.stream, client)
+				if upstreamErr == nil && utils.IsOK(upstream) {
+					t := triedCount
+					st.logTriedCount = &t
+					if st.stream {
+						recordSuccessfulUsage(store, model, nil)
+						PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
+					} else {
+						data, err := utils.ResponseJSON(upstream)
+						if err != nil {
+							upstreamError = err.Error()
+							st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+							continue
+						}
+						in, out, _ := usageFromResponse(data)
+						st.lastInputTokens = in
+						st.lastOutputTokens = out
+						recordSuccessfulUsage(store, model, data)
+						writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
+					}
+					return
+				}
+			}
+			if upstreamErr != nil {
+				upstreamError = upstreamErr.Error()
+				st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+				continue
+			}
+			if utils.IsOK(upstream) {
+				if st.stream {
+					st.lastInputTokens, st.lastOutputTokens, st.logTriedCount = writeStreamResponse(w, upstream, store, model, triedCount)
+					return
+				}
+				data, err := utils.ResponseJSON(upstream)
+				if err != nil {
+					upstreamError = err.Error()
+					st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+					continue
+				}
+				_, hasChoicesArr := data["choices"].([]any)
+				_, hasContentArr := data["content"].([]any)
+				empty := !hasChoicesArr && !hasContentArr
+				if empty {
+					upstreamError = fmt.Sprintf("choices와 content가 모두 비어있어요 (%d)", upstream.StatusCode)
+					st.lastError = fmt.Sprintf("[%s] choices와 content가 모두 비어있어요", modelID)
+					usageID := model.UsageID
+					if usageID == "" {
+						usageID = model.ID
+					}
+					_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
+					continue
+				}
+				in, out, _ := usageFromResponse(data)
+				st.lastInputTokens = in
+				st.lastOutputTokens = out
+				recordSuccessfulUsage(store, model, data)
+				t := triedCount
+				st.logTriedCount = &t
+				writeJSON(w, upstream.StatusCode, data)
+				return
+			}
+		} else { // providers.ProtocolOpenAI
+			fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
+			upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, st.stream, client)
+			if upstreamErr != nil {
+				upstreamError = upstreamErr.Error()
+				st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+				continue
+			}
+			if utils.IsOK(upstream) {
+				t := triedCount
+				st.logTriedCount = &t
+				if st.stream {
+					recordSuccessfulUsage(store, model, nil)
+					PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
+				} else {
+					data, err := utils.ResponseJSON(upstream)
+					if err != nil {
+						upstreamError = err.Error()
+						st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+						continue
+					}
+					in, out, _ := usageFromResponse(data)
+					st.lastInputTokens = in
+					st.lastOutputTokens = out
+					recordSuccessfulUsage(store, model, data)
+					writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
+				}
+				return
+			}
+		}
+		upstreamError = recordUpstreamFailure(store, model, upstream)
+		st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+	}
+	if !triedAny {
+		noUsableModelResponse(w, upstreamError)
+		return
+	}
+	writeJSON(w, 502, map[string]any{"error": map[string]any{"type": "api_error", "message": "선택된 모든 무료 모델이 실패했어요.", "details": upstreamError}})
+}
+
 func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 	store := options.Store
 	if store == nil {
@@ -89,10 +330,7 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 		id := int(atomic.AddInt64(nextID, 1))
 		startedAt := time.Now()
 
-		var requestedModel, routedModel, routeReason, lastError, logGroup string
-		var stream bool
-		var lastInputTokens, lastOutputTokens *int
-		var logCandidateCount, logTriedCount *int
+		st := &handlerState{}
 
 		logRequest := func() {
 			if requestLogger == nil {
@@ -120,16 +358,16 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 				Path:           r.URL.Path,
 				StatusCode:     statusCode,
 				DurationMs:     int(time.Since(startedAt).Milliseconds()),
-				RequestedModel: requestedModel,
-				ModelID:        routedModel,
-				RouteReason:    routeReason,
-				Stream:         stream,
-				InputTokens:    lastInputTokens,
-				OutputTokens:   lastOutputTokens,
-				Error:          lastError,
-				Group:          logGroup,
-				CandidateCount: logCandidateCount,
-				TriedCount:     logTriedCount,
+				RequestedModel: st.requestedModel,
+				ModelID:        st.routedModel,
+				RouteReason:    st.routeReason,
+				Stream:         st.stream,
+				InputTokens:    st.lastInputTokens,
+				OutputTokens:   st.lastOutputTokens,
+				Error:          st.lastError,
+				Group:          st.logGroup,
+				CandidateCount: st.logCandidateCount,
+				TriedCount:     st.logTriedCount,
 			})
 		}
 
@@ -188,7 +426,7 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 			if err != nil {
 				panic(err)
 			}
-			requestedModel = utils.StringFromUnknown(body["model"])
+			st.requestedModel = utils.StringFromUnknown(body["model"])
 			writeJSON(w, 200, map[string]any{"input_tokens": estimateInputTokens(body)})
 			return
 		}
@@ -199,113 +437,12 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 			if !ok {
 				return
 			}
-			apiKeys := pre.apiKeys
-			body := pre.body
-			selected := pre.selected
-			Candidates := pre.candidates
-			candidateReason := pre.candidateReason
-			requestedModel = utils.StringFromUnknown(body["model"])
-			stream = utils.BoolValue(body["stream"])
-			logGroup = pre.logGroup
-			candCount := len(Candidates)
-			logCandidateCount = &candCount
-
-			var upstreamError string
-			triedAny := false
-			triedCount := 0
-			for _, modelID := range Candidates {
-				model, ok := selected.ByID[modelID]
-				if !ok {
-					continue
-				}
-				apiKey := apiKeys.For(types.SourceOf(model))
-				if apiKey == "" {
-					upstreamError = missingKeyMessage(model)
-					lastError = upstreamError
-					continue
-				}
-				if requestLogger != nil {
-					routedModel = modelID
-					routeReason = string(candidateReason)
-				}
-				triedAny = true
-				triedCount++
-				upstreamBody := withUpstreamModel(body, model, stream)
-				source := types.SourceOf(model)
-				p := providers.GetProvider(source)
-				if p == nil {
-					upstreamError = fmt.Sprintf("unsupported provider: %s", source)
-					lastError = upstreamError
-					continue
-				}
-				upstream, upstreamErr := p.ChatCompletion(ctx, apiKey, upstreamBody, stream, client)
-				if upstreamErr != nil {
-					upstreamError = upstreamErr.Error()
-					lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-					continue
-				}
-				if utils.IsOK(upstream) {
-					if stream {
-						contentType := upstream.Header.Get("Content-Type")
-						if contentType == "" {
-							contentType = "text/event-stream; charset=utf-8"
-						}
-						w.Header().Set("Content-Type", contentType)
-						w.WriteHeader(upstream.StatusCode)
-						streamUsage := PipeWebStreamToNode(upstream.Body, w)
-						lastInputTokens = streamUsage.InputTokens
-						lastOutputTokens = streamUsage.OutputTokens
-						usageID := model.UsageID
-						if usageID == "" {
-							usageID = model.ID
-						}
-						in := 0
-						out := 0
-						if streamUsage.InputTokens != nil {
-							in = *streamUsage.InputTokens
-						}
-						if streamUsage.OutputTokens != nil {
-							out = *streamUsage.OutputTokens
-						}
-						_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: in, OutputTokens: out, Success: true})
-						t := triedCount
-						logTriedCount = &t
-						return
-					}
-					data, err := utils.ResponseJSON(upstream)
-					if err != nil {
-						upstreamError = err.Error()
-						lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-						continue
-					}
-					choices, _ := data["choices"].([]any)
-					if len(choices) == 0 {
-						upstreamError = fmt.Sprintf("choices가 비어있어요 (%d)", upstream.StatusCode)
-						lastError = fmt.Sprintf("[%s] choices가 비어있어요", modelID)
-						usageID := model.UsageID
-						if usageID == "" {
-							usageID = model.ID
-						}
-						_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
-						continue
-					}
-					in, out, _ := usageFromResponse(data)
-					lastInputTokens = in
-					lastOutputTokens = out
-					recordSuccessfulUsage(store, model, data)
-					t := triedCount
-					logTriedCount = &t
-					writeJSON(w, upstream.StatusCode, data)
-					return
-				}
-				upstreamError = recordUpstreamFailure(store, model, upstream)
-				lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-			}
-			if !triedAny {
-				noUsableModelResponse(w, upstreamError)
-				return
-			}
-			writeJSON(w, 502, map[string]any{"error": map[string]any{"message": "선택된 모든 무료 모델이 실패했어요.", "details": upstreamError}})
+			st.requestedModel = utils.StringFromUnknown(pre.body["model"])
+			st.stream = utils.BoolValue(pre.body["stream"])
+			st.logGroup = pre.logGroup
+			candCount := len(pre.candidates)
+			st.logCandidateCount = &candCount
+			handleChatCompletion(ctx, store, pre, client, w, st, requestLogger)
 			return
 		}
 
@@ -315,179 +452,12 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 			if !ok {
 				return
 			}
-			apiKeys := pre.apiKeys
-			body := pre.body
-			selected := pre.selected
-			Candidates := pre.candidates
-			aCandidateReason := pre.candidateReason
-			requestedModel = utils.StringFromUnknown(body["model"])
-			stream = utils.BoolValue(body["stream"])
-			logGroup = pre.logGroup
-			candCount := len(Candidates)
-			logCandidateCount = &candCount
-
-			var upstreamError string
-			triedAny := false
-			triedCount := 0
-			for _, modelID := range Candidates {
-				model, ok := selected.ByID[modelID]
-				if !ok {
-					continue
-				}
-				apiKey := apiKeys.For(types.SourceOf(model))
-				if apiKey == "" {
-					upstreamError = missingKeyMessage(model)
-					lastError = upstreamError
-					continue
-				}
-				if requestLogger != nil {
-					routedModel = modelID
-					routeReason = string(aCandidateReason)
-				}
-				triedAny = true
-				triedCount++
-				source := types.SourceOf(model)
-				p := providers.GetProvider(source)
-				if p == nil {
-					upstreamError = fmt.Sprintf("unsupported provider: %s", source)
-					lastError = upstreamError
-					continue
-				}
-
-				var upstream *http.Response
-				var upstreamErr error
-
-				if p.MessageProtocol() == providers.ProtocolAnthropic {
-					upstreamBody := withUpstreamModel(body, model, stream)
-					upstream, upstreamErr = p.Messages(ctx, apiKey, upstreamBody, stream, client)
-					if upstreamErr == nil && !utils.IsOK(upstream) && (upstream.StatusCode == 404 || upstream.StatusCode == 405) {
-						fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
-						if stream {
-							fallbackBody["stream_options"] = map[string]any{"include_usage": true}
-						}
-						upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, stream, client)
-						if upstreamErr == nil && utils.IsOK(upstream) {
-							t := triedCount
-							logTriedCount = &t
-							if stream {
-								recordSuccessfulUsage(store, model, nil)
-								PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
-							} else {
-								data, err := utils.ResponseJSON(upstream)
-								if err != nil {
-									upstreamError = err.Error()
-									lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-									continue
-								}
-								in, out, _ := usageFromResponse(data)
-								lastInputTokens = in
-								lastOutputTokens = out
-								recordSuccessfulUsage(store, model, data)
-								writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
-							}
-							return
-						}
-					}
-					if upstreamErr != nil {
-						upstreamError = upstreamErr.Error()
-						lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-						continue
-					}
-					if utils.IsOK(upstream) {
-						if stream {
-							contentType := upstream.Header.Get("Content-Type")
-							if contentType == "" {
-								contentType = "text/event-stream; charset=utf-8"
-							}
-							w.Header().Set("Content-Type", contentType)
-							w.WriteHeader(upstream.StatusCode)
-							streamUsage := PipeWebStreamToNode(upstream.Body, w)
-							lastInputTokens = streamUsage.InputTokens
-							lastOutputTokens = streamUsage.OutputTokens
-							usageID := model.UsageID
-							if usageID == "" {
-								usageID = model.ID
-							}
-							in := 0
-							out := 0
-							if streamUsage.InputTokens != nil {
-								in = *streamUsage.InputTokens
-							}
-							if streamUsage.OutputTokens != nil {
-								out = *streamUsage.OutputTokens
-							}
-							_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: in, OutputTokens: out, Success: true})
-							t := triedCount
-							logTriedCount = &t
-							return
-						}
-						data, err := utils.ResponseJSON(upstream)
-						if err != nil {
-							upstreamError = err.Error()
-							lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-							continue
-						}
-						// empty choices/content check for Anthropic route
-						_, hasChoicesArr := data["choices"].([]any)
-						_, hasContentArr := data["content"].([]any)
-						empty := !hasChoicesArr && !hasContentArr
-						if empty {
-							upstreamError = fmt.Sprintf("choices와 content가 모두 비어있어요 (%d)", upstream.StatusCode)
-							lastError = fmt.Sprintf("[%s] choices와 content가 모두 비어있어요", modelID)
-							usageID := model.UsageID
-							if usageID == "" {
-								usageID = model.ID
-							}
-							_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
-							continue
-						}
-						in, out, _ := usageFromResponse(data)
-						lastInputTokens = in
-						lastOutputTokens = out
-						recordSuccessfulUsage(store, model, data)
-						t := triedCount
-						logTriedCount = &t
-						writeJSON(w, upstream.StatusCode, data)
-						return
-					}
-				} else { // providers.ProtocolOpenAI
-					fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
-					upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, stream, client)
-					if upstreamErr != nil {
-						upstreamError = upstreamErr.Error()
-						lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-						continue
-					}
-					if utils.IsOK(upstream) {
-						t := triedCount
-						logTriedCount = &t
-						if stream {
-							recordSuccessfulUsage(store, model, nil)
-							PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
-						} else {
-							data, err := utils.ResponseJSON(upstream)
-							if err != nil {
-								upstreamError = err.Error()
-								lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-								continue
-							}
-							in, out, _ := usageFromResponse(data)
-							lastInputTokens = in
-							lastOutputTokens = out
-							recordSuccessfulUsage(store, model, data)
-							writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
-						}
-						return
-					}
-				}
-				upstreamError = recordUpstreamFailure(store, model, upstream)
-				lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-			}
-			if !triedAny {
-				noUsableModelResponse(w, upstreamError)
-				return
-			}
-			writeJSON(w, 502, map[string]any{"error": map[string]any{"type": "api_error", "message": "선택된 모든 무료 모델이 실패했어요.", "details": upstreamError}})
+			st.requestedModel = utils.StringFromUnknown(pre.body["model"])
+			st.stream = utils.BoolValue(pre.body["stream"])
+			st.logGroup = pre.logGroup
+			candCount := len(pre.candidates)
+			st.logCandidateCount = &candCount
+			handleAnthropicMessage(ctx, store, pre, client, w, st, requestLogger)
 			return
 		}
 

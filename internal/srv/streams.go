@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/protocol"
 	"github.com/sleepysoong/sleepyrouter/internal/sseutil"
+	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
@@ -185,70 +187,41 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 		if data == "" || data == "[DONE]" || !strings.HasPrefix(data, "{") {
 			continue
 		}
+
+		type openAIStreamToolCall struct {
+			Index    *int    `json:"index"`
+			ID       *string `json:"id"`
+			Function *struct {
+				Name      *string `json:"name"`
+				Arguments *string `json:"arguments"`
+			} `json:"function"`
+		}
+
+		type openAIStreamChoice struct {
+			FinishReason any `json:"finish_reason"`
+			Delta        *struct {
+				Content      *string                `json:"content"`
+				FunctionCall *struct {
+					Name      *string `json:"name"`
+					Arguments *string `json:"arguments"`
+				} `json:"function_call"`
+				ToolCalls []openAIStreamToolCall `json:"tool_calls"`
+			} `json:"delta"`
+		}
+
 		var chunk struct {
 			Usage *struct {
 				CompletionTokens any `json:"completion_tokens"`
 				OutputTokens     any `json:"output_tokens"`
 			} `json:"usage"`
-			Choices []struct {
-				FinishReason any `json:"finish_reason"`
-				Delta        *struct {
-					Content      *string `json:"content"`
-					FunctionCall *struct {
-						Name      *string `json:"name"`
-						Arguments *string `json:"arguments"`
-					} `json:"function_call"`
-					ToolCalls []struct {
-						Index    *int    `json:"index"`
-						ID       *string `json:"id"`
-						Function *struct {
-							Name      *string `json:"name"`
-							Arguments *string `json:"arguments"`
-						} `json:"function"`
-					} `json:"tool_calls"`
-				} `json:"delta"`
-			} `json:"choices"`
+			Choices []openAIStreamChoice `json:"choices"`
 		}
 		if json.Unmarshal([]byte(data), &chunk) != nil {
 			continue
 		}
-		var choice *struct {
-			FinishReason any `json:"finish_reason"`
-			Delta        *struct {
-				Content      *string `json:"content"`
-				FunctionCall *struct {
-					Name      *string `json:"name"`
-					Arguments *string `json:"arguments"`
-				} `json:"function_call"`
-				ToolCalls []struct {
-					Index    *int    `json:"index"`
-					ID       *string `json:"id"`
-					Function *struct {
-						Name      *string `json:"name"`
-						Arguments *string `json:"arguments"`
-					} `json:"function"`
-				} `json:"tool_calls"`
-			} `json:"delta"`
-		}
+		var choice *openAIStreamChoice
 		if len(chunk.Choices) > 0 {
-			choice = &struct {
-				FinishReason any `json:"finish_reason"`
-				Delta        *struct {
-					Content      *string `json:"content"`
-					FunctionCall *struct {
-						Name      *string `json:"name"`
-						Arguments *string `json:"arguments"`
-					} `json:"function_call"`
-					ToolCalls []struct {
-						Index    *int    `json:"index"`
-						ID       *string `json:"id"`
-						Function *struct {
-							Name      *string `json:"name"`
-							Arguments *string `json:"arguments"`
-						} `json:"function"`
-					} `json:"tool_calls"`
-				} `json:"delta"`
-			}{
+			choice = &openAIStreamChoice{
 				FinishReason: chunk.Choices[0].FinishReason,
 				Delta:        chunk.Choices[0].Delta,
 			}
@@ -341,6 +314,33 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 	}
 	sseutil.WriteEvent(w, "message_delta", map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": stopReason, "stop_sequence": nil}, "usage": map[string]any{"output_tokens": outputTokens}})
 	sseutil.WriteEvent(w, "message_stop", map[string]any{"type": "message_stop"})
+}
+
+// writeStreamResponse writes a successful streaming upstream response to the
+// client wire, records usage, and returns the observed token counts and attempt count for logging.
+func writeStreamResponse(w http.ResponseWriter, upstream *http.Response, store *cfg.ConfigStore, model types.SleepyRouterModel, triedCount int) (inputTokens, outputTokens, tried *int) {
+	contentType := upstream.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "text/event-stream; charset=utf-8"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(upstream.StatusCode)
+	streamUsage := PipeWebStreamToNode(upstream.Body, w)
+	usageID := model.UsageID
+	if usageID == "" {
+		usageID = model.ID
+	}
+	in := 0
+	out := 0
+	if streamUsage.InputTokens != nil {
+		in = *streamUsage.InputTokens
+	}
+	if streamUsage.OutputTokens != nil {
+		out = *streamUsage.OutputTokens
+	}
+	_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: in, OutputTokens: out, Success: true})
+	t := triedCount
+	return streamUsage.InputTokens, streamUsage.OutputTokens, &t
 }
 
 func valueOr(value, fallback string) string {
