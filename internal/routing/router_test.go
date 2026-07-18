@@ -10,59 +10,50 @@ import (
 
 func TestRouter_RoutesToGroup(t *testing.T) {
 	groups := types.ModelGroups{"fast": {"a", "b"}, "balanced": {"c"}}
-	choice, err := ChooseModel(groups, "fast")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if choice.ModelID != "a" || choice.Reason != RouteModelGroup {
-		t.Fatalf("choice: %v", choice)
+	ids, reason := OrderedCandidates(groups, "fast", "")
+	if len(ids) == 0 || ids[0] != "a" || reason != RouteModelGroup {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
 }
 
 func TestRouter_FallbackToDefaultGroup(t *testing.T) {
 	groups := types.ModelGroups{"fast": {"a", "b"}, "balanced": {"c"}}
-	ids := OrderedCandidates(groups, "auto", "", "fast", "balanced")
-	if len(ids) != 2 || ids[0] != "a" || ids[1] != "b" {
-		t.Fatalf("candidates: %v", ids)
+	ids, reason := OrderedCandidates(groups, "auto", "", "fast", "balanced")
+	if len(ids) != 2 || ids[0] != "a" || ids[1] != "b" || reason != RouteFallbackOrder {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
 }
 
 func TestRouter_NoRequestFallsBack(t *testing.T) {
 	groups := types.ModelGroups{"default": {"z", "a"}}
-	choice, err := ChooseModel(groups, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if choice.ModelID != "z" || choice.Reason != RouteFallbackOrder {
-		t.Fatalf("choice: %v", choice)
+	ids, reason := OrderedCandidates(groups, "", "")
+	if len(ids) == 0 || ids[0] != "z" || reason != RouteFallbackOrder {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
 }
 
 func TestRouter_GroupOrderAsCandidates(t *testing.T) {
 	groups := types.ModelGroups{"default": {"a", "b", "c"}}
-	ids := OrderedCandidates(groups, "", "")
-	if len(ids) != 3 || ids[0] != "a" || ids[1] != "b" || ids[2] != "c" {
-		t.Fatalf("candidates: %v", ids)
+	ids, reason := OrderedCandidates(groups, "", "")
+	if len(ids) != 3 || ids[0] != "a" || ids[1] != "b" || ids[2] != "c" || reason != RouteFallbackOrder {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
 }
 
 func TestRouter_GroupAliases(t *testing.T) {
 	groups := types.ModelGroups{"fast": {"b"}, "balanced": {"a"}, "capable": {"c"}}
-	choice, err := ChooseGroupedModel(groups, "sleepyrouter/fast", "")
-	if err != nil {
-		t.Fatal(err)
+	ids, reason := OrderedCandidates(groups, "sleepyrouter/fast", "")
+	if len(ids) == 0 || ids[0] != "b" || reason != RouteModelGroup {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
-	if choice.ModelID != "b" || choice.Reason != RouteModelGroup {
-		t.Fatalf("choice: %v", choice)
-	}
-	ids := OrderedCandidates(groups, "haiku", "")
-	if len(ids) != 1 || ids[0] != "b" {
-		t.Fatalf("haiku candidates: %v", ids)
+	ids2, _ := OrderedCandidates(groups, "haiku", "")
+	if len(ids2) != 1 || ids2[0] != "b" {
+		t.Fatalf("haiku ids: %v", ids2)
 	}
 }
 
 func TestRouter_EmptyGroups(t *testing.T) {
-	ids := OrderedCandidates(types.ModelGroups{"fast": {}, "balanced": {}, "capable": {}}, "opus", "")
+	ids, _ := OrderedCandidates(types.ModelGroups{"fast": {}, "balanced": {}, "capable": {}}, "opus", "")
 	if len(ids) != 0 {
 		t.Fatalf("expected empty, got %v", ids)
 	}
@@ -70,80 +61,65 @@ func TestRouter_EmptyGroups(t *testing.T) {
 
 func TestRouter_CustomGroupByName(t *testing.T) {
 	groups := types.ModelGroups{"coding": {"model-a", "model-b"}, "chat": {"model-c"}}
-	choice, err := ChooseGroupedModel(groups, "coding", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if choice.ModelID != "model-a" || choice.Reason != RouteModelGroup {
-		t.Fatalf("choice: %v", choice)
+	ids, reason := OrderedCandidates(groups, "coding", "")
+	if len(ids) == 0 || ids[0] != "model-a" || reason != RouteModelGroup {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
 }
 
 func TestRouter_AllModelsInGroupAsCandidates(t *testing.T) {
 	groups := types.ModelGroups{"coding": {"model-a", "model-b", "model-c"}}
-	ids := OrderedCandidates(groups, "coding", "")
-	if len(ids) != 3 || ids[0] != "model-a" || ids[1] != "model-b" || ids[2] != "model-c" {
-		t.Fatalf("candidates: %v", ids)
+	ids, reason := OrderedCandidates(groups, "coding", "")
+	if len(ids) != 3 || ids[0] != "model-a" || ids[1] != "model-b" || ids[2] != "model-c" || reason != RouteModelGroup {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
 }
 
 func TestRouter_FallbackToDefaultGroupWhenNotAGroup(t *testing.T) {
 	groups := types.ModelGroups{"coding": {"model-a", "model-b"}, "default": {"model-c", "model-d"}}
-	ids := OrderedCandidates(groups, "unknown-model", "default")
-	if len(ids) != 2 || ids[0] != "model-c" || ids[1] != "model-d" {
-		t.Fatalf("candidates: %v", ids)
+	ids, reason := OrderedCandidates(groups, "unknown-model", "default")
+	if len(ids) != 2 || ids[0] != "model-c" || ids[1] != "model-d" || reason != RouteFallbackOrder {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
 }
 
 func TestRouter_FallbackToFirstGroupWhenDefaultNotSet(t *testing.T) {
 	groups := types.ModelGroups{"coding": {"model-a", "model-b"}, "chat": {"model-c"}}
-	ids := OrderedCandidates(groups, "unknown-model", "", "coding", "chat")
-	if len(ids) != 2 || ids[0] != "model-a" || ids[1] != "model-b" {
-		t.Fatalf("candidates: %v", ids)
+	ids, reason := OrderedCandidates(groups, "unknown-model", "", "coding", "chat")
+	if len(ids) != 2 || ids[0] != "model-a" || ids[1] != "model-b" || reason != RouteFallbackOrder {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
 }
 
 func TestRouter_DefaultGroupForAuto(t *testing.T) {
 	groups := types.ModelGroups{"fast": {"model-a"}, "default": {"model-b", "model-c"}}
-	ids := OrderedCandidates(groups, "auto", "default")
-	if len(ids) != 2 || ids[0] != "model-b" || ids[1] != "model-c" {
-		t.Fatalf("candidates: %v", ids)
+	ids, reason := OrderedCandidates(groups, "auto", "default")
+	if len(ids) != 2 || ids[0] != "model-b" || ids[1] != "model-c" || reason != RouteFallbackOrder {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
 }
 
 func TestRouter_IgnoreSleepyRouterPrefix(t *testing.T) {
 	groups := types.ModelGroups{"coding": {"model-a", "model-b"}}
-	choice, err := ChooseGroupedModel(groups, "sleepyrouter/coding", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if choice.ModelID != "model-a" || choice.Reason != RouteModelGroup {
-		t.Fatalf("choice: %v", choice)
+	ids, reason := OrderedCandidates(groups, "sleepyrouter/coding", "")
+	if len(ids) == 0 || ids[0] != "model-a" || reason != RouteModelGroup {
+		t.Fatalf("ids: %v, reason: %v", ids, reason)
 	}
 }
 
 func TestRouter_LegacyAliases(t *testing.T) {
 	groups := types.ModelGroups{"fast": {"model-a"}, "balanced": {"model-b"}, "capable": {"model-c"}}
-	c1, err := ChooseGroupedModel(groups, "haiku", "")
-	if err != nil {
-		t.Fatal(err)
+	ids1, reason1 := OrderedCandidates(groups, "haiku", "")
+	if len(ids1) == 0 || ids1[0] != "model-a" || reason1 != RouteModelGroup {
+		t.Fatalf("haiku: ids=%v, reason=%v", ids1, reason1)
 	}
-	if c1.ModelID != "model-a" || c1.Reason != RouteModelGroup {
-		t.Fatalf("haiku: %v", c1)
+	ids2, reason2 := OrderedCandidates(groups, "sonnet", "")
+	if len(ids2) == 0 || ids2[0] != "model-b" || reason2 != RouteModelGroup {
+		t.Fatalf("sonnet: ids=%v, reason=%v", ids2, reason2)
 	}
-	c2, err := ChooseGroupedModel(groups, "sonnet", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c2.ModelID != "model-b" || c2.Reason != RouteModelGroup {
-		t.Fatalf("sonnet: %v", c2)
-	}
-	c3, err := ChooseGroupedModel(groups, "opus", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c3.ModelID != "model-c" || c3.Reason != RouteModelGroup {
-		t.Fatalf("opus: %v", c3)
+	ids3, reason3 := OrderedCandidates(groups, "opus", "")
+	if len(ids3) == 0 || ids3[0] != "model-c" || reason3 != RouteModelGroup {
+		t.Fatalf("opus: ids=%v, reason=%v", ids3, reason3)
 	}
 }
 

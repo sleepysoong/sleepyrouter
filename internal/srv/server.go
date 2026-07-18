@@ -164,21 +164,18 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 				return
 			}
 			routingModel := requestedModelForRouting(selected.Models, body["model"])
-			CandidateIDs := routing.OrderedCandidates(selected.ModelGroups, routingModel, selected.DefaultGroup, selected.GroupOrder...)
-			normalized := routing.NormalizeModelGroupName(routingModel)
+			Candidates, candidateReason := routing.OrderedCandidates(selected.ModelGroups, routingModel, selected.DefaultGroup, selected.GroupOrder...)
 			logGroup = selected.DefaultGroup
-			if normalized != "" {
-				if _, ok := selected.ModelGroups[normalized]; ok {
-					logGroup = normalized
-				}
+			if candidateReason == routing.RouteModelGroup {
+				logGroup = routing.NormalizeModelGroupName(routingModel)
 			}
-			candCount := len(CandidateIDs)
+			candCount := len(Candidates)
 			logCandidateCount = &candCount
 
 			var upstreamError string
 			triedAny := false
 			triedCount := 0
-			for _, modelID := range CandidateIDs {
+			for _, modelID := range Candidates {
 				model, ok := selected.ByID[modelID]
 				if !ok {
 					continue
@@ -191,7 +188,7 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 				}
 				if requestLogger != nil {
 					routedModel = modelID
-					routeReason = "fallback-order"
+					routeReason = string(candidateReason)
 				}
 				triedAny = true
 				triedCount++
@@ -298,21 +295,18 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 				return
 			}
 			routingModel := requestedModelForRouting(selected.Models, body["model"])
-			CandidateIDs := routing.OrderedCandidates(selected.ModelGroups, routingModel, selected.DefaultGroup, selected.GroupOrder...)
-			normalized := routing.NormalizeModelGroupName(routingModel)
+			Candidates, aCandidateReason := routing.OrderedCandidates(selected.ModelGroups, routingModel, selected.DefaultGroup, selected.GroupOrder...)
 			logGroup = selected.DefaultGroup
-			if normalized != "" {
-				if _, ok := selected.ModelGroups[normalized]; ok {
-					logGroup = normalized
-				}
+			if aCandidateReason == routing.RouteModelGroup {
+				logGroup = routing.NormalizeModelGroupName(routingModel)
 			}
-			candCount := len(CandidateIDs)
+			candCount := len(Candidates)
 			logCandidateCount = &candCount
 
 			var upstreamError string
 			triedAny := false
 			triedCount := 0
-			for _, modelID := range CandidateIDs {
+			for _, modelID := range Candidates {
 				model, ok := selected.ByID[modelID]
 				if !ok {
 					continue
@@ -325,7 +319,7 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 				}
 				if requestLogger != nil {
 					routedModel = modelID
-					routeReason = "fallback-order"
+					routeReason = string(aCandidateReason)
 				}
 				triedAny = true
 				triedCount++

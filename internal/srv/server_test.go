@@ -95,6 +95,59 @@ func mustJSON(t *testing.T, value any) json.RawMessage {
 	return data
 }
 
+func TestServer_RouteReasonInLogEvent(t *testing.T) {
+	store, cleanup := tempServerStore(t)
+	defer cleanup()
+	_, _ = store.UpdateModelGroup("fast", []string{"nvidia/fast-model:free", "openrouter/fast-alt:free"})
+	_ = store.WriteModelCache(types.ModelCache{
+		Models: []types.SleepyRouterModel{
+			{ID: "model-a:free", Name: "Default A", Provider: "test"},
+			{ID: "model-b:free", Name: "Default B", Provider: "test"},
+			{ID: "nvidia/fast-model:free", Name: "Fast Model", Provider: "nvidia", Source: types.SourceNVIDIA},
+			{ID: "openrouter/fast-alt:free", Name: "Fast Alt", Provider: "openrouter", Source: types.SourceOpenRouter},
+		},
+		FetchedAt: time.Now().UTC().Format(time.RFC3339),
+	})
+
+	tests := []struct {
+		name           string
+		requestModel   string
+		wantReason     string
+	}{
+		{"explicit group match", "sleepyrouter/fast", "model-group"},
+		{"auto falls back", "auto", "fallback-order"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured ServerLogEvent
+			logger := func(event ServerLogEvent) {
+				if event.Type == "response" {
+					captured = event
+				}
+			}
+			opts := ServerOptions{
+				Store:         store,
+				FetchImpl:     nil,
+				Env:           utils.Environment{"NVIDIA_API_KEY": "key", "OPENROUTER_API_KEY": "key"},
+				RequestLogger: logger,
+			}
+			server := CreateSleepyRouterServer(opts)
+			reqBody, _ := json.Marshal(map[string]any{
+				"model":    tt.requestModel,
+				"messages": []any{map[string]any{"role": "user", "content": "hi"}},
+			})
+			w := testRequest(server.Handler, "POST", "/v1/chat/completions", bytes.NewReader(reqBody))
+			if captured.RouteReason == "" {
+				t.Fatalf("empty RouteReason (status %d): log not captured", w.Code)
+			}
+			if captured.RouteReason != tt.wantReason {
+				t.Fatalf("RouteReason: got %q, want %q", captured.RouteReason, tt.wantReason)
+			}
+		})
+	}
+}
+
 func TestServer_HealthNoKey(t *testing.T) {
 	store, cleanup := tempServerStore(t)
 	defer cleanup()
