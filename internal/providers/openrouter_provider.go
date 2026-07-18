@@ -11,10 +11,6 @@ type OpenRouterProvider struct {
 	BaseProvider
 }
 
-func (p *OpenRouterProvider) ListFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
-	return ListOpenRouterFreeModels(ctx, apiKey, client)
-}
-
 func (p *OpenRouterProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
 	return PostOpenRouterChatCompletion(ctx, apiKey, body, client)
 }

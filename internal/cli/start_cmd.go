@@ -5,10 +5,10 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"syscall"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
-	"github.com/sleepysoong/sleepyrouter/internal/providers"
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/sleepysoong/sleepyrouter/internal/srv"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
@@ -87,7 +87,7 @@ func RunStartCommand(options StartCommandOptions) error {
 		if name == config.DefaultModelGroup {
 			marker = " (기본)"
 		}
-		fmt.Printf("  %s%s: %s\n", name, marker, providers.JoinStrings(config.ModelGroups[name], ", "))
+		fmt.Printf("  %s%s: %s\n", name, marker, strings.Join(config.ModelGroups[name], ", "))
 	}
 	if config.DefaultModelGroup != "" {
 		fmt.Printf("\n기본 그룹: %s\n", config.DefaultModelGroup)

@@ -141,6 +141,25 @@ func (f HTTPClientFunc) Do(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+// IntPointer returns a pointer to v.
+func IntPointer(v int) *int { return &v }
+
+// StringFromUnknown returns value as a string if it is one, otherwise "".
+func StringFromUnknown(value any) string {
+	if s, ok := value.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// UnknownString returns value as a string via Sprint if not a string.
+func UnknownString(value any) string {
+	if s, ok := value.(string); ok {
+		return s
+	}
+	return fmt.Sprint(value)
+}
+
 func ReadBody(r *http.Request) (map[string]any, error) {
 	data, err := io.ReadAll(r.Body)
 	if err != nil {

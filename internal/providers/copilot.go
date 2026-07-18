@@ -71,10 +71,6 @@ func copilotSessionToken(ctx context.Context, apiKey string, client types.HTTPDo
 	return token.Token, nil
 }
 
-func ListCopilotFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
-	return []types.SleepyRouterModel{}, nil
-}
-
 func PostCopilotChatCompletion(ctx context.Context, apiKey string, body any, client types.HTTPDoer) (*http.Response, error) {
 	sessionToken, err := copilotSessionToken(ctx, apiKey, client)
 	if err != nil {
@@ -102,10 +98,6 @@ func ResetCopilotTokenCache() {
 
 type CopilotProvider struct {
 	BaseProvider
-}
-
-func (p *CopilotProvider) ListFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
-	return ListCopilotFreeModels(ctx, apiKey, client)
 }
 
 func (p *CopilotProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {

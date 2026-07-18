@@ -11,10 +11,6 @@ import (
 
 const ZenChatCompletionsURL = "https://opencode.ai/zen/v1/chat/completions"
 
-func ListZenFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
-	return []types.SleepyRouterModel{}, nil
-}
-
 func PostZenChatCompletion(ctx context.Context, apiKey string, body any, client types.HTTPDoer) (*http.Response, error) {
 	req, err := utils.JSONRequest(ctx, http.MethodPost, ZenChatCompletionsURL, map[string]string{
 		"Authorization": "Bearer " + apiKey,
@@ -28,10 +24,6 @@ func PostZenChatCompletion(ctx context.Context, apiKey string, body any, client 
 
 type ZenProvider struct {
 	BaseProvider
-}
-
-func (p *ZenProvider) ListFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
-	return ListZenFreeModels(ctx, apiKey, client)
 }
 
 func (p *ZenProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {

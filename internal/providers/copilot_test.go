@@ -26,26 +26,6 @@ func copilotJSONResponse(status int, body any) *http.Response {
 	}
 }
 
-func TestCopilot_ListFreeModels_ReturnsKnownModels(t *testing.T) {
-	models, err := ListCopilotFreeModels(context.Background(), "gh-token", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(models) != 0 {
-		t.Fatalf("expected no models, got %d", len(models))
-	}
-}
-
-func TestCopilot_ListFreeModels_ThrowsOnTokenFailure(t *testing.T) {
-	models, err := ListCopilotFreeModels(context.Background(), "bad-key", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(models) != 0 {
-		t.Fatalf("expected no models, got %d", len(models))
-	}
-}
-
 func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
 	ResetCopilotTokenCache()
 	var capturedURL string
@@ -129,12 +109,4 @@ func TestCopilot_TokenCache_ReusesWithinWindow(t *testing.T) {
 	}
 }
 
-func TestCopilot_NormalizeModelID(t *testing.T) {
-	models, err := ListCopilotFreeModels(context.Background(), "gh-token", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(models) != 0 {
-		t.Fatalf("expected no models, got %d", len(models))
-	}
-}
+

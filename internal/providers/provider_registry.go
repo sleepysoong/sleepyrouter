@@ -17,7 +17,6 @@ const (
 type Provider interface {
 	Name() string
 	Source() types.ModelSource
-	ListFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error)
 	ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error)
 	Messages(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error)
 	MessageProtocol() MessageProtocol
@@ -34,8 +33,8 @@ func GetProvider(source types.ModelSource) Provider {
 }
 
 // BaseProvider carries the metadata shared by every provider so concrete
-// providers only implement the parts that actually differ: ListFreeModels and
-// ChatCompletion. Providers that do not natively support the Messages endpoint
+// providers only implement the parts that actually differ: ChatCompletion.
+// Providers that do not natively support the Messages endpoint
 // precompute the error in messagesErr and inherit Messages from BaseProvider;
 // providers that do support it (OpenRouter) override Messages.
 type BaseProvider struct {
