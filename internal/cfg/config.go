@@ -115,8 +115,13 @@ func (store *ConfigStore) ReadConfig() (types.SleepyRouterConfig, error) {
 			}
 		}
 	}
-	if defaultRaw, ok := raw["defaultGroup"]; ok {
-		_ = json.Unmarshal(defaultRaw, &config.DefaultGroup)
+	if defaultRaw, ok := raw["defaultModelGroup"]; ok {
+		_ = json.Unmarshal(defaultRaw, &config.DefaultModelGroup)
+	} else if defaultRaw, ok := raw["defaultGroup"]; ok {
+		_ = json.Unmarshal(defaultRaw, &config.DefaultModelGroup)
+	}
+	if modelsRaw, ok := raw["models"]; ok {
+		_ = json.Unmarshal(modelsRaw, &config.Models)
 	}
 	return config, nil
 }

@@ -84,12 +84,11 @@ func TestSleepyRouterConfig_MarshalJSON(t *testing.T) {
 		}
 	})
 
-	// defaultGroup included when present
-	t.Run("defaultGroup omitted when empty", func(t *testing.T) {
-		cfg := SleepyRouterConfig{Port: 1, ModelGroups: ModelGroups{"g": {"m"}}, DefaultGroup: ""}
+	t.Run("defaultModelGroup omitted when empty", func(t *testing.T) {
+		cfg := SleepyRouterConfig{Port: 1, ModelGroups: ModelGroups{"g": {"m"}}, DefaultModelGroup: ""}
 		data, _ := json.Marshal(cfg)
-		if strings.Contains(string(data), "defaultGroup") {
-			t.Errorf("defaultGroup should be omitted when empty: %s", string(data))
+		if strings.Contains(string(data), "defaultModelGroup") {
+			t.Errorf("defaultModelGroup should be omitted when empty: %s", string(data))
 		}
 	})
 

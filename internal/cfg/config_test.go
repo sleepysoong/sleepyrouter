@@ -39,7 +39,7 @@ func TestConfigStore_WriteAndReadConfig(t *testing.T) {
 	config := types.SleepyRouterConfig{
 		Port:         4567,
 		ModelGroups:  types.ModelGroups{"fast": {"a:free", "b:free"}},
-		DefaultGroup: "fast",
+		DefaultModelGroup: "fast",
 		GroupOrder:   []string{"fast"},
 	}
 	if err := store.WriteConfig(config); err != nil {
@@ -55,8 +55,8 @@ func TestConfigStore_WriteAndReadConfig(t *testing.T) {
 	if len(read.ModelGroups["fast"]) != 2 || read.ModelGroups["fast"][0] != "a:free" {
 		t.Fatalf("groups: %v", read.ModelGroups)
 	}
-	if read.DefaultGroup != "fast" {
-		t.Fatalf("defaultGroup: %s", read.DefaultGroup)
+	if read.DefaultModelGroup != "fast" {
+		t.Fatalf("defaultModelGroup: %s", read.DefaultModelGroup)
 	}
 }
 

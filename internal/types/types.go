@@ -53,11 +53,27 @@ type UsageLogEntry struct {
 	Success      bool   `json:"success"`
 }
 
+// TokenSpec carries per-direction token limits and pricing ($/1M tokens).
+type TokenSpec struct {
+	MaxTokens int     `json:"maxTokens,omitempty"`
+	Price     float64 `json:"price,omitempty"`
+}
+
+// ModelDefinition is a config-defined model alias. Provider selects which
+// upstream API to call; Name is the model ID the upstream expects.
+type ModelDefinition struct {
+	Provider     string    `json:"provider"`
+	Name         string    `json:"name"`
+	InputTokens  TokenSpec `json:"inputTokens,omitempty"`
+	OutputTokens TokenSpec `json:"outputTokens,omitempty"`
+}
+
 type SleepyRouterConfig struct {
-	Port         int         `json:"port"`
-	ModelGroups  ModelGroups `json:"modelGroups"`
-	DefaultGroup string      `json:"defaultGroup,omitempty"`
-	GroupOrder   []string    `json:"-"`
+	Port             int                        `json:"port"`
+	ModelGroups      ModelGroups                `json:"modelGroups"`
+	DefaultModelGroup string                    `json:"defaultModelGroup,omitempty"`
+	GroupOrder       []string                   `json:"-"`
+	Models           map[string]ModelDefinition `json:"models,omitempty"`
 }
 
 type ModelCache struct {
@@ -139,13 +155,21 @@ func (config SleepyRouterConfig) MarshalJSON() ([]byte, error) {
 		out.Write(ids)
 	}
 	out.WriteByte('}')
-	if config.DefaultGroup != "" {
-		value, err := json.Marshal(config.DefaultGroup)
+	if config.DefaultModelGroup != "" {
+		value, err := json.Marshal(config.DefaultModelGroup)
 		if err != nil {
 			return nil, err
 		}
-		out.WriteString(`,"defaultGroup":`)
+		out.WriteString(`,"defaultModelGroup":`)
 		out.Write(value)
+	}
+	if len(config.Models) > 0 {
+		modelsJSON, err := json.Marshal(config.Models)
+		if err != nil {
+			return nil, err
+		}
+		out.WriteString(`,"models":`)
+		out.Write(modelsJSON)
 	}
 	out.WriteByte('}')
 	return out.Bytes(), nil
