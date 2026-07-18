@@ -14,6 +14,7 @@ const (
 	SourceOpenRouter ModelSource = "openrouter"
 	SourceNVIDIA     ModelSource = "nvidia"
 	SourceCopilot    ModelSource = "copilot"
+	SourceZen        ModelSource = "zen"
 )
 
 type ModelGroups map[string][]string
@@ -32,13 +33,12 @@ type SleepyRouterModel struct {
 }
 
 func SourceOf(model SleepyRouterModel) ModelSource {
-	if model.Source == SourceNVIDIA {
-		return SourceNVIDIA
+	switch model.Source {
+	case SourceNVIDIA, SourceCopilot, SourceZen:
+		return model.Source
+	default:
+		return SourceOpenRouter
 	}
-	if model.Source == SourceCopilot {
-		return SourceCopilot
-	}
-	return SourceOpenRouter
 }
 
 type UsageLogEntry struct {
@@ -65,6 +65,7 @@ type ProviderAPIKeys struct {
 	OpenRouter string
 	NVIDIA     string
 	Copilot    string
+	Zen        string
 }
 
 func (keys ProviderAPIKeys) For(source ModelSource) string {
@@ -73,6 +74,8 @@ func (keys ProviderAPIKeys) For(source ModelSource) string {
 		return keys.NVIDIA
 	case SourceCopilot:
 		return keys.Copilot
+	case SourceZen:
+		return keys.Zen
 	default:
 		return keys.OpenRouter
 	}

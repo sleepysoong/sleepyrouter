@@ -34,8 +34,8 @@ func GetProvider(source types.ModelSource) Provider {
 }
 
 func AllProviders() []Provider {
-	// Stable order: OpenRouter first, then NVIDIA, then Copilot, then any others
-	order := []types.ModelSource{types.SourceOpenRouter, types.SourceNVIDIA, types.SourceCopilot}
+	// Stable order: OpenRouter first, then NVIDIA, then Copilot, then Zen, then any others
+	order := []types.ModelSource{types.SourceOpenRouter, types.SourceNVIDIA, types.SourceCopilot, types.SourceZen}
 	list := make([]Provider, 0, len(providers))
 	for _, source := range order {
 		if p, ok := providers[source]; ok {

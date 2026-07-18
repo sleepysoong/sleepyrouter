@@ -180,7 +180,7 @@ func JoinStrings(items []string, sep string) string {
 
 func IsCachedFreeModel(model types.SleepyRouterModel) bool {
 	source := types.SourceOf(model)
-	if source == types.SourceNVIDIA || source == types.SourceCopilot {
+	if source == types.SourceNVIDIA || source == types.SourceCopilot || source == types.SourceZen {
 		return true
 	}
 	if strings.HasSuffix(model.ID, ":free") {
