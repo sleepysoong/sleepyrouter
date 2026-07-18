@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/signal"
 	"sort"
-	"strings"
 	"syscall"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
@@ -65,16 +64,16 @@ func RunStartCommand(options StartCommandOptions) error {
 		return err
 	}
 
-	// Validate model IDs have provider prefixes
-	invalidModels := invalidModelIDs(config.ModelGroups)
+	// Validate all model aliases are defined in config.Models
+	undefinedAliases := undefinedModelAliases(config.ModelGroups, config.Models)
 	groupNames := make([]string, 0, len(config.ModelGroups))
 	for name := range config.ModelGroups {
 		groupNames = append(groupNames, name)
 	}
 	sort.Strings(groupNames)
-	if len(invalidModels) > 0 {
-		msg := "\n모델 ID가 잘못되었어요. nvidia/, openrouter/, copilot/ 또는 zen/ 접두사가 필요해요:\n"
-		for _, m := range invalidModels {
+	if len(undefinedAliases) > 0 {
+		msg := "\n모델 그룹에 정의되지 않은 alias가 있어요. config.json의 models에 추가하세요:\n"
+		for _, m := range undefinedAliases {
 			msg += fmt.Sprintf("  - %s\n", m)
 		}
 		return fmt.Errorf("%s\nconfig.json을 수정한 후 다시 시도하세요.", msg)
@@ -83,16 +82,16 @@ func RunStartCommand(options StartCommandOptions) error {
 	if len(groupNames) > 0 {
 		totalModels := len(routing.AllGroupModelIDs(config.ModelGroups, config.GroupOrder...))
 		fmt.Printf("\n모델 그룹 (%d개 모델, %d개 그룹)\n", totalModels, len(groupNames))
-		for _, name := range groupNames {
-			marker := ""
-			if name == config.DefaultGroup {
-				marker = " (기본)"
-			}
-			fmt.Printf("  %s%s: %s\n", name, marker, providers.JoinStrings(config.ModelGroups[name], ", "))
+	for _, name := range groupNames {
+		marker := ""
+		if name == config.DefaultModelGroup {
+			marker = " (기본)"
 		}
-		if config.DefaultGroup != "" {
-			fmt.Printf("\n기본 그룹: %s\n", config.DefaultGroup)
-		}
+		fmt.Printf("  %s%s: %s\n", name, marker, providers.JoinStrings(config.ModelGroups[name], ", "))
+	}
+	if config.DefaultModelGroup != "" {
+		fmt.Printf("\n기본 그룹: %s\n", config.DefaultModelGroup)
+	}
 		fmt.Println()
 	}
 
@@ -122,11 +121,7 @@ func boolCheck(value bool) string {
 	return "✗"
 }
 
-func invalidModelIDs(groups types.ModelGroups) []string {
-	prefixes := make([]string, len(types.AllModelSources))
-	for i, src := range types.AllModelSources {
-		prefixes[i] = string(src) + "/"
-	}
+func undefinedModelAliases(groups types.ModelGroups, models map[string]types.ModelDefinition) []string {
 	names := make([]string, 0, len(groups))
 	for name := range groups {
 		names = append(names, name)
@@ -135,14 +130,7 @@ func invalidModelIDs(groups types.ModelGroups) []string {
 	var result []string
 	for _, name := range names {
 		for _, id := range groups[name] {
-			valid := false
-			for _, prefix := range prefixes {
-				if strings.HasPrefix(id, prefix) {
-					valid = true
-					break
-				}
-			}
-			if !valid {
+			if _, ok := models[id]; !ok {
 				result = append(result, name+": "+id)
 			}
 		}
