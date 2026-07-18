@@ -53,6 +53,128 @@ cd sleepy-llm-router && go install ./cmd/sleepyrouter
 sleepyrouter start
 ```
 
+## 설정 예제
+
+`sleepyrouter` 설정은 `~/.sleepyrouter/config.json`에 JSON 형식으로 저장합니다.
+
+```json
+{
+  "port": 4567,
+  "modelGroups": {
+    "fast": [
+      "nvidia/meta/llama-3.1-8b-instruct",
+      "openrouter/microsoft/phi-3-mini-128k-instruct:free"
+    ],
+    "balanced": [
+      "nvidia/meta/llama-3.1-70b-instruct",
+      "openrouter/meta-llama/llama-3.1-70b-instruct:free"
+    ],
+    "capable": [
+      "openrouter/openai/gpt-4o-mini:free",
+      "nvidia/mistralai/mistral-large-2-instruct"
+    ]
+  },
+  "defaultGroup": "balanced"
+}
+```
+
+| 필드 | 설명 |
+| --- | --- |
+| `port` | 프록시 포트 (기본값: `4567`) |
+| `modelGroups` | 모델 그룹별로 라우팅할 모델 ID 목록 (provider 접두사 포함) |
+| `defaultGroup` | 모델 그룹을 지정하지 않았을 때 사용할 기본 그룹 (생략 시 첫 번째 그룹) |
+| `groupOrder` | `start` 명령어의 `--group-order` 플래그로만 지정 (설정 파일 무시) |
+
+### 작동 방식
+
+요청이 들어오면 `sleepyrouter`은 그룹 안의 모델을 순서대로 시도합니다. 첫 번째 모델이 실패(429 rate-limit, 5xx, 타임아웃)하면 다음 모델로 자동 페일오버합니다. 그룹의 모든 모델이 실패하면 다음 그룹으로 넘어갑니다.
+
+```
+요청 (group=balanced)
+  → nvidia/meta/llama-3.1-70b-instruct 시도
+    → 실패 (rate-limit)
+  → openrouter/meta-llama/llama-3.1-70b-instruct:free 시도
+    → 성공
+```
+
+### 실제 사용 예
+
+**OpenRouter + NVIDIA + Copilot 하루 종일 쓰기:**
+
+```json
+{
+  "modelGroups": {
+    "fast": [
+      "nvidia/meta/llama-3.1-8b-instruct",
+      "copilot/gpt-4o-mini",
+      "openrouter/microsoft/phi-3-mini-128k-instruct:free"
+    ],
+    "balanced": [
+      "nvidia/meta/llama-3.1-70b-instruct",
+      "copilot/claude-sonnet-4",
+      "openrouter/meta-llama/llama-3.1-70b-instruct:free"
+    ],
+    "capable": [
+      "openrouter/openai/gpt-4o-mini:free",
+      "nvidia/mistralai/mistral-large-2-instruct",
+      "openrouter/anthropic/claude-3.5-sonnet:free"
+    ]
+  }
+}
+```
+
+**Zen 모델 (OpenCode API)만 사용:**
+
+```json
+{
+  "modelGroups": {
+    "default": ["zen/deepseek-v4-flash-free"]
+  }
+}
+```
+
+```bash
+# .env
+OPENCODE_API_KEY=sk-...
+```
+
+**단일 그룹 + 간단한 설정:**
+
+```json
+{
+  "modelGroups": {
+    "models": [
+      "nvidia/meta/llama-3.1-70b-instruct",
+      "openrouter/meta-llama/llama-3.1-70b-instruct:free"
+    ]
+  }
+}
+```
+
+### 그룹 순서 지정
+
+`start` 명령어에 `--group-order` 플래그로 요청이 라우팅될 그룹 우선순위를 정할 수 있습니다.
+
+```bash
+sleepyrouter start --group-order="capable,balanced,fast"
+```
+
+이 순서는 모델 그룹 설정과 독립적으로 적용되며, 라우팅 시도 우선순위만 변경합니다. 요청이 `capable` 그룹의 모든 모델에서 실패하면 `balanced`로, 거기도 실패하면 `fast`로 넘어갑니다.
+
+### API 키 설정
+
+키는 `~/.sleepyrouter/.env` 파일에 저장합니다. KEY가 설정된 provider만 시작 시 활성화됩니다.
+
+```bash
+# ~/.sleepyrouter/.env
+OPENROUTER_API_KEY=sk-or-...
+NVIDIA_API_KEY=nvapi-...
+GITHUB_COPILOT_TOKEN=ghp_...
+OPENCODE_API_KEY=sk-...
+```
+
+`sleepyrouter start`를 실행하면 설정된 키가 있는 provider만 자동으로 감지하여 서빙합니다. 키가 하나도 없으면 서버가 시작되지 않습니다.
+
 ## 자주 쓰는 명령어
 
 | 명령어 | 용도 |
