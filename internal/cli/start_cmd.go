@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"syscall"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
@@ -60,21 +61,14 @@ func RunStartCommand(options struct {
 	}
 
 	// Validate model IDs have provider prefixes
-	invalidModels := []string{}
+	invalidModels := invalidModelIDs(config.ModelGroups)
 	groupNames := make([]string, 0, len(config.ModelGroups))
 	for name := range config.ModelGroups {
 		groupNames = append(groupNames, name)
 	}
 	sort.Strings(groupNames)
-	for _, group := range groupNames {
-		for _, id := range config.ModelGroups[group] {
-			if !startsWith(id, "nvidia/") && !startsWith(id, "openrouter/") {
-				invalidModels = append(invalidModels, fmt.Sprintf("%s: %s", group, id))
-			}
-		}
-	}
 	if len(invalidModels) > 0 {
-		fmt.Fprintln(os.Stderr, "\n모델 ID가 잘못되었어요. nvidia/ 또는 openrouter/ 접두사가 필요해요:")
+		fmt.Fprintln(os.Stderr, "\n모델 ID가 잘못되었어요. nvidia/, openrouter/ 또는 copilot/ 접두사가 필요해요:")
 		for _, m := range invalidModels {
 			fmt.Fprintf(os.Stderr, "  - %s\n", m)
 		}
@@ -124,6 +118,27 @@ func boolCheck(value bool) string {
 	return "✗"
 }
 
-func startsWith(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
+func invalidModelIDs(groups types.ModelGroups) []string {
+	prefixes := []string{"nvidia/", "openrouter/", "copilot/"}
+	names := make([]string, 0, len(groups))
+	for name := range groups {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var result []string
+	for _, name := range names {
+		for _, id := range groups[name] {
+			valid := false
+			for _, prefix := range prefixes {
+				if strings.HasPrefix(id, prefix) {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				result = append(result, name+": "+id)
+			}
+		}
+	}
+	return result
 }
