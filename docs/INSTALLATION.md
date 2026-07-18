@@ -4,31 +4,23 @@
 
 ## 1. 설치
 
-### npm으로 설치 (권장)
+### Go으로 설치 (권장)
 
 ```bash
-npm install -g sleepyrouter
+go install github.com/sleepysoong/sleepyrouter/cmd/sleepyrouter@latest
 ```
 
-### 로컬 파일로 설치
+### 소스에서 빌드
 
-저장소를 clone한 뒤 로컬에서 직접 설치할 수 있습니다.
+저장소를 clone한 뒤 로컬에서 직접 빌드할 수 있습니다.
 
 ```bash
 # 1. 저장소 clone
-git clone https://github.com/sleepysoong/sleepyrouter
-cd sleepyrouter
+git clone https://github.com/sleepysoong/sleepy-llm-router
+cd sleepy-llm-router
 
-# 2. 의존성 설치 및 빌드
-npm install
-npm run build
-
-# 3-1. npm pack으로 설치 (tarball 생성 후 전역 설치)
-npm pack
-npm install -g ./sleepyrouter-*.tgz
-
-# 3-2. npm link로 설치 (개발용, 소스 변경 시 자동 반영)
-npm link
+# 2. 빌드
+go install ./cmd/sleepyrouter
 ```
 
 설치 후 `sleepyrouter` 명령어를 사용할 수 있습니다.
@@ -39,13 +31,13 @@ sleepyrouter --version
 
 설치 시 백그라운드 프로세스가 자동으로 뜨지 **않습니다**. 필요할 때 직접 실행하세요.
 
-Node.js 20 이상이 필요합니다.
+Go 1.26 이상이 필요합니다.
 
 ## 2. Provider API 키 설정
 
 `sleepyrouter` 은 provider 키를 다음 순서로 읽습니다.
 
-1. 프로세스/전역 환경의 `OPENROUTER_API_KEY` / `NVIDIA_API_KEY`
+1. 프로세스/전역 환경의 `OPENROUTER_API_KEY` / `NVIDIA_API_KEY` / `GITHUB_COPILOT_TOKEN`
 2. `~/.sleepyrouter/.env`
 
 `~/.sleepyrouter/.env` 예시는 아래와 같습니다.
@@ -53,6 +45,7 @@ Node.js 20 이상이 필요합니다.
 ```bash
 OPENROUTER_API_KEY=sk-or-...
 NVIDIA_API_KEY=nvapi-...
+GITHUB_COPILOT_TOKEN=ghp_...
 ```
 
 키가 설정된 provider만 사용됩니다.
@@ -134,7 +127,8 @@ export ANTHROPIC_API_KEY=
 
 | 명령어 | 용도 |
 | --- | --- |
-| `git clone https://github.com/sleepysoong/sleepyrouter` | 저장소를 clone합니다. |
-| `cd sleepyrouter` | 프로젝트 디렉터리로 이동합니다. |
+| `git clone https://github.com/sleepysoong/sleepy-llm-router` | 저장소를 clone합니다. |
+| `cd sleepy-llm-router` | 프로젝트 디렉터리로 이동합니다. |
 | `go test ./...` | 테스트 전체를 실행합니다. |
-| `go build` | 빌드를 실행합니다. |
+| `go build ./...` | 빌드를 실행합니다. |
+| `go install ./cmd/sleepyrouter` | 로컬 변경사항을 전역 바이너리로 설치합니다. |

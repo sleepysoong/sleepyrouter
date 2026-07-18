@@ -25,20 +25,30 @@ Free tier 코딩 에이전트는 스펙 시트에서는 멀쩡해 보이지만, 
 
 ## API 키 발급
 
-`sleepyrouter`은 트래픽만 전달합니다. 두 provider 중 하나 또는 둘 모두에서 직접 키를 발급받아야 합니다.
+`sleepyrouter`은 트래픽만 전달합니다. 지원되는 provider(OpenRouter, NVIDIA, GitHub Copilot) 중 하나 이상에서 직접 키를 발급받아야 합니다.
 
 **OpenRouter** — [openrouter.ai](https://openrouter.ai)에서 가입한 뒤 Keys 메뉴에서 키를 발급받습니다(prefix `sk-or-`). `:free` 모델은 하루 50회까지 사용할 수 있고, 크레딧을 $10 이상 충전하면 하루 1,000회로 늘어납니다. 무료 한도에는 신용카드가 필요하지 않습니다.
 
 **NVIDIA** — [build.nvidia.com](https://build.nvidia.com)(NVIDIA Developer Program)에서 가입한 뒤 모델 카드의 "Get API Key" 버튼으로 발급받습니다(prefix `nvapi-`). 신용카드는 필요하지 않으며, rate-limit은 모델별로 적용됩니다.
+
+**GitHub Copilot** — [GitHub Settings > Developer settings](https://github.com/settings/tokens)에서 Personal Access Token (PAT)을 발급받습니다. 토큰 환경 변수명은 `GITHUB_COPILOT_TOKEN` 입니다. GitHub Copilot Free/Pro 등 사용자 플랜에 따라 사용할 수 있는 모델 목록(gpt-4o, claude-sonnet-4 등)이 다릅니다.
 
 가지고 있는 키를 `~/.sleepyrouter/.env`에 넣어 두면, `sleepyrouter`은 키가 설정된 provider만 사용합니다.
 
 ## 30초 만에 시도하기
 
 ```bash
-npm install -g sleepyrouter
+go install github.com/sleepysoong/sleepyrouter/cmd/sleepyrouter@latest
 mkdir -p ~/.sleepyrouter && echo 'OPENROUTER_API_KEY=sk-or-...' > ~/.sleepyrouter/.env
 sleepyrouter start        # http://localhost:4567 서빙
+```
+
+소스에서 빌드하려면:
+
+```bash
+git clone https://github.com/sleepysoong/sleepy-llm-router
+cd sleepy-llm-router && go install ./cmd/sleepyrouter
+sleepyrouter start
 ```
 
 ## 자주 쓰는 명령어
@@ -46,9 +56,9 @@ sleepyrouter start        # http://localhost:4567 서빙
 | 명령어 | 용도 |
 | --- | --- |
 | `sleepyrouter start` | 로컬 프록시를 foreground로 실행하고 request/response 라우팅 로그를 출력합니다. |
-| `sleepyrouter status` | config와 선택된 모델 상태를 확인합니다. |
-| `sleepyrouter doctor` | config 경로, 키, 모델 캐시 상태를 점검합니다. |
-| `sleepyrouter usage` | 모델별 요청 수와 token 관측치를 확인합니다. |
+| `sleepyrouter usage` | 모델별 요청 수, 실패 수, 토큰 사용량을 출력합니다. |
+| `sleepyrouter usage --date 20260203` | 특정 날짜의 사용량만 출력합니다. |
+| `sleepyrouter usage --week 27` | 특정 주의 사용량만 출력합니다. |
 
 ## 에이전트에서 쓰기
 
@@ -81,7 +91,7 @@ Anthropic surface는 로컬 `count_tokens` 추정치도 제공하며, OpenAI 호
 
 `sleepyrouter`은 요청을 라우팅된 모델로 그대로 전달하며, 에이전트 세션에 누적된 대화를 자동으로 압축(compact)하거나 요약하거나 잘라내지 않습니다. 따라서 컨텍스트 오버플로우는 실제로 발생할 수 있습니다. 긴 세션이 1M 토큰 컨텍스트 모델에서 시작된 뒤 128k/200k 모델로 라우팅되거나 페일오버되면, 프롬프트가 작은 모델의 컨텍스트 윈도를 넘는 순간 업스트림 제공자가 요청을 거절할 수 있습니다.
 
-모델을 고를 때는 라우팅 후보 풀마다 컨텍스트 크기 티어를 맞춰두세요. `sleepyrouter status`에서 각 모델의 컨텍스트 크기를 확인할 수 있습니다.
+모델을 고를 때는 라우팅 후보 풀마다 컨텍스트 크기 티어를 맞춰두세요. 현재는 인터페이스에서 컨텍스트 크기를 직접 노출하지 않으니, 모델 카탈로그(`docs/provider-guide.md`)나 provider 페이지를 참고하세요.
 
 ## 더 알아보기
 

@@ -4,8 +4,8 @@
 
 ## 현재 프로바이더 모델
 
-- 소스 앵커: [openrouter.go](../internal/core/openrouter.go), [nvidia.go](../internal/core/nvidia.go), [copilot.go](../internal/core/copilot.go), [catalog.go](../internal/core/catalog.go).
-- `catalog.go`의 `listAvailableFreeModels`는 `server.go`에서 사용되는 멀티 프로바이더 진입점이에요. 새 프로바이더는 여기에 등록해야 해요.
+- 소스 앵커: [openrouter.go](../internal/providers/openrouter.go), [nvidia.go](../internal/providers/nvidia.go), [copilot.go](../internal/providers/copilot.go), [catalog.go](../internal/providers/catalog.go).
+- `catalog.go`는 `server.go`에서 사용되는 멀티 프로바이더 진입점이에요. 새 프로바이더는 [provider_registry.go](../internal/providers/provider_registry.go)의 `RegisterProvider` init()에 등록해야 해요.
 - OpenRouter 모델 적격성은 `:free` ID 또는 텍스트 출력 지원이 있는 영(0) 프롬프트/완료/요청 가격을 허용해요.
 - NVIDIA 모델 적격성은 업스트림 `/v1/models` 목록을 채팅 유사 항목으로 필터링해요: ID, 이름, 유형, 작업, 태그가 비채팅 패턴(임베드/리랭크/오디오/음성/비디오/번역/안전 등)과 일치하면 안 되고, 명시적 `task`가 채팅/생성/완료/인스트럭트로 읽혀야 해요.
 - Copilot 모델 적격성은 공식 `/v1/models` 엔드포인트가 없기 때문에 하드코딩된 알려진 무료 모델 목록(gpt-4o, claude-sonnet-4 등)을 사용해요.
@@ -21,7 +21,7 @@
 3. 소스 앵커를 확인하세요:
    - `openrouter.go`, `nvidia.go`, `copilot.go`, `catalog.go`에서 어댑터와 모델 정규화.
    - [scripts/update-model-metadata.mjs](../scripts/update-model-metadata.mjs)에서 프로바이더 메타데이터 보강 (`model-metadata` 브랜치에 게시).
-   - [server.go](../internal/core/server.go)에서 선택된 모델 필터링과 요청 전달.
+   - [server.go](../internal/srv/server.go)에서 선택된 모델 필터링과 요청 전달.
 4. 테스트를 확인하세요:
    - `openrouter_test.go`
    - `nvidia_test.go`

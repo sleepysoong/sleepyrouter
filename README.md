@@ -37,20 +37,19 @@ Free tier 코딩 에이전트는 스펙 시트에서는 멀쩡해 보이지만, 
 
 ## 30초 만에 시도하기
 
-### npm으로 설치
+### Go으로 설치
 
 ```bash
-npm install -g sleepyrouter
+go install github.com/sleepysoong/sleepyrouter/cmd/sleepyrouter@latest
 mkdir -p ~/.sleepyrouter && echo 'OPENROUTER_API_KEY=sk-or-...' > ~/.sleepyrouter/.env
 sleepyrouter start        # http://localhost:4567 서빙
 ```
 
-### 로컬 파일로 설치
+### 소스에서 빌드
 
 ```bash
-git clone https://github.com/sleepysoong/sleepyrouter
-cd sleepyrouter && npm install && npm run build
-npm pack && npm install -g ./sleepyrouter-*.tgz
+git clone https://github.com/sleepysoong/sleepy-llm-router
+cd sleepy-llm-router && go install ./cmd/sleepyrouter
 sleepyrouter start
 ```
 
@@ -93,7 +92,7 @@ Anthropic surface는 로컬 `count_tokens` 추정치도 제공하며, OpenAI 호
 
 `sleepyrouter`은 요청을 라우팅된 모델로 그대로 전달하며, 에이전트 세션에 누적된 대화를 자동으로 압축(compact)하거나 요약하거나 잘라내지 않습니다. 따라서 컨텍스트 오버플로우는 실제로 발생할 수 있습니다. 긴 세션이 1M 토큰 컨텍스트 모델에서 시작된 뒤 128k/200k 모델로 라우팅되거나 페일오버되면, 프롬프트가 작은 모델의 컨텍스트 윈도를 넘는 순간 업스트림 제공자가 요청을 거절할 수 있습니다.
 
-모델을 고를 때는 라우팅 후보 풀마다 컨텍스트 크기 티어를 맞춰두세요. `sleepyrouter status`에서 각 모델의 컨텍스트 크기를 확인할 수 있습니다.
+모델을 고를 때는 라우팅 후보 풀마다 컨텍스트 크기 티어를 맞춰두세요. 현재는 인터페이스에서 컨텍스트 크기를 직접 노출하지 않으니, 모델 카탈로그(`docs/provider-guide.md`)나 provider 페이지를 참고하세요.
 
 ## 더 알아보기
 
