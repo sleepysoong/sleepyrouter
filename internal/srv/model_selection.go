@@ -207,19 +207,6 @@ func recordUpstreamFailure(store *cfg.ConfigStore, model types.SleepyRouterModel
 	return fmt.Sprintf("[%d] %s", response.StatusCode, string(text))
 }
 
-func writeOpenAIAsAnthropic(ctx context.Context, upstream *http.Response, w http.ResponseWriter, body map[string]any, modelID string) {
-	if streamVal, ok := body["stream"].(bool); ok && streamVal {
-		PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
-		return
-	}
-	data, err := utils.ResponseJSON(upstream)
-	if err != nil {
-		writeJSON(w, 502, map[string]any{"error": map[string]any{"message": "업스트림 응답을 읽을 수 없어요.", "details": err.Error()}})
-		return
-	}
-	writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
-}
-
 func estimateInputTokens(body any) int {
 	text, _ := utils.MarshalJSONHelper(body)
 	if n := len(text); n > 0 {
