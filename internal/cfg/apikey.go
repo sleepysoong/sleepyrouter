@@ -8,35 +8,36 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
-func resolveAPIKey(name string, env utils.Environment, root string) string {
+func resolveAPIKey(name string, env utils.Environment, localEnv map[string]string) string {
 	if env == nil {
 		env = utils.CurrentEnvironment()
 	}
 	if value := strings.TrimSpace(env[name]); value != "" {
 		return value
 	}
-	return strings.TrimSpace(utils.ReadLocalEnv(root)[name])
+	return strings.TrimSpace(localEnv[name])
 }
 
-func ResolveOpenRouterAPIKey(env utils.Environment, root string) string {
-	return resolveAPIKey("OPENROUTER_API_KEY", env, root)
+func ResolveOpenRouterAPIKey(env utils.Environment, localEnv map[string]string) string {
+	return resolveAPIKey("OPENROUTER_API_KEY", env, localEnv)
 }
-func ResolveNVIDIAAPIKey(env utils.Environment, root string) string {
-	return resolveAPIKey("NVIDIA_API_KEY", env, root)
+func ResolveNVIDIAAPIKey(env utils.Environment, localEnv map[string]string) string {
+	return resolveAPIKey("NVIDIA_API_KEY", env, localEnv)
 }
-func ResolveCopilotAPIKey(env utils.Environment, root string) string {
-	return resolveAPIKey("GITHUB_COPILOT_TOKEN", env, root)
+func ResolveCopilotAPIKey(env utils.Environment, localEnv map[string]string) string {
+	return resolveAPIKey("GITHUB_COPILOT_TOKEN", env, localEnv)
 }
-func ResolveZenAPIKey(env utils.Environment, root string) string {
-	return resolveAPIKey("OPENCODE_API_KEY", env, root)
+func ResolveZenAPIKey(env utils.Environment, localEnv map[string]string) string {
+	return resolveAPIKey("OPENCODE_API_KEY", env, localEnv)
 }
 
 func ResolveProviderAPIKeys(env utils.Environment, root string) types.ProviderAPIKeys {
+	localEnv := utils.ReadLocalEnv(root)
 	return types.ProviderAPIKeys{
-		OpenRouter: ResolveOpenRouterAPIKey(env, root),
-		NVIDIA:     ResolveNVIDIAAPIKey(env, root),
-		Copilot:    ResolveCopilotAPIKey(env, root),
-		Zen:        ResolveZenAPIKey(env, root),
+		OpenRouter: ResolveOpenRouterAPIKey(env, localEnv),
+		NVIDIA:     ResolveNVIDIAAPIKey(env, localEnv),
+		Copilot:    ResolveCopilotAPIKey(env, localEnv),
+		Zen:        ResolveZenAPIKey(env, localEnv),
 	}
 }
 
