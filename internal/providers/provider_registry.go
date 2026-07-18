@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/sleepysoong/sleepyrouter/internal/types"
+	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
 type MessageProtocol string
@@ -49,6 +50,15 @@ func (b *BaseProvider) Source() types.ModelSource     { return b.SourceValue }
 func (b *BaseProvider) MessageProtocol() MessageProtocol { return b.Protocol }
 func (b *BaseProvider) Messages(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
 	return nil, b.MessagesErr
+}
+
+// postChatCompletion is the shared HTTP POST used by every provider's ChatCompletion.
+func postChatCompletion(ctx context.Context, url string, headers map[string]string, body any, client types.HTTPDoer) (*http.Response, error) {
+	req, err := utils.JSONRequest(ctx, http.MethodPost, url, headers, body)
+	if err != nil {
+		return nil, err
+	}
+	return utils.HTTPClient(client).Do(req)
 }
 
 func AllProviders() []Provider {

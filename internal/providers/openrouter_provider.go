@@ -7,16 +7,30 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
+const openRouterChatCompletionsURL = "https://openrouter.ai/api/v1/chat/completions"
+const openRouterAnthropicMessagesURL = "https://openrouter.ai/api/v1/messages"
+
 type OpenRouterProvider struct {
 	BaseProvider
 }
 
 func (p *OpenRouterProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
-	return PostOpenRouterChatCompletion(ctx, apiKey, body, client)
+	return postChatCompletion(ctx, openRouterChatCompletionsURL, map[string]string{
+		"Authorization":      "Bearer " + apiKey,
+		"Content-Type":       "application/json",
+		"HTTP-Referer":       "https://github.com/hakilee/sleepyrouter",
+		"X-OpenRouter-Title": "sleepyrouter",
+	}, body, client)
 }
 
 func (p *OpenRouterProvider) Messages(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
-	return PostOpenRouterAnthropicMessage(ctx, apiKey, body, client)
+	return postChatCompletion(ctx, openRouterAnthropicMessagesURL, map[string]string{
+		"Authorization":      "Bearer " + apiKey,
+		"Content-Type":       "application/json",
+		"anthropic-version":  "2023-06-01",
+		"HTTP-Referer":       "https://github.com/hakilee/sleepyrouter",
+		"X-OpenRouter-Title": "sleepyrouter",
+	}, body, client)
 }
 
 func init() {
