@@ -25,6 +25,8 @@ func modelUpstreamID(model types.SleepyRouterModel) string {
 		return strings.TrimPrefix(model.ID, "nvidia/")
 	case types.SourceCopilot:
 		return strings.TrimPrefix(model.ID, "copilot/")
+	case types.SourceZen:
+		return strings.TrimPrefix(model.ID, "zen/")
 	default:
 		return model.ID
 	}
@@ -78,6 +80,8 @@ func selectedModelSelection(ctx context.Context, store *cfg.ConfigStore, apiKeys
 				source = types.SourceNVIDIA
 			} else if strings.HasPrefix(id, "copilot/") {
 				source = types.SourceCopilot
+			} else if strings.HasPrefix(id, "zen/") {
+				source = types.SourceZen
 			}
 			stub := types.SleepyRouterModel{ID: id, Name: id, Provider: string(source), Source: source}
 			models = append(models, stub)
@@ -117,6 +121,8 @@ func missingKeyMessage(model types.SleepyRouterModel) string {
 		keyName = "NVIDIA_API_KEY"
 	case types.SourceCopilot:
 		keyName = "GITHUB_COPILOT_TOKEN"
+	case types.SourceZen:
+		keyName = "OPENCODE_API_KEY"
 	}
 	return fmt.Sprintf("%s가 없어서 %s을(를) 사용할 수 없어요. 환경변수 또는 .env 파일에 키를 추가하세요.", keyName, model.ID)
 }

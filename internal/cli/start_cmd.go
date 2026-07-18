@@ -49,12 +49,14 @@ func RunStartCommand(options struct {
 	keys := cfg.ResolveProviderAPIKeys(env, store.Paths.Root)
 	hasNvidiaKey := keys.NVIDIA != ""
 	hasOpenRouterKey := keys.OpenRouter != ""
+	hasZenKey := keys.Zen != ""
 
 	fmt.Printf("\nsleepyrouter v%s\n", types.Version)
 	fmt.Printf("  config: %s\n", utils.GetConfigPath(store.Paths.Root))
 	fmt.Printf("  env: %s\n", utils.GetEnvPath(store.Paths.Root))
 	fmt.Printf("  NVIDIA_API_KEY: %s\n", boolCheck(hasNvidiaKey))
 	fmt.Printf("  OPENROUTER_API_KEY: %s\n", boolCheck(hasOpenRouterKey))
+	fmt.Printf("  OPENCODE_API_KEY: %s\n", boolCheck(hasZenKey))
 
 	if _, err := cfg.RequireAnyProviderAPIKey(env, store.Paths.Root); err != nil {
 		return err
@@ -68,7 +70,7 @@ func RunStartCommand(options struct {
 	}
 	sort.Strings(groupNames)
 	if len(invalidModels) > 0 {
-		fmt.Fprintln(os.Stderr, "\n모델 ID가 잘못되었어요. nvidia/, openrouter/ 또는 copilot/ 접두사가 필요해요:")
+		fmt.Fprintln(os.Stderr, "\n모델 ID가 잘못되었어요. nvidia/, openrouter/, copilot/ 또는 zen/ 접두사가 필요해요:")
 		for _, m := range invalidModels {
 			fmt.Fprintf(os.Stderr, "  - %s\n", m)
 		}
@@ -119,7 +121,7 @@ func boolCheck(value bool) string {
 }
 
 func invalidModelIDs(groups types.ModelGroups) []string {
-	prefixes := []string{"nvidia/", "openrouter/", "copilot/"}
+	prefixes := []string{"nvidia/", "openrouter/", "copilot/", "zen/"}
 	names := make([]string, 0, len(groups))
 	for name := range groups {
 		names = append(names, name)
