@@ -88,6 +88,70 @@ type openAIToolStreamState struct {
 	bufferedArguments string
 }
 
+// anthropicStreamState carries the mutable scan state shared by the closures
+// that PipeOpenAIStreamAsAnthropic previously defined inline.
+type anthropicStreamState struct {
+	w              http.ResponseWriter
+	nextBlockIndex int
+	textBlockIndex int
+	textBlockOpen  bool
+	usedTool       bool
+	toolBlocks     map[int]*openAIToolStreamState
+	toolOrder      []int
+	mu             sync.Mutex
+}
+
+func (s *anthropicStreamState) ensureTextBlock() int {
+	if !s.textBlockOpen {
+		s.textBlockIndex = s.nextBlockIndex
+		s.nextBlockIndex++
+		sseutil.WriteEvent(s.w, "content_block_start", map[string]any{"type": "content_block_start", "index": s.textBlockIndex, "content_block": map[string]any{"type": "text", "text": ""}})
+		s.textBlockOpen = true
+	}
+	return s.textBlockIndex
+}
+
+func (s *anthropicStreamState) stopTextBlock() {
+	if s.textBlockOpen && s.textBlockIndex >= 0 {
+		sseutil.WriteEvent(s.w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": s.textBlockIndex})
+		s.textBlockOpen = false
+		s.textBlockIndex = -1
+	}
+}
+
+func (s *anthropicStreamState) ensureToolBlock(toolIndex int, delta map[string]any) *openAIToolStreamState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, exists := s.toolBlocks[toolIndex]
+	if !exists {
+		state = &openAIToolStreamState{
+			blockIndex: s.nextBlockIndex,
+			id:         fmt.Sprintf("toolu_%d_%d", time.Now().UnixMilli(), toolIndex),
+			name:       utils.StringFromUnknown(delta["name"]),
+		}
+		s.nextBlockIndex++
+		s.toolBlocks[toolIndex] = state
+		s.toolOrder = append(s.toolOrder, toolIndex)
+	}
+	if id, ok := delta["id"].(string); ok && id != "" {
+		state.id = id
+	}
+	if name, ok := delta["name"].(string); ok && name != "" {
+		state.name = name
+	}
+	if !state.started && state.name != "" {
+		s.stopTextBlock()
+		sseutil.WriteEvent(s.w, "content_block_start", map[string]any{"type": "content_block_start", "index": state.blockIndex, "content_block": map[string]any{"type": "tool_use", "id": state.id, "name": state.name, "input": map[string]any{}}})
+		state.started = true
+		s.usedTool = true
+		if state.bufferedArguments != "" {
+			sseutil.WriteEvent(s.w, "content_block_delta", map[string]any{"type": "content_block_delta", "index": state.blockIndex, "delta": map[string]any{"type": "input_json_delta", "partial_json": state.bufferedArguments}})
+			state.bufferedArguments = ""
+		}
+	}
+	return state
+}
+
 // PipeOpenAIStreamAsAnthropic reads an OpenAI streaming response and
 // converts each `data:` chunk to the equivalent Anthropic SSE event sequence
 // (message_start, content_block_*, message_delta, message_stop).
@@ -115,66 +179,16 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 	}
 	defer body.Close()
 
-	var (
-		usedTool       bool
-		nextBlockIndex int
-		textBlockIndex = -1
-		textBlockOpen  bool
-		finishReason   any
-		outputTokens   int
-		toolBlocks     = make(map[int]*openAIToolStreamState)
-		toolOrder      []int
-		mu             sync.Mutex
-	)
+	st := &anthropicStreamState{
+		w:          w,
+		textBlockIndex: -1,
+		toolBlocks: make(map[int]*openAIToolStreamState),
+	}
 
-	ensureTextBlock := func() int {
-		if !textBlockOpen {
-			textBlockIndex = nextBlockIndex
-			nextBlockIndex++
-			sseutil.WriteEvent(w, "content_block_start", map[string]any{"type": "content_block_start", "index": textBlockIndex, "content_block": map[string]any{"type": "text", "text": ""}})
-			textBlockOpen = true
-		}
-		return textBlockIndex
-	}
-	stopTextBlock := func() {
-		if textBlockOpen && textBlockIndex >= 0 {
-			sseutil.WriteEvent(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": textBlockIndex})
-			textBlockOpen = false
-			textBlockIndex = -1
-		}
-	}
-	ensureToolBlock := func(toolIndex int, delta map[string]any) *openAIToolStreamState {
-		mu.Lock()
-		defer mu.Unlock()
-		state, exists := toolBlocks[toolIndex]
-		if !exists {
-			state = &openAIToolStreamState{
-				blockIndex: nextBlockIndex,
-				id:         fmt.Sprintf("toolu_%d_%d", time.Now().UnixMilli(), toolIndex),
-				name:       utils.StringFromUnknown(delta["name"]),
-			}
-			nextBlockIndex++
-			toolBlocks[toolIndex] = state
-			toolOrder = append(toolOrder, toolIndex)
-		}
-		if id, ok := delta["id"].(string); ok && id != "" {
-			state.id = id
-		}
-		if name, ok := delta["name"].(string); ok && name != "" {
-			state.name = name
-		}
-		if !state.started && state.name != "" {
-			stopTextBlock()
-			sseutil.WriteEvent(w, "content_block_start", map[string]any{"type": "content_block_start", "index": state.blockIndex, "content_block": map[string]any{"type": "tool_use", "id": state.id, "name": state.name, "input": map[string]any{}}})
-			state.started = true
-			usedTool = true
-			if state.bufferedArguments != "" {
-				sseutil.WriteEvent(w, "content_block_delta", map[string]any{"type": "content_block_delta", "index": state.blockIndex, "delta": map[string]any{"type": "input_json_delta", "partial_json": state.bufferedArguments}})
-				state.bufferedArguments = ""
-			}
-		}
-		return state
-	}
+	var (
+		finishReason any
+		outputTokens int
+	)
 
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -239,7 +253,7 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 		}
 		if choice != nil && choice.Delta != nil {
 			if choice.Delta.Content != nil && *choice.Delta.Content != "" {
-				sseutil.WriteEvent(w, "content_block_delta", map[string]any{"type": "content_block_delta", "index": ensureTextBlock(), "delta": map[string]any{"type": "text_delta", "text": *choice.Delta.Content}})
+				sseutil.WriteEvent(w, "content_block_delta", map[string]any{"type": "content_block_delta", "index": st.ensureTextBlock(), "delta": map[string]any{"type": "text_delta", "text": *choice.Delta.Content}})
 			}
 			for _, tc := range choice.Delta.ToolCalls {
 				toolIndex := 0
@@ -253,7 +267,7 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 				if tc.Function != nil && tc.Function.Name != nil {
 					delta["name"] = *tc.Function.Name
 				}
-				state := ensureToolBlock(toolIndex, delta)
+				state := st.ensureToolBlock(toolIndex, delta)
 				if tc.Function != nil && tc.Function.Arguments != nil {
 					partialJson := *tc.Function.Arguments
 					if state.started {
@@ -268,7 +282,7 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 				if choice.Delta.FunctionCall.Name != nil {
 					delta["name"] = *choice.Delta.FunctionCall.Name
 				}
-				state := ensureToolBlock(0, delta)
+				state := st.ensureToolBlock(0, delta)
 				if choice.Delta.FunctionCall.Arguments != nil {
 					partialJson := *choice.Delta.FunctionCall.Arguments
 					if state.started {
@@ -281,12 +295,12 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 		}
 	}
 
-	if !textBlockOpen && len(toolBlocks) == 0 {
-		ensureTextBlock()
+	if !st.textBlockOpen && len(st.toolBlocks) == 0 {
+		st.ensureTextBlock()
 	}
-	stopTextBlock()
-	for _, idx := range toolOrder {
-		state := toolBlocks[idx]
+	st.stopTextBlock()
+	for _, idx := range st.toolOrder {
+		state := st.toolBlocks[idx]
 		if !state.started {
 			sseutil.WriteEvent(w, "content_block_start", map[string]any{
 				"type":          "content_block_start",
@@ -301,7 +315,7 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 				})
 			}
 			state.started = true
-			usedTool = true
+			st.usedTool = true
 		}
 		if state.started {
 			sseutil.WriteEvent(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": state.blockIndex})
@@ -309,7 +323,7 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 	}
 
 	stopReason := protocol.MapStopReason(finishReason)
-	if usedTool {
+	if st.usedTool {
 		stopReason = "tool_use"
 	}
 	sseutil.WriteEvent(w, "message_delta", map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": stopReason, "stop_sequence": nil}, "usage": map[string]any{"output_tokens": outputTokens}})
