@@ -61,29 +61,47 @@ sleepyrouter start
 {
   "port": 4567,
   "modelGroups": {
-    "fast": [
-      "nvidia/meta/llama-3.1-8b-instruct",
-      "openrouter/microsoft/phi-3-mini-128k-instruct:free"
-    ],
-    "balanced": [
-      "nvidia/meta/llama-3.1-70b-instruct",
-      "openrouter/meta-llama/llama-3.1-70b-instruct:free"
-    ],
-    "capable": [
-      "openrouter/openai/gpt-4o-mini:free",
-      "nvidia/mistralai/mistral-large-2-instruct"
-    ]
+    "fast": ["fast-llama", "fast-phi"],
+    "balanced": ["balanced-llama", "balanced-llama-70b"],
+    "capable": ["capable-gpt4o", "capable-mistral"]
   },
-  "defaultGroup": "balanced"
+  "defaultModelGroup": "balanced",
+  "models": {
+    "fast-llama": {
+      "provider": "nvidia",
+      "name": "meta/llama-3.1-8b-instruct"
+    },
+    "fast-phi": {
+      "provider": "openrouter",
+      "name": "microsoft/phi-3-mini-128k-instruct:free"
+    },
+    "balanced-llama": {
+      "provider": "nvidia",
+      "name": "meta/llama-3.1-70b-instruct"
+    },
+    "balanced-llama-70b": {
+      "provider": "openrouter",
+      "name": "meta-llama/llama-3.1-70b-instruct:free"
+    },
+    "capable-gpt4o": {
+      "provider": "openrouter",
+      "name": "openai/gpt-4o-mini:free"
+    },
+    "capable-mistral": {
+      "provider": "nvidia",
+      "name": "mistralai/mistral-large-2-instruct"
+    }
+  }
 }
 ```
 
 | 필드 | 설명 |
 | --- | --- |
 | `port` | 프록시 포트 (기본값: `4567`) |
-| `modelGroups` | 모델 그룹별로 라우팅할 모델 ID 목록 (provider 접두사 포함) |
-| `defaultGroup` | 모델 그룹을 지정하지 않았을 때 사용할 기본 그룹 (생략 시 첫 번째 그룹) |
+| `modelGroups` | 모델 그룹별로 라우팅할 alias 목록 |
+| `defaultModelGroup` | 모델 그룹을 지정하지 않았을 때 사용할 기본 그룹 (생략 시 첫 번째 그룹) |
 | `groupOrder` | `start` 명령어의 `--group-order` 플래그로만 지정 (설정 파일 무시) |
+| `models` | 각 alias의 provider와 upstream 모델명을 정의하는 맵 |
 
 ### 작동 방식
 
@@ -91,9 +109,9 @@ sleepyrouter start
 
 ```
 요청 (group=balanced)
-  → nvidia/meta/llama-3.1-70b-instruct 시도
+  → balanced-llama 시도 (upstream: meta/llama-3.1-70b-instruct)
     → 실패 (rate-limit)
-  → openrouter/meta-llama/llama-3.1-70b-instruct:free 시도
+  → balanced-llama-70b 시도 (upstream: meta-llama/llama-3.1-70b-instruct:free)
     → 성공
 ```
 
@@ -104,21 +122,20 @@ sleepyrouter start
 ```json
 {
   "modelGroups": {
-    "fast": [
-      "nvidia/meta/llama-3.1-8b-instruct",
-      "copilot/gpt-4o-mini",
-      "openrouter/microsoft/phi-3-mini-128k-instruct:free"
-    ],
-    "balanced": [
-      "nvidia/meta/llama-3.1-70b-instruct",
-      "copilot/claude-sonnet-4",
-      "openrouter/meta-llama/llama-3.1-70b-instruct:free"
-    ],
-    "capable": [
-      "openrouter/openai/gpt-4o-mini:free",
-      "nvidia/mistralai/mistral-large-2-instruct",
-      "openrouter/anthropic/claude-3.5-sonnet:free"
-    ]
+    "fast": ["fast-llama", "fast-gpt4o", "fast-phi"],
+    "balanced": ["balanced-llama", "balanced-claude", "balanced-llama-70b"],
+    "capable": ["capable-gpt4o", "capable-mistral", "capable-claude"]
+  },
+  "models": {
+    "fast-llama":                 { "provider": "nvidia",     "name": "meta/llama-3.1-8b-instruct" },
+    "fast-gpt4o":                 { "provider": "copilot",    "name": "gpt-4o-mini" },
+    "fast-phi":                   { "provider": "openrouter", "name": "microsoft/phi-3-mini-128k-instruct:free" },
+    "balanced-llama":             { "provider": "nvidia",     "name": "meta/llama-3.1-70b-instruct" },
+    "balanced-claude":            { "provider": "copilot",    "name": "claude-sonnet-4" },
+    "balanced-llama-70b":         { "provider": "openrouter", "name": "meta-llama/llama-3.1-70b-instruct:free" },
+    "capable-gpt4o":              { "provider": "openrouter", "name": "openai/gpt-4o-mini:free" },
+    "capable-mistral":            { "provider": "nvidia",     "name": "mistralai/mistral-large-2-instruct" },
+    "capable-claude":             { "provider": "openrouter", "name": "anthropic/claude-3.5-sonnet:free" }
   }
 }
 ```
@@ -128,7 +145,10 @@ sleepyrouter start
 ```json
 {
   "modelGroups": {
-    "default": ["zen/deepseek-v4-flash-free"]
+    "default": ["zen-flash"]
+  },
+  "models": {
+    "zen-flash": { "provider": "zen", "name": "deepseek-v4-flash-free" }
   }
 }
 ```
@@ -143,10 +163,11 @@ OPENCODE_API_KEY=sk-...
 ```json
 {
   "modelGroups": {
-    "models": [
-      "nvidia/meta/llama-3.1-70b-instruct",
-      "openrouter/meta-llama/llama-3.1-70b-instruct:free"
-    ]
+    "models": ["llama-70b", "llama-70b-fallback"]
+  },
+  "models": {
+    "llama-70b":          { "provider": "nvidia",     "name": "meta/llama-3.1-70b-instruct" },
+    "llama-70b-fallback": { "provider": "openrouter", "name": "meta-llama/llama-3.1-70b-instruct:free" }
   }
 }
 ```
