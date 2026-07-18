@@ -7,14 +7,8 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
-type OpenRouterProvider struct{}
-
-func (p *OpenRouterProvider) Name() string {
-	return "OpenRouter"
-}
-
-func (p *OpenRouterProvider) Source() types.ModelSource {
-	return types.SourceOpenRouter
+type OpenRouterProvider struct {
+	BaseProvider
 }
 
 func (p *OpenRouterProvider) ListFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
@@ -29,10 +23,12 @@ func (p *OpenRouterProvider) Messages(ctx context.Context, apiKey string, body m
 	return PostOpenRouterAnthropicMessage(ctx, apiKey, body, client)
 }
 
-func (p *OpenRouterProvider) MessageProtocol() MessageProtocol {
-	return ProtocolAnthropic
-}
-
 func init() {
-	RegisterProvider(types.SourceOpenRouter, &OpenRouterProvider{})
+	RegisterProvider(types.SourceOpenRouter, &OpenRouterProvider{
+		BaseProvider: BaseProvider{
+			NameValue:   "OpenRouter",
+			SourceValue: types.SourceOpenRouter,
+			Protocol:    ProtocolAnthropic,
+		},
+	})
 }

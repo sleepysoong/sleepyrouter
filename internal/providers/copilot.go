@@ -135,14 +135,8 @@ func ResetCopilotTokenCache() {
 	copilotTokenCache.Unlock()
 }
 
-type CopilotProvider struct{}
-
-func (p *CopilotProvider) Name() string {
-	return "Copilot"
-}
-
-func (p *CopilotProvider) Source() types.ModelSource {
-	return types.SourceCopilot
+type CopilotProvider struct {
+	BaseProvider
 }
 
 func (p *CopilotProvider) ListFreeModels(ctx context.Context, apiKey string, client types.HTTPDoer) ([]types.SleepyRouterModel, error) {
@@ -153,14 +147,13 @@ func (p *CopilotProvider) ChatCompletion(ctx context.Context, apiKey string, bod
 	return PostCopilotChatCompletion(ctx, apiKey, body, client)
 }
 
-func (p *CopilotProvider) Messages(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
-	return nil, fmt.Errorf("Messages not supported natively by Copilot provider")
-}
-
-func (p *CopilotProvider) MessageProtocol() MessageProtocol {
-	return ProtocolOpenAI
-}
-
 func init() {
-	RegisterProvider(types.SourceCopilot, &CopilotProvider{})
+	RegisterProvider(types.SourceCopilot, &CopilotProvider{
+		BaseProvider: BaseProvider{
+			NameValue:   "Copilot",
+			SourceValue: types.SourceCopilot,
+			Protocol:    ProtocolOpenAI,
+			MessagesErr: fmt.Errorf("Messages not supported natively by Copilot provider"),
+		},
+	})
 }
