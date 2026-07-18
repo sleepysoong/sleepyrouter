@@ -1,6 +1,7 @@
 package srv
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,6 +14,58 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
+
+// handlerPreamble holds the shared state extracted from the preamble of
+// both POST /v1/chat/completions and POST /anthropic/v1/messages handlers.
+type handlerPreamble struct {
+	apiKeys         types.ProviderAPIKeys
+	body            map[string]any
+	selected        *selectedModelsResult
+	candidates      []string
+	candidateReason routing.RouteReason
+	routingModel    string
+	logGroup        string
+}
+
+// readHandlerPreamble reads the request body, selects models, and computes
+// route candidates. On error it writes the response to w and returns nil, false.
+// Otherwise returns the preamble and true — the caller should proceed.
+func readHandlerPreamble(ctx context.Context, store *cfg.ConfigStore, env utils.Environment, client types.HTTPDoer, w http.ResponseWriter, r *http.Request) (*handlerPreamble, bool) {
+	apiKeys, err := cfg.RequireAnyProviderAPIKey(env, store.Paths.Root)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": map[string]any{"message": err.Error()}})
+		return nil, false
+	}
+	body, err := readBody(r)
+	if err != nil {
+		panic(err)
+	}
+	selected, err := selectedModelSelection(ctx, store, apiKeys, client)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": map[string]any{"message": err.Error()}})
+		return nil, false
+	}
+	if err := assertSelectedFree(selected.Models); err != nil {
+		he := err.(*httpError)
+		writeJSON(w, he.StatusCode, map[string]any{"error": map[string]any{"message": he.Message}})
+		return nil, false
+	}
+	routingModel := requestedModelForRouting(selected.Models, body["model"])
+	candidates, candidateReason := routing.OrderedCandidates(selected.ModelGroups, routingModel, selected.DefaultGroup, selected.GroupOrder...)
+	logGroup := selected.DefaultGroup
+	if candidateReason == routing.RouteModelGroup {
+		logGroup = routing.NormalizeModelGroupName(routingModel)
+	}
+	return &handlerPreamble{
+		apiKeys:         apiKeys,
+		body:            body,
+		selected:        selected,
+		candidates:      candidates,
+		candidateReason: candidateReason,
+		routingModel:    routingModel,
+		logGroup:        logGroup,
+	}, true
+}
 
 func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 	store := options.Store
@@ -142,33 +195,18 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 
 		// POST /v1/chat/completions
 		if method == "POST" && path == "/v1/chat/completions" {
-			apiKeys, err := cfg.RequireAnyProviderAPIKey(env, store.Paths.Root)
-			if err != nil {
-				writeJSON(w, 500, map[string]any{"error": map[string]any{"message": err.Error()}})
+			pre, ok := readHandlerPreamble(ctx, store, env, client, w, r)
+			if !ok {
 				return
 			}
-			body, err := readBody(r)
-			if err != nil {
-				panic(err)
-			}
+			apiKeys := pre.apiKeys
+			body := pre.body
+			selected := pre.selected
+			Candidates := pre.candidates
+			candidateReason := pre.candidateReason
 			requestedModel = utils.StringFromUnknown(body["model"])
 			stream = utils.BoolValue(body["stream"])
-			selected, err := selectedModelSelection(ctx, store, apiKeys, client)
-			if err != nil {
-				writeJSON(w, 500, map[string]any{"error": map[string]any{"message": err.Error()}})
-				return
-			}
-			if err := assertSelectedFree(selected.Models); err != nil {
-				he := err.(*httpError)
-				writeJSON(w, he.StatusCode, map[string]any{"error": map[string]any{"message": he.Message}})
-				return
-			}
-			routingModel := requestedModelForRouting(selected.Models, body["model"])
-			Candidates, candidateReason := routing.OrderedCandidates(selected.ModelGroups, routingModel, selected.DefaultGroup, selected.GroupOrder...)
-			logGroup = selected.DefaultGroup
-			if candidateReason == routing.RouteModelGroup {
-				logGroup = routing.NormalizeModelGroupName(routingModel)
-			}
+			logGroup = pre.logGroup
 			candCount := len(Candidates)
 			logCandidateCount = &candCount
 
@@ -273,33 +311,18 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 
 		// POST /anthropic/v1/messages or /anthropic/messages
 		if method == "POST" && (path == "/anthropic/v1/messages" || path == "/anthropic/messages") {
-			apiKeys, err := cfg.RequireAnyProviderAPIKey(env, store.Paths.Root)
-			if err != nil {
-				writeJSON(w, 500, map[string]any{"error": map[string]any{"message": err.Error()}})
+			pre, ok := readHandlerPreamble(ctx, store, env, client, w, r)
+			if !ok {
 				return
 			}
-			body, err := readBody(r)
-			if err != nil {
-				panic(err)
-			}
+			apiKeys := pre.apiKeys
+			body := pre.body
+			selected := pre.selected
+			Candidates := pre.candidates
+			aCandidateReason := pre.candidateReason
 			requestedModel = utils.StringFromUnknown(body["model"])
 			stream = utils.BoolValue(body["stream"])
-			selected, err := selectedModelSelection(ctx, store, apiKeys, client)
-			if err != nil {
-				writeJSON(w, 500, map[string]any{"error": map[string]any{"message": err.Error()}})
-				return
-			}
-			if err := assertSelectedFree(selected.Models); err != nil {
-				he := err.(*httpError)
-				writeJSON(w, he.StatusCode, map[string]any{"error": map[string]any{"message": he.Message}})
-				return
-			}
-			routingModel := requestedModelForRouting(selected.Models, body["model"])
-			Candidates, aCandidateReason := routing.OrderedCandidates(selected.ModelGroups, routingModel, selected.DefaultGroup, selected.GroupOrder...)
-			logGroup = selected.DefaultGroup
-			if aCandidateReason == routing.RouteModelGroup {
-				logGroup = routing.NormalizeModelGroupName(routingModel)
-			}
+			logGroup = pre.logGroup
 			candCount := len(Candidates)
 			logCandidateCount = &candCount
 
