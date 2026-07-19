@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,6 +12,31 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
+
+type exchangeRateResponse struct {
+	Result string             `json:"result"`
+	Rates  map[string]float64 `json:"rates"`
+}
+
+func fetchKRWRate() (float64, error) {
+	resp, err := http.Get("https://open.er-api.com/v6/latest/USD")
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	var data exchangeRateResponse
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return 0, err
+	}
+	if data.Result != "success" {
+		return 0, fmt.Errorf("API result: %s", data.Result)
+	}
+	rate, ok := data.Rates["KRW"]
+	if !ok || rate == 0 {
+		return 0, fmt.Errorf("KRW rate not found")
+	}
+	return rate, nil
+}
 
 type UsageCommandOptions struct {
 	Date  string
@@ -115,6 +142,8 @@ func RunUsageCommand(options UsageCommandOptions) {
 	config, _ := store.ReadConfig()
 	rows := aggregateUsage(logs, config.Models)
 
+	krwRate, _ := fetchKRWRate()
+
 	totalRequests := 0
 	totalFailed := 0
 	totalInput := 0
@@ -144,9 +173,12 @@ func RunUsageCommand(options UsageCommandOptions) {
 	}
 	// Summary row
 	summary := fmt.Sprintf("총 %d건 요청, %d건 실패, in=%d out=%d cost=$%.4f", totalRequests, totalFailed, totalInput, totalOutput, totalCost)
+	if krwRate > 0 {
+		summary += fmt.Sprintf(" (₩%d)", int(totalCost*krwRate))
+	}
 	blank := padRight("", 52)
 	sb.WriteString("├──────────────────────────────────────────────────────┴──────────┴────────┴──────────────┴──────────────┴─────────────┤\n")
-	sb.WriteString(fmt.Sprintf("│ %s %s │\n", blank, padRight(summary, 59)))
+	sb.WriteString(fmt.Sprintf("│ %s %s │\n", blank, padRight(summary, 63)))
 	sb.WriteString("└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n")
 
 	filterDesc := "전체"
