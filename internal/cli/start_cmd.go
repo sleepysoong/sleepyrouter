@@ -84,16 +84,16 @@ func RunStartCommand(options StartCommandOptions) error {
 	if len(groupNames) > 0 {
 		totalModels := len(routing.AllGroupModelIDs(config.ModelGroups, config.GroupOrder...))
 		fmt.Printf("\n모델 그룹 (%d개 모델, %d개 그룹)\n", totalModels, len(groupNames))
-	for _, name := range groupNames {
-		marker := ""
-		if name == config.DefaultModelGroup {
-			marker = " (기본)"
+		for _, name := range groupNames {
+			marker := ""
+			if name == config.DefaultModelGroup {
+				marker = " (기본)"
+			}
+			fmt.Printf("  %s%s: %s\n", name, marker, strings.Join(config.ModelGroups[name], ", "))
 		}
-		fmt.Printf("  %s%s: %s\n", name, marker, strings.Join(config.ModelGroups[name], ", "))
-	}
-	if config.DefaultModelGroup != "" {
-		fmt.Printf("\n기본 그룹: %s\n", config.DefaultModelGroup)
-	}
+		if config.DefaultModelGroup != "" {
+			fmt.Printf("\n기본 그룹: %s\n", config.DefaultModelGroup)
+		}
 		fmt.Println()
 	}
 

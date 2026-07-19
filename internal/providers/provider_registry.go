@@ -45,8 +45,8 @@ type BaseProvider struct {
 	MessagesErr error
 }
 
-func (b *BaseProvider) Name() string                  { return b.NameValue }
-func (b *BaseProvider) Source() types.ModelSource     { return b.SourceValue }
+func (b *BaseProvider) Name() string                     { return b.NameValue }
+func (b *BaseProvider) Source() types.ModelSource        { return b.SourceValue }
 func (b *BaseProvider) MessageProtocol() MessageProtocol { return b.Protocol }
 func (b *BaseProvider) Messages(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
 	return nil, b.MessagesErr
@@ -60,5 +60,3 @@ func postChatCompletion(ctx context.Context, url string, headers map[string]stri
 	}
 	return utils.HTTPClient(client).Do(req)
 }
-
-

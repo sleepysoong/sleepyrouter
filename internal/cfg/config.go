@@ -232,6 +232,3 @@ func (store *ConfigStore) ReadUsageLogs() ([]types.UsageLogEntry, error) {
 	}
 	return entries, nil
 }
-
-
-

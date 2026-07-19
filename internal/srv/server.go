@@ -31,10 +31,10 @@ type handlerPreamble struct {
 // handlerState carries mutable logging state across handler phases so that
 // extracted handler functions and the deferred logResponse closure stay in sync.
 type handlerState struct {
-	requestID                                                 int
-	requestMethod, requestPath                                string
-	requestedModel, routedModel, routeReason, lastError, logGroup string
-	stream                                                         bool
+	requestID                                                           int
+	requestMethod, requestPath                                          string
+	requestedModel, routedModel, routeReason, lastError, logGroup       string
+	stream                                                              bool
 	lastInputTokens, lastOutputTokens, logCandidateCount, logTriedCount *int
 }
 

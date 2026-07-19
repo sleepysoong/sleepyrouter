@@ -48,18 +48,18 @@ type UsageLogEntry struct {
 // ModelDefinition is a config-defined model alias. Provider selects which
 // upstream API to call; Name is the model ID the upstream expects.
 type ModelDefinition struct {
-	Provider     string  `json:"provider"`
-	Name         string  `json:"name"`
-	InputPrice    float64 `json:"inputPrice,omitempty"`
-	OutputPrice   float64 `json:"outputPrice,omitempty"`
+	Provider    string  `json:"provider"`
+	Name        string  `json:"name"`
+	InputPrice  float64 `json:"inputPrice,omitempty"`
+	OutputPrice float64 `json:"outputPrice,omitempty"`
 }
 
 type SleepyRouterConfig struct {
-	Port             int                        `json:"port"`
-	ModelGroups      ModelGroups                `json:"modelGroups"`
-	DefaultModelGroup string                    `json:"defaultModelGroup,omitempty"`
-	GroupOrder       []string                   `json:"-"`
-	Models           map[string]ModelDefinition `json:"models,omitempty"`
+	Port              int                        `json:"port"`
+	ModelGroups       ModelGroups                `json:"modelGroups"`
+	DefaultModelGroup string                     `json:"defaultModelGroup,omitempty"`
+	GroupOrder        []string                   `json:"-"`
+	Models            map[string]ModelDefinition `json:"models,omitempty"`
 }
 
 type ProviderAPIKeys struct {

@@ -108,5 +108,3 @@ func TestCopilot_TokenCache_ReusesWithinWindow(t *testing.T) {
 		t.Fatalf("token exchange should be called once, got %d", tokenCallCount)
 	}
 }
-
-

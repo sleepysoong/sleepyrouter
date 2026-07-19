@@ -45,8 +45,8 @@ func selectedModelSelection(ctx context.Context, store *cfg.ConfigStore, apiKeys
 		source := types.ModelSource(def.Provider)
 		m := types.SleepyRouterModel{
 			ID:         id,
-		UpstreamID: def.Name,
-		Provider:   def.Provider,
+			UpstreamID: def.Name,
+			Provider:   def.Provider,
 			Source:     source,
 			UsageID:    id,
 		}

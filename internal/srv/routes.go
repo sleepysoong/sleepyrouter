@@ -138,7 +138,7 @@ func handleChatEndpoint(deps routeDeps, apiType ApiType) http.HandlerFunc {
 type ApiType int
 
 const (
-	ApiOpenAI    ApiType = iota
+	ApiOpenAI ApiType = iota
 	ApiAnthropic
 )
 

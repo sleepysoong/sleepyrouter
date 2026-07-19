@@ -180,9 +180,9 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 	defer body.Close()
 
 	st := &anthropicStreamState{
-		w:          w,
+		w:              w,
 		textBlockIndex: -1,
-		toolBlocks: make(map[int]*openAIToolStreamState),
+		toolBlocks:     make(map[int]*openAIToolStreamState),
 	}
 
 	var (
@@ -214,7 +214,7 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 		type openAIStreamChoice struct {
 			FinishReason any `json:"finish_reason"`
 			Delta        *struct {
-				Content      *string                `json:"content"`
+				Content      *string `json:"content"`
 				FunctionCall *struct {
 					Name      *string `json:"name"`
 					Arguments *string `json:"arguments"`

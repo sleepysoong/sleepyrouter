@@ -37,10 +37,10 @@ func TestConfigStore_WriteAndReadConfig(t *testing.T) {
 	store, cleanup := tempConfigStore(t)
 	defer cleanup()
 	config := types.SleepyRouterConfig{
-		Port:         4567,
-		ModelGroups:  types.ModelGroups{"fast": {"a:free", "b:free"}},
+		Port:              4567,
+		ModelGroups:       types.ModelGroups{"fast": {"a:free", "b:free"}},
 		DefaultModelGroup: "fast",
-		GroupOrder:   []string{"fast"},
+		GroupOrder:        []string{"fast"},
 	}
 	if err := store.WriteConfig(config); err != nil {
 		t.Fatal(err)
@@ -158,7 +158,3 @@ func TestParseDotEnv_CommentsAndEmptyLines(t *testing.T) {
 		t.Fatalf("KEY1: %s", result["KEY1"])
 	}
 }
-
-
-
-

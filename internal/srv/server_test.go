@@ -105,9 +105,9 @@ func TestServer_RouteReasonInLogEvent(t *testing.T) {
 		}
 	}()
 	tests := []struct {
-		name           string
-		requestModel   string
-		wantReason     string
+		name         string
+		requestModel string
+		wantReason   string
 	}{
 		{"explicit group match", "fast", "model-group"},
 		{"auto falls back", "auto", "fallback-order"},
@@ -499,8 +499,6 @@ func TestServer_RoutesOpenAIChat(t *testing.T) {
 	})
 }
 
-
-
 func mockResponse(status int, body any) *http.Response {
 	data, _ := json.Marshal(body)
 	return &http.Response{
@@ -675,7 +673,6 @@ func TestServer_RejectsEmptyChoicesAndRetries(t *testing.T) {
 		}
 	})
 }
-
 
 func TestFormatServerLogEvent(t *testing.T) {
 	event := ServerLogEvent{
