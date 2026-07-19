@@ -40,17 +40,17 @@ Free tier 코딩 에이전트는 스펙 시트에서는 멀쩡해 보이지만, 
 ### Go으로 설치
 
 ```bash
-go install github.com/sleepysoong/sleepyrouter/cmd/sleepyrouter@latest
+go build -o sleepyrouter ./cmd/sleepyrouter
 mkdir -p ~/.sleepyrouter && echo 'OPENROUTER_API_KEY=sk-or-...' > ~/.sleepyrouter/.env
-sleepyrouter start        # http://localhost:4567 서빙
+./sleepyrouter start        # http://localhost:4567 서빙
 ```
 
 ### 소스에서 빌드
 
 ```bash
 git clone https://github.com/sleepysoong/sleepy-llm-router
-cd sleepy-llm-router && go install ./cmd/sleepyrouter
-sleepyrouter start
+cd sleepy-llm-router && go build -o sleepyrouter ./cmd/sleepyrouter
+./sleepyrouter start
 ```
 
 ## 설정 예제
