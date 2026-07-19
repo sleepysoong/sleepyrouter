@@ -260,7 +260,11 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 
 	nextID := new(int64)
 	handler := withObservation(mux, nextID, requestLogger, startTime)
-	return &http.Server{Handler: handler}
+	return &http.Server{
+		Handler:     handler,
+		ReadTimeout: 60 * time.Second,
+		IdleTimeout: 120 * time.Second,
+	}
 }
 
 // withObservation wraps mux so that every request gets a fresh handlerState,
