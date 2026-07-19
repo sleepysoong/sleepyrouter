@@ -1,12 +1,13 @@
 package srv
 
 import (
-	"context"
-	"fmt"
-	"net"
-	"net/http"
-	"sync/atomic"
-	"time"
+		"context"
+		"fmt"
+		"log/slog"
+		"net"
+		"net/http"
+		"sync/atomic"
+		"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/protocol"
@@ -326,6 +327,7 @@ func withObservation(mux *http.ServeMux, nextID *int64, requestLogger func(Serve
 					statusCode = he.StatusCode
 				}
 				msg := errorString(err)
+				slog.Error("panic recovered", "method", r.Method, "path", r.URL.Path, "error", msg)
 				writeJSONError(w, statusCode, msg, map[string]any{"request": r.Method + " " + r.URL.String()})
 			}
 		}()

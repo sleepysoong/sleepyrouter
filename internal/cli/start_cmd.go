@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"sort"
@@ -100,7 +101,58 @@ func RunStartCommand(options StartCommandOptions) error {
 	server := srv.CreateSleepyRouterServer(srv.ServerOptions{
 		Store: store,
 		RequestLogger: func(event srv.ServerLogEvent) {
-			fmt.Println(srv.FormatServerLogEvent(event, utils.IsTerminal(os.Stdout)))
+			attrs := []any{
+				"id", event.ID,
+				"method", event.Method,
+				"path", event.Path,
+				"duration_ms", event.DurationMs,
+			}
+			if event.RequestedModel != "" {
+				attrs = append(attrs, "requested", event.RequestedModel)
+			}
+			if event.ModelID != "" {
+				attrs = append(attrs, "model", event.ModelID)
+			}
+			if event.Group != "" {
+				attrs = append(attrs, "group", event.Group)
+			}
+			if event.Error != "" {
+				attrs = append(attrs, "error", event.Error)
+			}
+			if event.CandidateCount != nil {
+				attrs = append(attrs, "candidates", *event.CandidateCount)
+			}
+			if event.TriedCount != nil {
+				attrs = append(attrs, "tried", *event.TriedCount)
+			}
+			if event.InputTokens != nil {
+				attrs = append(attrs, "in", *event.InputTokens)
+			}
+			if event.OutputTokens != nil {
+				attrs = append(attrs, "out", *event.OutputTokens)
+			}
+			if event.Stream {
+				attrs = append(attrs, "stream", true)
+			}
+
+			switch event.Type {
+			case "request":
+				attrs = append(attrs, "route", "request")
+				slog.Debug("request", attrs...)
+			case "route":
+				attrs = append(attrs, "route_reason", event.RouteReason)
+				slog.Debug("route", attrs...)
+			case "response":
+				attrs = append(attrs, "status", event.StatusCode)
+				if event.StatusCode >= 400 {
+					slog.Warn("response", attrs...)
+				} else {
+					slog.Info("response", attrs...)
+				}
+			case "upstream":
+				attrs = append(attrs, "status", event.StatusCode)
+				slog.Info("upstream", attrs...)
+			}
 		},
 	})
 	actualPort, err := srv.Listen(server, port)

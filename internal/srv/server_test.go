@@ -674,30 +674,6 @@ func TestServer_RejectsEmptyChoicesAndRetries(t *testing.T) {
 	})
 }
 
-func TestFormatServerLogEvent(t *testing.T) {
-	event := ServerLogEvent{
-		Type:           "response",
-		ID:             1,
-		Method:         "POST",
-		Path:           "/v1/chat/completions",
-		StatusCode:     200,
-		DurationMs:     42,
-		RequestedModel: "auto",
-		ModelID:        "model-a:free",
-		RouteReason:    "fallback-order",
-	}
-	text := FormatServerLogEvent(event, false)
-	if text == "" {
-		t.Fatal("empty log")
-	}
-	// Must not contain ANSI codes when color is false
-	for _, c := range "\x1b" {
-		if len(text) > 0 && text[0] == byte(c) {
-			t.Fatalf("has ANSI codes: %q", text)
-		}
-	}
-}
-
 func TestSafeLogValue(t *testing.T) {
 	if got := safeLogValue("hello"); got != "hello" {
 		t.Fatalf("got %q", got)
