@@ -53,10 +53,8 @@ type UsageLogEntry struct {
 // ModelDefinition is a config-defined model alias. Provider selects which
 // upstream API to call; Name is the model ID the upstream expects.
 type ModelDefinition struct {
-	Provider      string  `json:"provider"`
-	Name          string  `json:"name"`
-	ContextLength int     `json:"contextLength,omitempty"`
-	MaxTokens     int     `json:"maxTokens,omitempty"`
+	Provider     string  `json:"provider"`
+	Name         string  `json:"name"`
 	InputPrice    float64 `json:"inputPrice,omitempty"`
 	OutputPrice   float64 `json:"outputPrice,omitempty"`
 }
