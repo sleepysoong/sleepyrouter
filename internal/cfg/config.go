@@ -246,3 +246,10 @@ func (store *ConfigStore) ReadUsageLogs() ([]types.UsageLogEntry, error) {
 	}
 	return entries, rows.Err()
 }
+
+func (store *ConfigStore) Close() error {
+	if store.db != nil {
+		return store.db.Close()
+	}
+	return nil
+}

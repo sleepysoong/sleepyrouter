@@ -166,6 +166,7 @@ func RunStartCommand(options StartCommandOptions) error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 	_ = server.Close()
+	_ = store.Close()
 	return nil
 }
 
