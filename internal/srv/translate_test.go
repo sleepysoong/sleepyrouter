@@ -3,22 +3,24 @@ package srv
 import (
 	"fmt"
 	"testing"
+
+	"github.com/sleepysoong/sleepyrouter/internal/protocol"
 )
 
 func TestExtractTextContent_String(t *testing.T) {
-	if got := ExtractTextContent("hello"); got != "hello" {
+	if got := protocol.ExtractTextContent("hello"); got != "hello" {
 		t.Fatalf("expected 'hello', got %q", got)
 	}
 }
 
 func TestExtractTextContent_StringArray(t *testing.T) {
-	if got := ExtractTextContent([]any{"a", "b"}); got != "a\nb" {
+	if got := protocol.ExtractTextContent([]any{"a", "b"}); got != "a\nb" {
 		t.Fatalf("expected 'a\\nb', got %q", got)
 	}
 }
 
 func TestExtractTextContent_Blocks(t *testing.T) {
-	if got := ExtractTextContent([]any{
+	if got := protocol.ExtractTextContent([]any{
 		map[string]any{"type": "text", "text": "hello"},
 		map[string]any{"type": "text", "text": "world"},
 	}); got != "hello\nworld" {
@@ -32,11 +34,11 @@ func TestExtractTextContent_RejectsImage(t *testing.T) {
 			t.Fatal("expected panic for unsupported block")
 		}
 	}()
-	ExtractTextContent([]any{map[string]any{"type": "image", "source": map[string]any{}}})
+	protocol.ExtractTextContent([]any{map[string]any{"type": "image", "source": map[string]any{}}})
 }
 
 func TestAnthropicToOpenAI_TextSystem(t *testing.T) {
-	out := AnthropicToOpenAI(map[string]any{
+	out := protocol.AnthropicToOpenAI(map[string]any{
 		"system":     "sys",
 		"max_tokens": float64(10),
 		"messages": []any{
@@ -62,7 +64,7 @@ func TestAnthropicToOpenAI_TextSystem(t *testing.T) {
 }
 
 func TestAnthropicToOpenAI_ToolsHistory(t *testing.T) {
-	out := AnthropicToOpenAI(map[string]any{
+	out := protocol.AnthropicToOpenAI(map[string]any{
 		"tools": []any{
 			map[string]any{"name": "Bash", "description": "Run shell", "input_schema": map[string]any{
 				"type": "object", "properties": map[string]any{"command": map[string]any{"type": "string"}},
@@ -129,7 +131,7 @@ func TestAnthropicToOpenAI_ToolsHistory(t *testing.T) {
 }
 
 func TestAnthropicToOpenAI_ToolUseHistory(t *testing.T) {
-	out := AnthropicToOpenAI(map[string]any{
+	out := protocol.AnthropicToOpenAI(map[string]any{
 		"messages": []any{
 			map[string]any{"role": "user", "content": []any{
 				map[string]any{"type": "text", "text": "hi"},
@@ -168,7 +170,7 @@ func TestAnthropicToOpenAI_ToolUseHistory(t *testing.T) {
 }
 
 func TestAnthropicToOpenAI_EmptyMessages(t *testing.T) {
-	out := AnthropicToOpenAI(map[string]any{"max_tokens": float64(5)}, "m")
+	out := protocol.AnthropicToOpenAI(map[string]any{"max_tokens": float64(5)}, "m")
 	if out["model"] != "m" {
 		t.Fatalf("model: %v", out["model"])
 	}
@@ -179,7 +181,7 @@ func TestAnthropicToOpenAI_EmptyMessages(t *testing.T) {
 }
 
 func TestAnthropicToOpenAI_SystemArrayBlocks(t *testing.T) {
-	out := AnthropicToOpenAI(map[string]any{
+	out := protocol.AnthropicToOpenAI(map[string]any{
 		"system": []any{
 			map[string]any{"type": "text", "text": "rule1"},
 			map[string]any{"type": "text", "text": "rule2"},
@@ -196,7 +198,7 @@ func TestAnthropicToOpenAI_SystemArrayBlocks(t *testing.T) {
 }
 
 func TestAnthropicToOpenAI_PreservesToolResultOrder(t *testing.T) {
-	out := AnthropicToOpenAI(map[string]any{
+	out := protocol.AnthropicToOpenAI(map[string]any{
 		"messages": []any{
 			map[string]any{"role": "user", "content": []any{
 				map[string]any{"type": "tool_result", "tool_use_id": "call:1", "content": "done"},
@@ -217,7 +219,7 @@ func TestAnthropicToOpenAI_PreservesToolResultOrder(t *testing.T) {
 }
 
 func TestAnthropicToOpenAI_ImageBlocks(t *testing.T) {
-	out := AnthropicToOpenAI(map[string]any{
+	out := protocol.AnthropicToOpenAI(map[string]any{
 		"messages": []any{
 			map[string]any{"role": "user", "content": []any{
 				map[string]any{"type": "text", "text": "look"},
@@ -246,7 +248,7 @@ func TestAnthropicToOpenAI_ImageBlocks(t *testing.T) {
 }
 
 func TestAnthropicToOpenAI_ToolChoiceNone(t *testing.T) {
-	out := AnthropicToOpenAI(map[string]any{
+	out := protocol.AnthropicToOpenAI(map[string]any{
 		"tool_choice": map[string]any{"type": "none", "disable_parallel_tool_use": true},
 	}, "m")
 	if out["tool_choice"] != "none" {
@@ -263,11 +265,11 @@ func TestExtractTextContent_RejectsNonTextBlocks(t *testing.T) {
 			t.Fatal("expected panic")
 		}
 	}()
-	ExtractTextContent([]any{map[string]any{"type": "image", "source": map[string]any{}}})
+	protocol.ExtractTextContent([]any{map[string]any{"type": "image", "source": map[string]any{}}})
 }
 
 func TestOpenAIToAnthropic_TextMessage(t *testing.T) {
-	out := OpenAIToAnthropic(map[string]any{
+	out := protocol.OpenAIToAnthropic(map[string]any{
 		"id":    "chatcmpl_1",
 		"model": "m",
 		"choices": []any{map[string]any{
@@ -290,7 +292,7 @@ func TestOpenAIToAnthropic_TextMessage(t *testing.T) {
 }
 
 func TestOpenAIToAnthropic_ToolCalls(t *testing.T) {
-	out := OpenAIToAnthropic(map[string]any{
+	out := protocol.OpenAIToAnthropic(map[string]any{
 		"id":    "chatcmpl_1",
 		"model": "m",
 		"choices": []any{map[string]any{
@@ -321,7 +323,7 @@ func TestOpenAIToAnthropic_ToolCalls(t *testing.T) {
 }
 
 func TestOpenAIToAnthropic_LegacyFunctionCall(t *testing.T) {
-	out := OpenAIToAnthropic(map[string]any{
+	out := protocol.OpenAIToAnthropic(map[string]any{
 		"choices": []any{map[string]any{
 			"message": map[string]any{
 				"function_call": map[string]any{
@@ -343,7 +345,7 @@ func TestOpenAIToAnthropic_LegacyFunctionCall(t *testing.T) {
 }
 
 func TestOpenAIToAnthropic_ChatCMPLPrefix(t *testing.T) {
-	out := OpenAIToAnthropic(map[string]any{
+	out := protocol.OpenAIToAnthropic(map[string]any{
 		"id":      "chatcmpl_xyz_456",
 		"model":   "m",
 		"choices": []any{map[string]any{"message": map[string]any{"content": ""}, "finish_reason": "stop"}},
@@ -367,14 +369,14 @@ func TestMapStopReason(t *testing.T) {
 		{"unknown", "end_turn"},
 	}
 	for _, tc := range tests {
-		if got := MapStopReason(tc.input); got != tc.expected {
-			t.Errorf("MapStopReason(%q) = %q, want %q", tc.input, got, tc.expected)
+		if got := protocol.MapStopReason(tc.input); got != tc.expected {
+			t.Errorf("protocol.MapStopReason(%q) = %q, want %q", tc.input, got, tc.expected)
 		}
 	}
 }
 
 func TestAnthropicToOpenAI_PassStop(t *testing.T) {
-	out := AnthropicToOpenAI(map[string]any{"stop": []any{"\n"}}, "m")
+	out := protocol.AnthropicToOpenAI(map[string]any{"stop": []any{"\n"}}, "m")
 	if out["stop"] == nil {
 		t.Fatal("expected stop field")
 	}

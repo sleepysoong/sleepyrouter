@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
+	"github.com/sleepysoong/sleepyrouter/internal/protocol"
 	"github.com/sleepysoong/sleepyrouter/internal/providers"
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
@@ -147,7 +148,7 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 			upstream, upstreamErr = p.Messages(ctx, apiKey, upstreamBody, client)
 			logUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
 			if upstreamErr == nil && !utils.IsOK(upstream) && (upstream.StatusCode == 404 || upstream.StatusCode == 405) {
-				fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
+				fallbackBody := protocol.AnthropicToOpenAI(body, modelUpstreamID(model))
 				if st.stream {
 					fallbackBody["stream_options"] = map[string]any{"include_usage": true}
 				}
@@ -169,7 +170,7 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 						st.lastInputTokens = in
 						st.lastOutputTokens = out
 						recordSuccessfulUsage(store, model, data)
-						writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
+						writeJSON(w, upstream.StatusCode, protocol.OpenAIToAnthropic(data, modelID))
 					}
 					return true, ""
 				}
@@ -207,7 +208,7 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 				return true, ""
 			}
 		} else { // providers.ProtocolOpenAI
-			fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
+			fallbackBody := protocol.AnthropicToOpenAI(body, modelUpstreamID(model))
 			attemptStart := time.Now()
 			upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, client)
 			logUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
@@ -229,7 +230,7 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 					st.lastInputTokens = in
 					st.lastOutputTokens = out
 					recordSuccessfulUsage(store, model, data)
-					writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
+					writeJSON(w, upstream.StatusCode, protocol.OpenAIToAnthropic(data, modelID))
 				}
 				return true, ""
 			}
