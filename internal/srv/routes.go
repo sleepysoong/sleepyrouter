@@ -45,9 +45,9 @@ func registerRoutes(mux *http.ServeMux, deps routeDeps) {
 	mux.HandleFunc("GET /v1/models", handleModels(deps))
 	mux.HandleFunc("POST /anthropic/v1/messages/count_tokens", handleCountTokens())
 	mux.HandleFunc("POST /anthropic/messages/count_tokens", handleCountTokens())
-	mux.HandleFunc("POST /v1/chat/completions", handleChat(deps))
-	mux.HandleFunc("POST /anthropic/v1/messages", handleAnthropic(deps))
-	mux.HandleFunc("POST /anthropic/messages", handleAnthropic(deps))
+	mux.HandleFunc("POST /v1/chat/completions", handleChatEndpoint(deps, ApiOpenAI))
+	mux.HandleFunc("POST /anthropic/v1/messages", handleChatEndpoint(deps, ApiAnthropic))
+	mux.HandleFunc("POST /anthropic/messages", handleChatEndpoint(deps, ApiAnthropic))
 	mux.HandleFunc("/", handleNotFound())
 }
 
@@ -98,7 +98,7 @@ func handleCountTokens() http.HandlerFunc {
 	}
 }
 
-func handleChat(deps routeDeps) http.HandlerFunc {
+func handleChatEndpoint(deps routeDeps, apiType ApiType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		st := stateFromContext(ctx)
@@ -126,41 +126,21 @@ func handleChat(deps routeDeps) http.HandlerFunc {
 				Group:          pre.logGroup,
 			})
 		}
-		handleChatCompletion(ctx, deps.store, pre, deps.client, w, st, deps.requestLogger)
+		if apiType == ApiAnthropic {
+			handleAnthropicMessage(ctx, deps.store, pre, deps.client, w, st, deps.requestLogger)
+		} else {
+			handleChatCompletion(ctx, deps.store, pre, deps.client, w, st, deps.requestLogger)
+		}
 	}
 }
 
-func handleAnthropic(deps routeDeps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		st := stateFromContext(ctx)
-		pre, ok := readHandlerPreamble(ctx, deps.store, deps.env, deps.client, w, r)
-		if !ok {
-			return
-		}
-		if st != nil {
-			st.requestedModel = utils.StringFromUnknown(pre.body["model"])
-			st.stream = utils.BoolValue(pre.body["stream"])
-			st.logGroup = pre.logGroup
-			candCount := len(pre.candidates)
-			st.logCandidateCount = &candCount
-		}
-		if deps.requestLogger != nil && st != nil {
-			candCount := len(pre.candidates)
-			deps.requestLogger(ServerLogEvent{
-				Type:           "route",
-				ID:             st.requestID,
-				Method:         r.Method,
-				Path:           r.URL.Path,
-				RequestedModel: st.requestedModel,
-				CandidateCount: &candCount,
-				RouteReason:    string(pre.candidateReason),
-				Group:          pre.logGroup,
-			})
-		}
-		handleAnthropicMessage(ctx, deps.store, pre, deps.client, w, st, deps.requestLogger)
-	}
-}
+// ApiType selects which protocol the routed handler uses.
+type ApiType int
+
+const (
+	ApiOpenAI    ApiType = iota
+	ApiAnthropic
+)
 
 func handleNotFound() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
