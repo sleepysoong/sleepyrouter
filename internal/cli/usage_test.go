@@ -73,10 +73,9 @@ func TestFilterUsageLogs_ByDate(t *testing.T) {
 }
 
 func TestFilterUsageLogs_ByWeek(t *testing.T) {
-	// 2026-06-28 is a Sunday. ISO week: let's check.
 	ts := "2026-06-28T10:00:00Z"
 	tm, _ := time.Parse(time.RFC3339, ts)
-	wn := getWeekNumber(tm)
+	_, wn := tm.ISOWeek()
 
 	logs := []types.UsageLogEntry{
 		{TS: ts, Model: "a", InputTokens: 1, OutputTokens: 0, Success: true},

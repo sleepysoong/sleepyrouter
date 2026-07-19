@@ -17,12 +17,6 @@ type UsageCommandOptions struct {
 	Store *cfg.ConfigStore
 }
 
-func getWeekNumber(d time.Time) int {
-	start := time.Date(d.Year(), 1, 1, 0, 0, 0, 0, d.Location())
-	days := int(d.Sub(start).Hours() / 24)
-	return (days + int(start.Weekday()) + 1 + 6) / 7
-}
-
 func filterUsageLogs(logs []types.UsageLogEntry, date string, week int) []types.UsageLogEntry {
 	if date == "" && week == 0 {
 		return logs
@@ -40,10 +34,9 @@ func filterUsageLogs(logs []types.UsageLogEntry, date string, week int) []types.
 			}
 		}
 		if week != 0 {
-			y := ts.Year()
-			w := getWeekNumber(ts)
-			targetYear := time.Now().Year()
-			if y != targetYear || w != week {
+			isoYear, isoWeek := ts.ISOWeek()
+			targetISOYear, _ := time.Now().ISOWeek()
+			if isoYear != targetISOYear || isoWeek != week {
 				continue
 			}
 		}
