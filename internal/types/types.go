@@ -49,19 +49,11 @@ type UsageLogEntry struct {
 	Success      bool   `json:"success"`
 }
 
-// TokenSpec carries per-direction token limits and pricing ($/1M tokens).
-type TokenSpec struct {
-	MaxTokens int     `json:"maxTokens,omitempty"`
-	Price     float64 `json:"price,omitempty"`
-}
-
 // ModelDefinition is a config-defined model alias. Provider selects which
 // upstream API to call; Name is the model ID the upstream expects.
 type ModelDefinition struct {
-	Provider     string    `json:"provider"`
-	Name         string    `json:"name"`
-	InputTokens  TokenSpec `json:"inputTokens,omitempty"`
-	OutputTokens TokenSpec `json:"outputTokens,omitempty"`
+	Provider string `json:"provider"`
+	Name     string `json:"name"`
 }
 
 type SleepyRouterConfig struct {
