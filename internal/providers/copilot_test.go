@@ -70,9 +70,7 @@ func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
 	if capturedBody["model"] != "gpt-4o" {
 		t.Fatalf("body model: %v", capturedBody["model"])
 	}
-	if reqHeader := mock.(utils.HTTPClientFunc); reqHeader != nil {
-		// no-op, just ensuring the mock is used
-	}
+	_ = mock.(utils.HTTPClientFunc) // compile-time check: mock satisfies HTTPClientFunc
 	// Check Copilot-Integration-Id header
 	req, _ := http.NewRequest("GET", copilotChatCompletionsURL, nil)
 	req.Header.Set("Copilot-Integration-Id", "vscode-chat")

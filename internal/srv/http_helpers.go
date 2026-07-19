@@ -13,7 +13,7 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	data, _ := utils.MarshalJSONHelper(body)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	w.Write(data)
+	_, _ = w.Write(data)
 }
 
 // writeJSONError writes the standard upstream-style error envelope:

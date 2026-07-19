@@ -336,7 +336,7 @@ func Listen(server *http.Server, port int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	go server.Serve(ln)
+	go func() { _ = server.Serve(ln) }()
 	if tcpAddr, ok := ln.Addr().(*net.TCPAddr); ok {
 		// ponytail: constants defined in RFCs
 		return tcpAddr.Port, nil

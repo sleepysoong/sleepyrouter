@@ -648,7 +648,7 @@ func TestServer_RejectsEmptyChoicesAndRetries(t *testing.T) {
 			t.Fatalf("expected 200 after retry, got %d: %s", w.Code, w.Body.String())
 		}
 		var body map[string]any
-		json.Unmarshal(w.Body.Bytes(), &body)
+		_ = json.Unmarshal(w.Body.Bytes(), &body)
 		if body["model"] != "model-good:free" {
 			t.Fatalf("model: %v", body["model"])
 		}
