@@ -51,9 +51,10 @@ type usageAggregateRow struct {
 	Failed       int
 	InputTokens  int
 	OutputTokens int
+	Cost         float64
 }
 
-func aggregateUsage(logs []types.UsageLogEntry) []usageAggregateRow {
+func aggregateUsage(logs []types.UsageLogEntry, prices map[string]types.ModelDefinition) []usageAggregateRow {
 	m := make(map[string]*usageAggregateRow)
 	order := make([]string, 0)
 	for _, entry := range logs {
@@ -72,7 +73,13 @@ func aggregateUsage(logs []types.UsageLogEntry) []usageAggregateRow {
 	}
 	result := make([]usageAggregateRow, 0, len(order))
 	for _, model := range order {
-		result = append(result, *m[model])
+		r := *m[model]
+		if def, ok := prices[model]; ok {
+			inCost := float64(r.InputTokens) * def.InputPrice / 1_000_000
+			outCost := float64(r.OutputTokens) * def.OutputPrice / 1_000_000
+			r.Cost = inCost + outCost
+		}
+		result = append(result, r)
 	}
 	sort.SliceStable(result, func(i, j int) bool {
 		if result[i].Requests != result[j].Requests {
@@ -105,38 +112,42 @@ func RunUsageCommand(options UsageCommandOptions) {
 		return
 	}
 
-	rows := aggregateUsage(logs)
+	config, _ := store.ReadConfig()
+	rows := aggregateUsage(logs, config.Models)
 
 	totalRequests := 0
 	totalFailed := 0
 	totalInput := 0
 	totalOutput := 0
+	totalCost := 0.0
 	for _, row := range rows {
 		totalRequests += row.Requests
 		totalFailed += row.Failed
 		totalInput += row.InputTokens
 		totalOutput += row.OutputTokens
+		totalCost += row.Cost
 	}
 
 	// Build a simple table similar to cli-table3
 	var sb strings.Builder
-	sb.WriteString("┌──────────────────────────────────────────────────────┬──────────┬────────┬──────────────┬──────────────┐\n")
-	sb.WriteString("│ Model ID                                             │ Requests │ Failed │ Input Tokens │ Output Token │\n")
-	sb.WriteString("├──────────────────────────────────────────────────────┼──────────┼────────┼──────────────┼──────────────┤\n")
+	sb.WriteString("┌──────────────────────────────────────────────────────┬──────────┬────────┬──────────────┬──────────────┬─────────────┐\n")
+	sb.WriteString("│ Model ID                                             │ Requests │ Failed │ Input Tokens │ Output Token │ Cost        │\n")
+	sb.WriteString("├──────────────────────────────────────────────────────┼──────────┼────────┼──────────────┼──────────────┼─────────────┤\n")
 	for _, row := range rows {
 		id := padRight(row.Model, 52)
 		req := padLeft(strconv.Itoa(row.Requests), 8)
 		failed := padLeft(strconv.Itoa(row.Failed), 6)
 		in := padLeft(strconv.Itoa(row.InputTokens), 12)
 		out := padLeft(strconv.Itoa(row.OutputTokens), 12)
-		sb.WriteString(fmt.Sprintf("│ %s │ %s │ %s │ %s │ %s │\n", id, req, failed, in, out))
+		cost := padLeft(fmt.Sprintf("$%.4f", row.Cost), 11)
+		sb.WriteString(fmt.Sprintf("│ %s │ %s │ %s │ %s │ %s │ %s │\n", id, req, failed, in, out, cost))
 	}
 	// Summary row
-	summary := fmt.Sprintf("총 %d건 요청, %d건 실패, in=%d out=%d", totalRequests, totalFailed, totalInput, totalOutput)
+	summary := fmt.Sprintf("총 %d건 요청, %d건 실패, in=%d out=%d cost=$%.4f", totalRequests, totalFailed, totalInput, totalOutput, totalCost)
 	blank := padRight("", 52)
-	sb.WriteString("├──────────────────────────────────────────────────────┴──────────┴────────┴──────────────┴──────────────┤\n")
-	sb.WriteString(fmt.Sprintf("│ %s %s │\n", blank, padRight(summary, 46)))
-	sb.WriteString("└──────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n")
+	sb.WriteString("├──────────────────────────────────────────────────────┴──────────┴────────┴──────────────┴──────────────┴─────────────┤\n")
+	sb.WriteString(fmt.Sprintf("│ %s %s │\n", blank, padRight(summary, 59)))
+	sb.WriteString("└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n")
 
 	filterDesc := "전체"
 	if options.Date != "" {

@@ -39,7 +39,7 @@ func TestRunUsageCommand_Aggregated(t *testing.T) {
 	}
 
 	// Check aggregation
-	rows := aggregateUsage(logs)
+	rows := aggregateUsage(logs, nil)
 	if len(rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(rows))
 	}
