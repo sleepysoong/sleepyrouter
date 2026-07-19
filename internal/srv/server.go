@@ -93,69 +93,33 @@ func readHandlerPreamble(ctx context.Context, store *cfg.ConfigStore, env utils.
 // It updates st with the result of the attempt and returns; the calling
 // handler's deferred logResponse will pick up the final values.
 func handleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *handlerPreamble, client types.HTTPDoer, w http.ResponseWriter, st *handlerState, requestLogger func(ServerLogEvent)) {
-	apiKeys := pre.apiKeys
 	body := pre.body
-	selected := pre.selected
-	Candidates := pre.candidates
-	candidateReason := pre.candidateReason
-
-	var upstreamError string
-	triedAny := false
-	triedCount := 0
-	for _, modelID := range Candidates {
-		model, ok := selected.ByID[modelID]
-		if !ok {
-			continue
-		}
-		apiKey := apiKeys.For(types.SourceOf(model))
-		if apiKey == "" {
-			upstreamError = missingKeyMessage(model)
-			st.lastError = upstreamError
-			continue
-		}
-		if requestLogger != nil {
-			st.routedModel = modelID
-			st.routeReason = string(candidateReason)
-		}
-		triedAny = true
-		triedCount++
+	tryModelCandidates(ctx, pre, w, st, requestLogger, nil, func(ctx context.Context, w http.ResponseWriter, model types.SleepyRouterModel, apiKey string, p providers.Provider, triedCount int) (bool, string) {
+		modelID := model.ID
 		upstreamBody := withUpstreamModel(body, model, st.stream)
-		source := types.SourceOf(model)
-		p := providers.GetProvider(source)
-		if p == nil {
-			upstreamError = fmt.Sprintf("unsupported provider: %s", source)
-			st.lastError = upstreamError
-			continue
-		}
 		attemptStart := time.Now()
 		upstream, upstreamErr := p.ChatCompletion(ctx, apiKey, upstreamBody, client)
 		logUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
 		if upstreamErr != nil {
-			upstreamError = upstreamErr.Error()
-			st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-			continue
+			return false, upstreamErr.Error()
 		}
 		if utils.IsOK(upstream) {
 			if st.stream {
 				st.lastInputTokens, st.lastOutputTokens, st.logTriedCount = writeStreamResponse(w, upstream, store, model, triedCount)
-				return
+				return true, ""
 			}
 			data, err := utils.ResponseJSON(upstream)
 			if err != nil {
-				upstreamError = err.Error()
-				st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-				continue
+				return false, err.Error()
 			}
 			choices, _ := data["choices"].([]any)
 			if len(choices) == 0 {
-				upstreamError = fmt.Sprintf("choices가 비어있어요 (%d)", upstream.StatusCode)
-				st.lastError = fmt.Sprintf("[%s] choices가 비어있어요", modelID)
 				usageID := model.UsageID
 				if usageID == "" {
 					usageID = model.ID
 				}
 				_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
-				continue
+				return false, fmt.Sprintf("choices가 비어있어요 (%d)", upstream.StatusCode)
 			}
 			in, out, _ := usageFromResponse(data)
 			st.lastInputTokens = in
@@ -164,57 +128,19 @@ func handleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *hand
 			t := triedCount
 			st.logTriedCount = &t
 			writeJSON(w, upstream.StatusCode, data)
-			return
+			return true, ""
 		}
-		upstreamError = recordUpstreamFailure(store, model, upstream)
-		st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-	}
-	if !triedAny {
-		noUsableModelResponse(w, upstreamError)
-		return
-	}
-	writeJSONError(w, 502, "선택된 모든 무료 모델이 실패했어요.", map[string]any{"details": upstreamError})
+		return false, recordUpstreamFailure(store, model, upstream)
+	})
 }
 
 // handleAnthropicMessage iterates model candidates for POST /anthropic/v1/messages.
 func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *handlerPreamble, client types.HTTPDoer, w http.ResponseWriter, st *handlerState, requestLogger func(ServerLogEvent)) {
-	apiKeys := pre.apiKeys
 	body := pre.body
-	selected := pre.selected
-	Candidates := pre.candidates
-	candidateReason := pre.candidateReason
-
-	var upstreamError string
-	triedAny := false
-	triedCount := 0
-	for _, modelID := range Candidates {
-		model, ok := selected.ByID[modelID]
-		if !ok {
-			continue
-		}
-		apiKey := apiKeys.For(types.SourceOf(model))
-		if apiKey == "" {
-			upstreamError = missingKeyMessage(model)
-			st.lastError = upstreamError
-			continue
-		}
-		if requestLogger != nil {
-			st.routedModel = modelID
-			st.routeReason = string(candidateReason)
-		}
-		triedAny = true
-		triedCount++
-		source := types.SourceOf(model)
-		p := providers.GetProvider(source)
-		if p == nil {
-			upstreamError = fmt.Sprintf("unsupported provider: %s", source)
-			st.lastError = upstreamError
-			continue
-		}
-
+	tryModelCandidates(ctx, pre, w, st, requestLogger, map[string]any{"type": "api_error"}, func(ctx context.Context, w http.ResponseWriter, model types.SleepyRouterModel, apiKey string, p providers.Provider, triedCount int) (bool, string) {
+		modelID := model.ID
 		var upstream *http.Response
 		var upstreamErr error
-
 		if p.MessageProtocol() == providers.ProtocolAnthropic {
 			upstreamBody := withUpstreamModel(body, model, st.stream)
 			attemptStart := time.Now()
@@ -237,9 +163,7 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 					} else {
 						data, err := utils.ResponseJSON(upstream)
 						if err != nil {
-							upstreamError = err.Error()
-							st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-							continue
+							return false, err.Error()
 						}
 						in, out, _ := usageFromResponse(data)
 						st.lastInputTokens = in
@@ -247,37 +171,31 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 						recordSuccessfulUsage(store, model, data)
 						writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
 					}
-					return
+					return true, ""
 				}
 			}
 			if upstreamErr != nil {
-				upstreamError = upstreamErr.Error()
-				st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-				continue
+				return false, upstreamErr.Error()
 			}
 			if utils.IsOK(upstream) {
 				if st.stream {
 					st.lastInputTokens, st.lastOutputTokens, st.logTriedCount = writeStreamResponse(w, upstream, store, model, triedCount)
-					return
+					return true, ""
 				}
 				data, err := utils.ResponseJSON(upstream)
 				if err != nil {
-					upstreamError = err.Error()
-					st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-					continue
+					return false, err.Error()
 				}
 				_, hasChoicesArr := data["choices"].([]any)
 				_, hasContentArr := data["content"].([]any)
 				empty := !hasChoicesArr && !hasContentArr
 				if empty {
-					upstreamError = fmt.Sprintf("choices와 content가 모두 비어있어요 (%d)", upstream.StatusCode)
-					st.lastError = fmt.Sprintf("[%s] choices와 content가 모두 비어있어요", modelID)
 					usageID := model.UsageID
 					if usageID == "" {
 						usageID = model.ID
 					}
 					_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
-					continue
+					return false, fmt.Sprintf("choices와 content가 모두 비어있어요 (%d)", upstream.StatusCode)
 				}
 				in, out, _ := usageFromResponse(data)
 				st.lastInputTokens = in
@@ -286,7 +204,7 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 				t := triedCount
 				st.logTriedCount = &t
 				writeJSON(w, upstream.StatusCode, data)
-				return
+				return true, ""
 			}
 		} else { // providers.ProtocolOpenAI
 			fallbackBody := AnthropicToOpenAI(body, modelUpstreamID(model))
@@ -294,9 +212,7 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 			upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, client)
 			logUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
 			if upstreamErr != nil {
-				upstreamError = upstreamErr.Error()
-				st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-				continue
+				return false, upstreamErr.Error()
 			}
 			if utils.IsOK(upstream) {
 				t := triedCount
@@ -307,9 +223,7 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 				} else {
 					data, err := utils.ResponseJSON(upstream)
 					if err != nil {
-						upstreamError = err.Error()
-						st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-						continue
+						return false, err.Error()
 					}
 					in, out, _ := usageFromResponse(data)
 					st.lastInputTokens = in
@@ -317,17 +231,11 @@ func handleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *ha
 					recordSuccessfulUsage(store, model, data)
 					writeJSON(w, upstream.StatusCode, OpenAIToAnthropic(data, modelID))
 				}
-				return
+				return true, ""
 			}
 		}
-		upstreamError = recordUpstreamFailure(store, model, upstream)
-		st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-	}
-	if !triedAny {
-		noUsableModelResponse(w, upstreamError)
-		return
-	}
-	writeJSONError(w, 502, "선택된 모든 무료 모델이 실패했어요.", map[string]any{"type": "api_error", "details": upstreamError})
+		return false, recordUpstreamFailure(store, model, upstream)
+	})
 }
 
 func CreateSleepyRouterServer(options ServerOptions) *http.Server {
@@ -345,10 +253,21 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 	if startTime.IsZero() {
 		startTime = time.Now()
 	}
-	nextID := new(int64)
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+	mux := http.NewServeMux()
+	registerRoutes(mux, routeDeps{store: store, env: env, client: client, requestLogger: requestLogger, startTime: startTime})
+
+	nextID := new(int64)
+	handler := withObservation(mux, nextID, requestLogger, startTime)
+	return &http.Server{Handler: handler}
+}
+
+// withObservation wraps mux so that every request gets a fresh handlerState,
+// a logRequest/logResponse pair, a responseRecorder (when logging is on),
+// and a deferred panic recover. Route handlers retrieve the state through
+// r.Context().
+func withObservation(mux *http.ServeMux, nextID *int64, requestLogger func(ServerLogEvent), startTime time.Time) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := int(atomic.AddInt64(nextID, 1))
 		startedAt := time.Now()
 
@@ -358,170 +277,56 @@ func CreateSleepyRouterServer(options ServerOptions) *http.Server {
 			requestPath:   r.URL.Path,
 		}
 
-		logRequest := func() {
-			if requestLogger == nil {
-				return
-			}
+		if requestLogger != nil {
 			requestLogger(ServerLogEvent{
 				Type:   "request",
 				ID:     id,
 				Method: r.Method,
 				Path:   r.URL.Path,
 			})
-		}
-		logResponse := func() {
-			if requestLogger == nil {
-				return
-			}
-			statusCode := 500
-			if writer, ok := w.(*responseRecorder); ok {
-				statusCode = writer.statusCode
-			}
-			requestLogger(ServerLogEvent{
-				Type:           "response",
-				ID:             id,
-				Method:         r.Method,
-				Path:           r.URL.Path,
-				StatusCode:     statusCode,
-				DurationMs:     int(time.Since(startedAt).Milliseconds()),
-				RequestedModel: st.requestedModel,
-				ModelID:        st.routedModel,
-				RouteReason:    st.routeReason,
-				Stream:         st.stream,
-				InputTokens:    st.lastInputTokens,
-				OutputTokens:   st.lastOutputTokens,
-				Error:          st.lastError,
-				Group:          st.logGroup,
-				CandidateCount: st.logCandidateCount,
-				TriedCount:     st.logTriedCount,
-			})
-		}
-
-		logRequest()
-		if requestLogger != nil {
 			if _, ok := w.(*responseRecorder); !ok {
 				w = newResponseRecorder(w)
 			}
 		}
-
-		defer logResponse()
-
-		method := r.Method
-		path := r.URL.Path
-
+		defer func() {
+			if requestLogger != nil {
+				statusCode := 500
+				if writer, ok := w.(*responseRecorder); ok {
+					statusCode = writer.statusCode
+				}
+				requestLogger(ServerLogEvent{
+					Type:           "response",
+					ID:             id,
+					Method:         r.Method,
+					Path:           r.URL.Path,
+					StatusCode:     statusCode,
+					DurationMs:     int(time.Since(startedAt).Milliseconds()),
+					RequestedModel: st.requestedModel,
+					ModelID:        st.routedModel,
+					RouteReason:    st.routeReason,
+					Stream:         st.stream,
+					InputTokens:    st.lastInputTokens,
+					OutputTokens:   st.lastOutputTokens,
+					Error:          st.lastError,
+					Group:          st.logGroup,
+					CandidateCount: st.logCandidateCount,
+					TriedCount:     st.logTriedCount,
+				})
+			}
+		}()
 		defer func() {
 			if err := recover(); err != nil {
 				statusCode := 500
 				if he, ok := err.(*httpError); ok {
 					statusCode = he.StatusCode
 				}
-			msg := errorString(err)
-			writeJSONError(w, statusCode, msg, map[string]any{"request": method + " " + r.URL.String()})
+				msg := errorString(err)
+				writeJSONError(w, statusCode, msg, map[string]any{"request": r.Method + " " + r.URL.String()})
 			}
 		}()
 
-		// GET /health
-		if method == "GET" && path == "/health" {
-			writeJSON(w, 200, map[string]any{"ok": true, "service": "sleepyrouter", "version": types.Version, "uptime": int(time.Since(startTime).Seconds())})
-			return
-		}
-
-		// GET /v1/models
-		if method == "GET" && path == "/v1/models" {
-			apiKeys, err := cfg.RequireAnyProviderAPIKey(env, store.Paths.Root)
-			if err != nil {
-				writeJSONError(w, 500, err.Error())
-				return
-			}
-			selected, err := selectedModelSelection(ctx, store, apiKeys, client)
-			if err != nil {
-				writeJSONError(w, 500, err.Error())
-				return
-			}
-			data := make([]map[string]any, 0, len(selected.Models))
-			for _, model := range selected.Models {
-				data = append(data, map[string]any{"id": model.ID, "object": "model", "created": 0, "owned_by": string(types.SourceOf(model)), "provider": model.Provider})
-			}
-			writeJSON(w, 200, map[string]any{"object": "list", "data": data})
-			return
-		}
-
-		// POST /anthropic/v1/messages/count_tokens or /anthropic/messages/count_tokens
-		if method == "POST" && (path == "/anthropic/v1/messages/count_tokens" || path == "/anthropic/messages/count_tokens") {
-			body, err := readBody(r)
-			if err != nil {
-				status := 500
-				msg := err.Error()
-				if he, ok := err.(*httpError); ok {
-					status = he.StatusCode
-					msg = he.Message
-				}
-				writeJSONError(w, status, msg)
-				return
-			}
-			st.requestedModel = utils.StringFromUnknown(body["model"])
-			writeJSON(w, 200, map[string]any{"input_tokens": estimateInputTokens(body)})
-			return
-		}
-
-		// POST /v1/chat/completions
-		if method == "POST" && path == "/v1/chat/completions" {
-			pre, ok := readHandlerPreamble(ctx, store, env, client, w, r)
-			if !ok {
-				return
-			}
-			st.requestedModel = utils.StringFromUnknown(pre.body["model"])
-			st.stream = utils.BoolValue(pre.body["stream"])
-			st.logGroup = pre.logGroup
-			candCount := len(pre.candidates)
-			st.logCandidateCount = &candCount
-			if requestLogger != nil {
-				requestLogger(ServerLogEvent{
-					Type:           "route",
-					ID:             id,
-					Method:         r.Method,
-					Path:           r.URL.Path,
-					RequestedModel: st.requestedModel,
-					CandidateCount: &candCount,
-					RouteReason:    string(pre.candidateReason),
-					Group:          pre.logGroup,
-				})
-			}
-			handleChatCompletion(ctx, store, pre, client, w, st, requestLogger)
-			return
-		}
-
-		// POST /anthropic/v1/messages or /anthropic/messages
-		if method == "POST" && (path == "/anthropic/v1/messages" || path == "/anthropic/messages") {
-			pre, ok := readHandlerPreamble(ctx, store, env, client, w, r)
-			if !ok {
-				return
-			}
-			st.requestedModel = utils.StringFromUnknown(pre.body["model"])
-			st.stream = utils.BoolValue(pre.body["stream"])
-			st.logGroup = pre.logGroup
-			candCount := len(pre.candidates)
-			st.logCandidateCount = &candCount
-			if requestLogger != nil {
-				requestLogger(ServerLogEvent{
-					Type:           "route",
-					ID:             id,
-					Method:         r.Method,
-					Path:           r.URL.Path,
-					RequestedModel: st.requestedModel,
-					CandidateCount: &candCount,
-					RouteReason:    string(pre.candidateReason),
-					Group:          pre.logGroup,
-				})
-			}
-			handleAnthropicMessage(ctx, store, pre, client, w, st, requestLogger)
-			return
-		}
-
-		writeJSONError(w, 404, fmt.Sprintf("지원하지 않는 엔드포인트예요: %s %s. 사용 가능한 엔드포인트: GET /health, GET /v1/models, POST /v1/chat/completions, POST /anthropic/v1/messages", method, path))
+		mux.ServeHTTP(w, r.WithContext(withState(r.Context(), st)))
 	})
-
-	return &http.Server{Handler: handler}
 }
 
 func Listen(server *http.Server, port int) (int, error) {
