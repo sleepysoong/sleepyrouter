@@ -15,7 +15,7 @@ func tempConfigStore(t *testing.T) (*ConfigStore, func()) {
 		t.Fatal(err)
 	}
 	store := NewConfigStore(root)
-	return store, func() { os.RemoveAll(root) }
+	return store, func() { _ = os.RemoveAll(root) }
 }
 
 func TestConfigStore_ReadConfig_Defaults(t *testing.T) {

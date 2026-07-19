@@ -95,10 +95,10 @@ type HandlerPreamble struct {
 // HandlerState carries mutable logging state across handler phases so that
 // extracted handler functions and the deferred logResponse closure stay in sync.
 type HandlerState struct {
-	RequestID                                                         int
-	RequestMethod, RequestPath                                        string
-	RequestedModel, RoutedModel, RouteReason, LastError, LogGroup     string
-	Stream                                                            bool
+	RequestID                                                           int
+	RequestMethod, RequestPath                                          string
+	RequestedModel, RoutedModel, RouteReason, LastError, LogGroup       string
+	Stream                                                              bool
 	LastInputTokens, LastOutputTokens, LogCandidateCount, LogTriedCount *int
 }
 
@@ -390,4 +390,3 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 		return false, RecordUpstreamFailure(store, model, upstream)
 	})
 }
-

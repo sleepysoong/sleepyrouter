@@ -106,7 +106,7 @@ func TestSleepyRouterConfig_MarshalJSON(t *testing.T) {
 		cIdx := strings.Index(s, `"c":`)
 		aIdx := strings.Index(s, `"a":`)
 		bIdx := strings.Index(s, `"b":`)
-		if !(cIdx >= 0 && aIdx > cIdx && bIdx > aIdx) {
+		if cIdx < 0 || aIdx <= cIdx || bIdx <= aIdx {
 			t.Errorf("group order wrong (expected c<a<b): %s", s)
 		}
 	})

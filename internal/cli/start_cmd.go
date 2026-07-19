@@ -10,8 +10,8 @@ import (
 	"syscall"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
-	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/sleepysoong/sleepyrouter/internal/handler"
+	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/sleepysoong/sleepyrouter/internal/srv"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
@@ -80,7 +80,7 @@ func RunStartCommand(options StartCommandOptions) error {
 		for _, m := range undefinedAliases {
 			msg += fmt.Sprintf("  - %s\n", m)
 		}
-		return fmt.Errorf("%s\nconfig.json을 수정한 후 다시 시도하세요.", msg)
+		return fmt.Errorf("%s: config.json을 수정한 후 다시 시도하세요", msg)
 	}
 
 	if len(groupNames) > 0 {
@@ -165,7 +165,7 @@ func RunStartCommand(options StartCommandOptions) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
-	server.Close()
+	_ = server.Close()
 	return nil
 }
 

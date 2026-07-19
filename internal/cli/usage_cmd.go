@@ -23,7 +23,7 @@ func fetchKRWRate() (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var data exchangeRateResponse
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return 0, err
@@ -169,7 +169,7 @@ func RunUsageCommand(options UsageCommandOptions) {
 		in := padLeft(strconv.Itoa(row.InputTokens), 12)
 		out := padLeft(strconv.Itoa(row.OutputTokens), 12)
 		cost := padLeft(fmt.Sprintf("$%.4f", row.Cost), 11)
-		sb.WriteString(fmt.Sprintf("│ %s │ %s │ %s │ %s │ %s │ %s │\n", id, req, failed, in, out, cost))
+		fmt.Fprintf(&sb, "│ %s │ %s │ %s │ %s │ %s │ %s │\n", id, req, failed, in, out, cost)
 	}
 	// Summary row
 	summary := fmt.Sprintf("총 %d건 요청, %d건 실패, in=%d out=%d cost=$%.4f", totalRequests, totalFailed, totalInput, totalOutput, totalCost)
@@ -178,7 +178,7 @@ func RunUsageCommand(options UsageCommandOptions) {
 	}
 	blank := padRight("", 52)
 	sb.WriteString("├──────────────────────────────────────────────────────┴──────────┴────────┴──────────────┴──────────────┴─────────────┤\n")
-	sb.WriteString(fmt.Sprintf("│ %s %s │\n", blank, padRight(summary, 63)))
+	fmt.Fprintf(&sb, "│ %s %s │\n", blank, padRight(summary, 63))
 	sb.WriteString("└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n")
 
 	filterDesc := "전체"

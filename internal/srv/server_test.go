@@ -87,7 +87,7 @@ func tempServerStore(t *testing.T) (*cfg.ConfigStore, func()) {
 		},
 	}
 	_ = store.WriteConfig(config)
-	return store, func() { os.RemoveAll(root) }
+	return store, func() { _ = os.RemoveAll(root) }
 }
 
 func TestServer_RouteReasonInLogEvent(t *testing.T) {
@@ -420,7 +420,7 @@ func TestServer_NonFreeModelRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 	store := cfg.NewConfigStore(root)
 	_, _ = store.UpdateModelGroup("default", []string{"paid/model"})
 	called := false

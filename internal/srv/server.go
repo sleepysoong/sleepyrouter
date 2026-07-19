@@ -146,5 +146,3 @@ func (r *responseRecorder) Flush() {
 		f.Flush()
 	}
 }
-
-

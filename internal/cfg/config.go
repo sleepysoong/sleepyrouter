@@ -102,9 +102,9 @@ func writeFileJSON(path string, value any) error {
 		return err
 	}
 	tempName := temp.Name()
-	defer os.Remove(tempName)
+	defer func() { _ = os.Remove(tempName) }()
 	if _, err := temp.Write(data); err != nil {
-		temp.Close()
+		_ = temp.Close()
 		return err
 	}
 	if err := temp.Close(); err != nil {
@@ -233,7 +233,7 @@ func (store *ConfigStore) ReadUsageLogs() ([]types.UsageLogEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var entries []types.UsageLogEntry
 	for rows.Next() {
 		var entry types.UsageLogEntry

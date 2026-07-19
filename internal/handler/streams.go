@@ -34,14 +34,14 @@ func PipeWebStreamToNode(body io.ReadCloser, w http.ResponseWriter) StreamUsage 
 	if body == nil {
 		return StreamUsage{}
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	usage := StreamUsage{}
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
-		fmt.Fprintf(w, "%s\n", line)
+		_, _ = fmt.Fprintf(w, "%s\n", line)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
@@ -177,7 +177,7 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 		sseutil.WriteEvent(w, "message_stop", map[string]any{"type": "message_stop"})
 		return
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	st := &anthropicStreamState{
 		w:              w,

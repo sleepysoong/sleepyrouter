@@ -34,7 +34,7 @@ func Headers(w http.ResponseWriter) {
 // flushing afterwards so callers do not need to handle flushing themselves.
 func WriteEvent(w http.ResponseWriter, event string, data any) {
 	jsonData, _ := utils.MarshalJSONHelper(data)
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, string(jsonData))
+	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, string(jsonData))
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}

@@ -38,9 +38,9 @@ func exchangeCopilotToken(ctx context.Context, apiKey string, client types.HTTPD
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if !utils.IsOK(response) {
-		return nil, fmt.Errorf("Copilot 토큰 교환 실패: %d %s (GET copilot_internal/v2/token)", response.StatusCode, utils.StatusText(response))
+		return nil, fmt.Errorf("copilot 토큰 교환 실패: %d %s (GET copilot_internal/v2/token)", response.StatusCode, utils.StatusText(response))
 	}
 	body, err := utils.ResponseJSON(response)
 	if err != nil {
@@ -49,7 +49,7 @@ func exchangeCopilotToken(ctx context.Context, apiKey string, client types.HTTPD
 	token := utils.StringFromUnknown(body["token"])
 	expiresAt, ok := body["expires_at"].(float64)
 	if token == "" || !ok || expiresAt == 0 {
-		return nil, fmt.Errorf("Copilot 토큰 응답에 token 또는 expires_at 필드가 없어요.")
+		return nil, fmt.Errorf("copilot 토큰 응답에 token 또는 expires_at 필드가 없어요")
 	}
 	return &copilotToken{Token: token, ExpiresAt: time.Unix(int64(expiresAt), 0)}, nil
 }
