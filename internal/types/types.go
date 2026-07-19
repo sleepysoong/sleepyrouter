@@ -24,16 +24,12 @@ var AllModelSources = []ModelSource{SourceOpenRouter, SourceNVIDIA, SourceCopilo
 type ModelGroups map[string][]string
 
 type SleepyRouterModel struct {
-	ID                  string          `json:"id"`
-	UpstreamID          string          `json:"upstreamId,omitempty"`
-	Name                string          `json:"name"`
-	Provider            string          `json:"provider"`
-	Source              ModelSource     `json:"source,omitempty"`
-	UsageID             string          `json:"usageId,omitempty"`
-	ContextLength       *int            `json:"contextLength,omitempty"`
-	PopularityRank      *int            `json:"popularityRank,omitempty"`
-	SupportedParameters []string        `json:"supportedParameters,omitempty"`
-	Raw                 json.RawMessage `json:"raw,omitempty"`
+	ID         string      `json:"id"`
+	UpstreamID string      `json:"upstreamId,omitempty"`
+	Name       string      `json:"name"`
+	Provider   string      `json:"provider"`
+	Source     ModelSource `json:"source,omitempty"`
+	UsageID    string      `json:"usageId,omitempty"`
 }
 
 func SourceOf(model SleepyRouterModel) ModelSource {

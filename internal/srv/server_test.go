@@ -89,12 +89,6 @@ func tempServerStore(t *testing.T) (*cfg.ConfigStore, func()) {
 	return store, func() { os.RemoveAll(root) }
 }
 
-func mustJSON(t *testing.T, value any) json.RawMessage {
-	t.Helper()
-	data, _ := json.Marshal(value)
-	return data
-}
-
 func TestServer_RouteReasonInLogEvent(t *testing.T) {
 	store, cleanup := tempServerStore(t)
 	defer cleanup()

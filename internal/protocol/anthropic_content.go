@@ -3,14 +3,11 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
-
-var unsafeCharPattern = regexp.MustCompile("[\x00-\x1f\x7f]")
 
 // ExtractTextContent extracts the textual content from an Anthropic
 // "content" field, which may be either a plain string or an array of typed

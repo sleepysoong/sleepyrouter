@@ -18,7 +18,7 @@ func (p *OpenRouterProvider) ChatCompletion(ctx context.Context, apiKey string, 
 	return postChatCompletion(ctx, openRouterChatCompletionsURL, map[string]string{
 		"Authorization":      "Bearer " + apiKey,
 		"Content-Type":       "application/json",
-		"HTTP-Referer":       "https://github.com/hakilee/sleepyrouter",
+		"HTTP-Referer":       "https://github.com/sleepysoong/sleepyrouter",
 		"X-OpenRouter-Title": "sleepyrouter",
 	}, body, client)
 }
@@ -28,7 +28,7 @@ func (p *OpenRouterProvider) Messages(ctx context.Context, apiKey string, body m
 		"Authorization":      "Bearer " + apiKey,
 		"Content-Type":       "application/json",
 		"anthropic-version":  "2023-06-01",
-		"HTTP-Referer":       "https://github.com/hakilee/sleepyrouter",
+		"HTTP-Referer":       "https://github.com/sleepysoong/sleepyrouter",
 		"X-OpenRouter-Title": "sleepyrouter",
 	}, body, client)
 }

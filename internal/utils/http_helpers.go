@@ -67,14 +67,6 @@ func ResponseJSON(response *http.Response) (map[string]any, error) {
 	return body, nil
 }
 
-func responseText(response *http.Response) (string, error) {
-	if response == nil || response.Body == nil {
-		return "", nil
-	}
-	data, err := io.ReadAll(response.Body)
-	return string(data), err
-}
-
 func StatusText(response *http.Response) string {
 	if response == nil {
 		return ""

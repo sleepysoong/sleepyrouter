@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
@@ -18,7 +19,7 @@ func parseArgs(argv []string) (command string, flags map[string]any) {
 		arg := argv[i]
 		if len(arg) > 2 && arg[:2] == "--" {
 			rest := arg[2:]
-			if idx := indexByte(rest, '='); idx >= 0 {
+			if idx := strings.IndexByte(rest, '='); idx >= 0 {
 				flags[rest[:idx]] = rest[idx+1:]
 			} else if i+1 < len(argv) && argv[i+1][0] != '-' {
 				i++
@@ -29,15 +30,6 @@ func parseArgs(argv []string) (command string, flags map[string]any) {
 		}
 	}
 	return
-}
-
-func indexByte(s string, b byte) int {
-	for i := 0; i < len(s); i++ {
-		if s[i] == b {
-			return i
-		}
-	}
-	return -1
 }
 
 func parsePort(value any) (int, error) {
