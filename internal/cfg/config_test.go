@@ -119,25 +119,6 @@ func TestConfigStore_UsageLogs(t *testing.T) {
 	}
 }
 
-func TestConfigStore_ModelCacheFresh(t *testing.T) {
-	store, cleanup := tempConfigStore(t)
-	defer cleanup()
-	_ = store.WriteModelCache(types.ModelCache{
-		Models:    []types.SleepyRouterModel{{ID: "m:free", Name: "M"}},
-		FetchedAt: "2026-06-28T10:00:00Z",
-	})
-	cache, err := store.ReadModelCache()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cache == nil {
-		t.Fatal("cache is nil")
-	}
-	if len(cache.Models) != 1 {
-		t.Fatalf("models: %d", len(cache.Models))
-	}
-}
-
 func TestParseDotEnv(t *testing.T) {
 	result := utils.ParseDotEnv("KEY1=val1\n# comment\nKEY2=val2")
 	if result["KEY1"] != "val1" {

@@ -7,9 +7,8 @@ import (
 )
 
 const (
-	configFileName     = "config.json"
-	usageFileName      = "usage.jsonl"
-	modelCacheFileName = "models-cache.json"
+	configFileName = "config.json"
+	usageFileName  = "usage.jsonl"
 )
 
 type Environment map[string]string
@@ -42,8 +41,6 @@ func GetConfigRoot(env Environment) string {
 func GetConfigPath(root string) string { return filepath.Join(root, configFileName) }
 
 func GetUsagePath(root string) string { return filepath.Join(root, usageFileName) }
-
-func GetModelCachePath(root string) string { return filepath.Join(root, modelCacheFileName) }
 
 func GetEnvPath(root string) string { return filepath.Join(root, ".env") }
 

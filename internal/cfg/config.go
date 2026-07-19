@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
@@ -16,23 +15,20 @@ import (
 )
 
 const (
-	DefaultPort   = 4567
-	ModelCacheTTL = 5 * time.Minute
+	DefaultPort = 4567
 )
 
 type StorePaths struct {
-	Root           string
-	ConfigPath     string
-	UsagePath      string
-	ModelCachePath string
+	Root       string
+	ConfigPath string
+	UsagePath  string
 }
 
 func CreateStorePaths(root string) StorePaths {
 	return StorePaths{
-		Root:           root,
-		ConfigPath:     utils.GetConfigPath(root),
-		UsagePath:      utils.GetUsagePath(root),
-		ModelCachePath: utils.GetModelCachePath(root),
+		Root:       root,
+		ConfigPath: utils.GetConfigPath(root),
+		UsagePath:  utils.GetUsagePath(root),
 	}
 }
 
@@ -193,12 +189,6 @@ func (store *ConfigStore) AppendUsage(entry types.UsageLogEntry) error {
 	if err := os.MkdirAll(filepath.Dir(store.Paths.UsagePath), 0o755); err != nil {
 		return err
 	}
-	oldJSON := strings.TrimSuffix(store.Paths.UsagePath, ".jsonl") + ".json"
-	if _, err := os.Stat(oldJSON); err == nil {
-		if err := os.Rename(oldJSON, oldJSON+".bak"); err != nil {
-			return err
-		}
-	}
 	data, err := json.Marshal(entry)
 	if err != nil {
 		return err
@@ -243,25 +233,5 @@ func (store *ConfigStore) ReadUsageLogs() ([]types.UsageLogEntry, error) {
 	return entries, nil
 }
 
-func (store *ConfigStore) ReadModelCache() (*types.ModelCache, error) {
-	var cache types.ModelCache
-	exists, err := readFileJSON(store.Paths.ModelCachePath, &cache)
-	if err != nil || !exists {
-		return nil, err
-	}
-	return &cache, nil
-}
-
-func (store *ConfigStore) WriteModelCache(cache types.ModelCache) error {
-	return writeFileJSON(store.Paths.ModelCachePath, cache)
-}
-
-func IsModelCacheFresh(cache types.ModelCache, now time.Time) bool {
-	fetchedAt, err := time.Parse(time.RFC3339, cache.FetchedAt)
-	if err != nil {
-		return false
-	}
-	return now.Sub(fetchedAt) < ModelCacheTTL
-}
 
 

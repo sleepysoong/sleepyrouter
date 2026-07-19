@@ -12,11 +12,6 @@ func TestNormalizeModelGroupName(t *testing.T) {
 		expected string
 	}{
 		{"fast", "fast"},
-		{"sleepyrouter/fast", "fast"},
-		{"SLEEPYROUTER/Fast", "fast"},
-		{"haiku", "fast"},
-		{"sonnet", "balanced"},
-		{"opus", "capable"},
 		{"", ""},
 		{"   ", ""},
 	}

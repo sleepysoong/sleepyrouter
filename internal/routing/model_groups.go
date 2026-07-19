@@ -7,21 +7,11 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
-var legacyAliases = map[string]string{
-	"haiku":  "fast",
-	"sonnet": "balanced",
-	"opus":   "capable",
-}
-
 func NormalizeModelGroupName(value string) string {
 	if value == "" {
 		return ""
 	}
-	normalized := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(value)), "sleepyrouter/")
-	if alias, ok := legacyAliases[normalized]; ok {
-		return alias
-	}
-	return normalized
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func NormalizeModelGroups(value any) types.ModelGroups {

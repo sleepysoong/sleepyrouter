@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
@@ -87,13 +86,6 @@ func tempServerStore(t *testing.T) (*cfg.ConfigStore, func()) {
 		},
 	}
 	_ = store.WriteConfig(config)
-	_ = store.WriteModelCache(types.ModelCache{
-		Models: []types.SleepyRouterModel{
-			{ID: "model-a:free", Name: "Model A", Provider: "test"},
-			{ID: "model-b:free", Name: "Model B", Provider: "test"},
-		},
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
-	})
 	return store, func() { os.RemoveAll(root) }
 }
 
@@ -118,22 +110,12 @@ func TestServer_RouteReasonInLogEvent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	_ = store.WriteModelCache(types.ModelCache{
-		Models: []types.SleepyRouterModel{
-			{ID: "model-a:free", Name: "Default A", Provider: "test"},
-			{ID: "model-b:free", Name: "Default B", Provider: "test"},
-			{ID: "nvidia/fast-model:free", Name: "Fast Model", Provider: "nvidia", Source: types.SourceNVIDIA},
-			{ID: "openrouter/fast-alt:free", Name: "Fast Alt", Provider: "openrouter", Source: types.SourceOpenRouter},
-		},
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
-	})
-
 	tests := []struct {
 		name           string
 		requestModel   string
 		wantReason     string
 	}{
-		{"explicit group match", "sleepyrouter/fast", "model-group"},
+		{"explicit group match", "fast", "model-group"},
 		{"auto falls back", "auto", "fallback-order"},
 	}
 
@@ -212,12 +194,6 @@ func TestServer_NVIDIAAnthropicStream(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	_ = store.WriteModelCache(types.ModelCache{
-		Models: []types.SleepyRouterModel{
-			{ID: "nvidia/meta/llama-4", Name: "Meta Llama 4", Provider: "nvidia", Source: types.SourceNVIDIA, UsageID: "nvidia/llama-4"},
-		},
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
-	})
 	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
 		body := `data: {"id":"1","object":"chat.completion.chunk","choices":[{"delta":{"content":"hello"}}]}
 
@@ -258,12 +234,6 @@ func TestServer_OpenRouterAnthropicFallback(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	_ = store.WriteModelCache(types.ModelCache{
-		Models: []types.SleepyRouterModel{
-			{ID: "openrouter/anthropic/claude-3-haiku:free", Name: "Claude 3 Haiku", Provider: "openrouter", Source: types.SourceOpenRouter},
-		},
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
-	})
 	callCount := 0
 	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
 		callCount++
@@ -281,7 +251,7 @@ func TestServer_OpenRouterAnthropicFallback(t *testing.T) {
 	})
 	withTestServerHandler(store, mock, utils.Environment{"OPENROUTER_API_KEY": "key"}, func(handler http.Handler) {
 		reqBody, _ := json.Marshal(map[string]any{
-			"model":      "sleepyrouter/fast",
+			"model":      "fast",
 			"messages":   []any{map[string]any{"role": "user", "content": "hi"}},
 			"max_tokens": 100,
 		})
@@ -316,12 +286,6 @@ func TestServer_AnthropicAllFailed502(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	_ = store.WriteModelCache(types.ModelCache{
-		Models: []types.SleepyRouterModel{
-			{ID: "nvidia/model-a:free", Name: "Model A", Provider: "nvidia", Source: types.SourceNVIDIA},
-		},
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
-	})
 	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
 		return mockResponse(500, map[string]any{"error": map[string]any{"message": "upstream error"}}), nil
 	})
@@ -365,13 +329,6 @@ func TestServer_MissingKeySkipOnAnthropicRoute(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	_ = store.WriteModelCache(types.ModelCache{
-		Models: []types.SleepyRouterModel{
-			{ID: "openrouter/model-a:free", Name: "Model A", Provider: "openrouter", Source: types.SourceOpenRouter},
-			{ID: "nvidia/model-b:free", Name: "Model B", Provider: "nvidia", Source: types.SourceNVIDIA},
-		},
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
-	})
 	callCount := 0
 	env := utils.Environment{"NVIDIA_API_KEY": "nkey"}
 	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
@@ -423,7 +380,7 @@ func TestServer_AnthropicCountTokens(t *testing.T) {
 	defer cleanup()
 	withTestServerHandler(store, nil, utils.Environment{}, func(handler http.Handler) {
 		reqBody, _ := json.Marshal(map[string]any{
-			"model":    "sleepyrouter/balanced",
+			"model":    "balanced",
 			"messages": []any{map[string]any{"role": "user", "content": "hello world"}},
 		})
 		w := testRequest(handler, "POST", "/anthropic/v1/messages/count_tokens", bytes.NewReader(reqBody))
@@ -471,14 +428,6 @@ func TestServer_NonFreeModelRejected(t *testing.T) {
 	defer os.RemoveAll(root)
 	store := cfg.NewConfigStore(root)
 	_, _ = store.UpdateModelGroup("default", []string{"paid/model"})
-	_ = store.WriteModelCache(types.ModelCache{
-		Models: []types.SleepyRouterModel{
-			{ID: "paid/model", Name: "Paid", Provider: "paid", Raw: mustJSON(t, map[string]any{
-				"id": "paid/model", "pricing": map[string]any{"prompt": "1", "completion": "1"},
-			})},
-		},
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
-	})
 	called := false
 	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
 		called = true
@@ -602,13 +551,6 @@ func TestServer_RoutesNVIDIAAnthropic(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	_ = store.WriteModelCache(types.ModelCache{
-		Models: []types.SleepyRouterModel{
-			{ID: "nvidia/meta/llama-4", Name: "Meta Llama 4", Provider: "nvidia", Source: types.SourceNVIDIA, UsageID: "nvidia/llama-4"},
-		},
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
-	})
-
 	var seenBody map[string]any
 	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
 		body, _ := utils.ReadBody(req)
@@ -680,13 +622,6 @@ func TestServer_RejectsEmptyChoicesAndRetries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	_ = store.WriteModelCache(types.ModelCache{
-		Models: []types.SleepyRouterModel{
-			{ID: "model-empty:free", Name: "Empty", Provider: "test"},
-			{ID: "model-good:free", Name: "Good", Provider: "test"},
-		},
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
-	})
 	callCount := 0
 	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
 		callCount++

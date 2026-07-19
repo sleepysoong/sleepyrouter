@@ -76,11 +76,6 @@ type SleepyRouterConfig struct {
 	Models           map[string]ModelDefinition `json:"models,omitempty"`
 }
 
-type ModelCache struct {
-	Models    []SleepyRouterModel `json:"models"`
-	FetchedAt string              `json:"fetchedAt"`
-}
-
 type ProviderAPIKeys struct {
 	OpenRouter string
 	NVIDIA     string

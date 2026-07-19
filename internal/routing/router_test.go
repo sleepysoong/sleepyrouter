@@ -42,18 +42,14 @@ func TestRouter_GroupOrderAsCandidates(t *testing.T) {
 
 func TestRouter_GroupAliases(t *testing.T) {
 	groups := types.ModelGroups{"fast": {"b"}, "balanced": {"a"}, "capable": {"c"}}
-	ids, reason := OrderedCandidates(groups, "sleepyrouter/fast", "")
+	ids, reason := OrderedCandidates(groups, "fast", "")
 	if len(ids) == 0 || ids[0] != "b" || reason != RouteModelGroup {
 		t.Fatalf("ids: %v, reason: %v", ids, reason)
-	}
-	ids2, _ := OrderedCandidates(groups, "haiku", "")
-	if len(ids2) != 1 || ids2[0] != "b" {
-		t.Fatalf("haiku ids: %v", ids2)
 	}
 }
 
 func TestRouter_EmptyGroups(t *testing.T) {
-	ids, _ := OrderedCandidates(types.ModelGroups{"fast": {}, "balanced": {}, "capable": {}}, "opus", "")
+	ids, _ := OrderedCandidates(types.ModelGroups{"fast": {}, "balanced": {}, "capable": {}}, "unknown", "")
 	if len(ids) != 0 {
 		t.Fatalf("expected empty, got %v", ids)
 	}
@@ -96,30 +92,6 @@ func TestRouter_DefaultGroupForAuto(t *testing.T) {
 	ids, reason := OrderedCandidates(groups, "auto", "default")
 	if len(ids) != 2 || ids[0] != "model-b" || ids[1] != "model-c" || reason != RouteFallbackOrder {
 		t.Fatalf("ids: %v, reason: %v", ids, reason)
-	}
-}
-
-func TestRouter_IgnoreSleepyRouterPrefix(t *testing.T) {
-	groups := types.ModelGroups{"coding": {"model-a", "model-b"}}
-	ids, reason := OrderedCandidates(groups, "sleepyrouter/coding", "")
-	if len(ids) == 0 || ids[0] != "model-a" || reason != RouteModelGroup {
-		t.Fatalf("ids: %v, reason: %v", ids, reason)
-	}
-}
-
-func TestRouter_LegacyAliases(t *testing.T) {
-	groups := types.ModelGroups{"fast": {"model-a"}, "balanced": {"model-b"}, "capable": {"model-c"}}
-	ids1, reason1 := OrderedCandidates(groups, "haiku", "")
-	if len(ids1) == 0 || ids1[0] != "model-a" || reason1 != RouteModelGroup {
-		t.Fatalf("haiku: ids=%v, reason=%v", ids1, reason1)
-	}
-	ids2, reason2 := OrderedCandidates(groups, "sonnet", "")
-	if len(ids2) == 0 || ids2[0] != "model-b" || reason2 != RouteModelGroup {
-		t.Fatalf("sonnet: ids=%v, reason=%v", ids2, reason2)
-	}
-	ids3, reason3 := OrderedCandidates(groups, "opus", "")
-	if len(ids3) == 0 || ids3[0] != "model-c" || reason3 != RouteModelGroup {
-		t.Fatalf("opus: ids=%v, reason=%v", ids3, reason3)
 	}
 }
 
