@@ -1,4 +1,4 @@
-package srv
+package handler
 
 import (
 	"bufio"
@@ -330,9 +330,16 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 	sseutil.WriteEvent(w, "message_stop", map[string]any{"type": "message_stop"})
 }
 
-// writeStreamResponse writes a successful streaming upstream response to the
+func valueOr(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+// WriteStreamResponse writes a successful streaming upstream response to the
 // client wire, records usage, and returns the observed token counts and attempt count for logging.
-func writeStreamResponse(w http.ResponseWriter, upstream *http.Response, store *cfg.ConfigStore, model types.SleepyRouterModel, triedCount int) (inputTokens, outputTokens, tried *int) {
+func WriteStreamResponse(w http.ResponseWriter, upstream *http.Response, store *cfg.ConfigStore, model types.SleepyRouterModel, triedCount int) (inputTokens, outputTokens, tried *int) {
 	contentType := upstream.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "text/event-stream; charset=utf-8"
@@ -355,11 +362,4 @@ func writeStreamResponse(w http.ResponseWriter, upstream *http.Response, store *
 	_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: in, OutputTokens: out, Success: true})
 	t := triedCount
 	return streamUsage.InputTokens, streamUsage.OutputTokens, &t
-}
-
-func valueOr(value, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
 }

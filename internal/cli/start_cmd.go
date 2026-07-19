@@ -11,6 +11,7 @@ import (
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
+	"github.com/sleepysoong/sleepyrouter/internal/handler"
 	"github.com/sleepysoong/sleepyrouter/internal/srv"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
@@ -100,7 +101,7 @@ func RunStartCommand(options StartCommandOptions) error {
 
 	server := srv.CreateSleepyRouterServer(srv.ServerOptions{
 		Store: store,
-		RequestLogger: func(event srv.ServerLogEvent) {
+		RequestLogger: func(event handler.ServerLogEvent) {
 			attrs := []any{
 				"id", event.ID,
 				"method", event.Method,

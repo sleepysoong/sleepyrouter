@@ -1,4 +1,4 @@
-package srv
+package handler
 
 import (
 	"context"
@@ -9,14 +9,14 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
-// modelAttemptFunc is invoked once per candidate model with the resolved
+// ModelAttemptFunc is invoked once per candidate model with the resolved
 // provider and API key. It owns the upstream call(s) and response writing:
 // when handled is true the attempt wrote the response and the loop stops;
 // otherwise upstreamError (if non-empty) becomes the running error surfaced
 // in the final 502 envelope.
-type modelAttemptFunc func(ctx context.Context, w http.ResponseWriter, model types.SleepyRouterModel, apiKey string, p providers.Provider, triedCount int) (handled bool, upstreamError string)
+type ModelAttemptFunc func(ctx context.Context, w http.ResponseWriter, model types.SleepyRouterModel, apiKey string, p providers.Provider, triedCount int) (handled bool, upstreamError string)
 
-// tryModelCandidates drives the candidate iteration shared by POST
+// TryModelCandidates drives the candidate iteration shared by POST
 // /v1/chat/completions and POST /anthropic/v1/messages. It resolves each
 // candidate to its SleepyRouterModel, checks the matched API key, looks up
 // the provider, and invokes attempt for the handler-specific upstream call
@@ -24,11 +24,11 @@ type modelAttemptFunc func(ctx context.Context, w http.ResponseWriter, model typ
 // stops; on failure the accumulated error becomes the 502 envelope body.
 // failureExtras are merged into the 502 envelope (e.g. {"type":"api_error"}
 // for Anthropic-shaped errors).
-func tryModelCandidates(ctx context.Context, pre *handlerPreamble, w http.ResponseWriter, st *handlerState, requestLogger func(ServerLogEvent), failureExtras map[string]any, attempt modelAttemptFunc) {
-	apiKeys := pre.apiKeys
-	selected := pre.selected
-	candidates := pre.candidates
-	candidateReason := pre.candidateReason
+func TryModelCandidates(ctx context.Context, pre *HandlerPreamble, w http.ResponseWriter, st *HandlerState, requestLogger func(ServerLogEvent), failureExtras map[string]any, attempt ModelAttemptFunc) {
+	apiKeys := pre.ApiKeys
+	selected := pre.Selected
+	candidates := pre.Candidates
+	candidateReason := pre.CandidateReason
 
 	var upstreamError string
 	triedAny := false
@@ -40,13 +40,13 @@ func tryModelCandidates(ctx context.Context, pre *handlerPreamble, w http.Respon
 		}
 		apiKey := apiKeys.For(types.SourceOf(model))
 		if apiKey == "" {
-			upstreamError = missingKeyMessage(model)
-			st.lastError = upstreamError
+			upstreamError = MissingKeyMessage(model)
+			st.LastError = upstreamError
 			continue
 		}
 		if requestLogger != nil {
-			st.routedModel = modelID
-			st.routeReason = string(candidateReason)
+			st.RoutedModel = modelID
+			st.RouteReason = string(candidateReason)
 		}
 		triedAny = true
 		triedCount++
@@ -54,7 +54,7 @@ func tryModelCandidates(ctx context.Context, pre *handlerPreamble, w http.Respon
 		p := providers.GetProvider(source)
 		if p == nil {
 			upstreamError = fmt.Sprintf("unsupported provider: %s", source)
-			st.lastError = upstreamError
+			st.LastError = upstreamError
 			continue
 		}
 		handled, attemptErr := attempt(ctx, w, model, apiKey, p, triedCount)
@@ -63,7 +63,7 @@ func tryModelCandidates(ctx context.Context, pre *handlerPreamble, w http.Respon
 		}
 		if attemptErr != "" {
 			upstreamError = attemptErr
-			st.lastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+			st.LastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
 		}
 	}
 	if !triedAny {
@@ -74,5 +74,5 @@ func tryModelCandidates(ctx context.Context, pre *handlerPreamble, w http.Respon
 	for k, v := range failureExtras {
 		extras[k] = v
 	}
-	writeJSONError(w, 502, "선택된 모든 무료 모델이 실패했어요.", extras)
+	WriteJSONError(w, 502, "선택된 모든 무료 모델이 실패했어요.", extras)
 }
