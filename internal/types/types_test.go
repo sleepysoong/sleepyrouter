@@ -111,17 +111,3 @@ func TestSleepyRouterConfig_MarshalJSON(t *testing.T) {
 		}
 	})
 }
-
-func TestAllModelSources_Canonical(t *testing.T) {
-	// Registration order matters for catalog fetch priority; freezing it
-	// protects against accidental reordering.
-	want := []ModelSource{SourceOpenRouter, SourceNVIDIA, SourceCopilot, SourceZen, SourceGoogle}
-	if len(AllModelSources) != len(want) {
-		t.Fatalf("len: got %d, want %d", len(AllModelSources), len(want))
-	}
-	for i, s := range want {
-		if AllModelSources[i] != s {
-			t.Errorf("index %d: got %q, want %q", i, AllModelSources[i], s)
-		}
-	}
-}

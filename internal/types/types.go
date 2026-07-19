@@ -18,16 +18,11 @@ const (
 	SourceGoogle     ModelSource = "google"
 )
 
-// AllModelSources is the canonical registration order used by provider_registry
-// and CLI validation. Order affects catalog fetch priority.
-var AllModelSources = []ModelSource{SourceOpenRouter, SourceNVIDIA, SourceCopilot, SourceZen, SourceGoogle}
-
 type ModelGroups map[string][]string
 
 type SleepyRouterModel struct {
 	ID         string      `json:"id"`
 	UpstreamID string      `json:"upstreamId,omitempty"`
-	Name       string      `json:"name"`
 	Provider   string      `json:"provider"`
 	Source     ModelSource `json:"source,omitempty"`
 	UsageID    string      `json:"usageId,omitempty"`
