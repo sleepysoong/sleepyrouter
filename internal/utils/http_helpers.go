@@ -92,16 +92,6 @@ func CloneObject(value map[string]any) map[string]any {
 	return clone
 }
 
-func ObjectValue(value any) (map[string]any, bool) {
-	object, ok := value.(map[string]any)
-	return object, ok
-}
-
-func ArrayValue(value any) ([]any, bool) {
-	array, ok := value.([]any)
-	return array, ok
-}
-
 func BoolValue(value any) bool {
 	switch value := value.(type) {
 	case nil:

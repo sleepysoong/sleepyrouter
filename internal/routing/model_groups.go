@@ -14,11 +14,6 @@ func NormalizeModelGroupName(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
-func NormalizeModelGroups(value any) types.ModelGroups {
-	groups, _ := NormalizeModelGroupsOrdered(value)
-	return groups
-}
-
 func NormalizeModelGroupsOrdered(value any) (types.ModelGroups, []string) {
 	groups := types.ModelGroups{}
 	order := []string{}
@@ -75,7 +70,7 @@ func AllGroupModelIDs(groups types.ModelGroups, groupOrder ...string) []string {
 	return result
 }
 
-func SelectedGroupModelIDs(groups types.ModelGroups, requestedModel string) []string {
+func selectedGroupModelIDs(groups types.ModelGroups, requestedModel string) []string {
 	group := NormalizeModelGroupName(requestedModel)
 	ids, ok := groups[group]
 	if group == "" || !ok || len(ids) == 0 {

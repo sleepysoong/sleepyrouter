@@ -47,7 +47,7 @@ func WriteEvent(w http.ResponseWriter, event string, data any) {
 //
 // The function walks the buffer in a single pass to keep allocations small
 // when used inside hot streaming paths.
-func SplitFrames(buffer string) ([]string, string) {
+func splitFrames(buffer string) ([]string, string) {
 	frames := []string{}
 	cursor := 0
 	for {

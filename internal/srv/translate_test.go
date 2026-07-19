@@ -1,7 +1,6 @@
 package srv
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/sleepysoong/sleepyrouter/internal/protocol"
@@ -380,5 +379,4 @@ func TestAnthropicToOpenAI_PassStop(t *testing.T) {
 	if out["stop"] == nil {
 		t.Fatal("expected stop field")
 	}
-	fmt.Println(out)
 }

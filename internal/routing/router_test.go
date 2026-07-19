@@ -105,7 +105,7 @@ func TestRouter_AllGroupModelIDs(t *testing.T) {
 
 func TestRouter_SelectedGroupModelIDsUnknown(t *testing.T) {
 	groups := types.ModelGroups{"coding": {"model-a"}}
-	ids := SelectedGroupModelIDs(groups, "unknown")
+	ids := selectedGroupModelIDs(groups, "unknown")
 	if ids != nil {
 		t.Fatalf("expected nil, got %v", ids)
 	}

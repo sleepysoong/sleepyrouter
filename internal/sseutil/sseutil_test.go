@@ -54,7 +54,7 @@ func TestSplitFrames(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			gotFrames, gotTrail := SplitFrames(c.buffer)
+			gotFrames, gotTrail := splitFrames(c.buffer)
 			if gotTrail != c.wantTrail {
 				t.Errorf("trail: got %q, want %q", gotTrail, c.wantTrail)
 			}

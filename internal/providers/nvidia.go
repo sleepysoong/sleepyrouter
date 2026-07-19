@@ -8,14 +8,14 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
-const NVIDIAChatCompletionsURL = "https://integrate.api.nvidia.com/v1/chat/completions"
+const nvidiaChatCompletionsURL = "https://integrate.api.nvidia.com/v1/chat/completions"
 
 type NVIDIAProvider struct {
 	BaseProvider
 }
 
 func (p *NVIDIAProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
-	return postChatCompletion(ctx, NVIDIAChatCompletionsURL, map[string]string{
+	return postChatCompletion(ctx, nvidiaChatCompletionsURL, map[string]string{
 		"Authorization": "Bearer " + apiKey,
 		"Content-Type":  "application/json",
 	}, body, client)

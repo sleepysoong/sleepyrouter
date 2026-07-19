@@ -24,7 +24,7 @@ func TestNormalizeModelGroupName(t *testing.T) {
 }
 
 func TestNormalizeModelGroups(t *testing.T) {
-	groups := NormalizeModelGroups(map[string]any{
+	groups, _ := NormalizeModelGroupsOrdered(map[string]any{
 		"a": []any{"x", "y"},
 		"b": []any{42, "z"},
 	})
@@ -46,7 +46,7 @@ func TestAllGroupModelIDs_Deduplicates(t *testing.T) {
 
 func TestSelectedGroupModelIDs_Found(t *testing.T) {
 	groups := types.ModelGroups{"coding": {"a", "b"}}
-	ids := SelectedGroupModelIDs(groups, "coding")
+	ids := selectedGroupModelIDs(groups, "coding")
 	if len(ids) != 2 || ids[0] != "a" {
 		t.Fatalf("got %v", ids)
 	}
@@ -54,7 +54,7 @@ func TestSelectedGroupModelIDs_Found(t *testing.T) {
 
 func TestSelectedGroupModelIDs_NotFound(t *testing.T) {
 	groups := types.ModelGroups{"coding": {"a"}}
-	ids := SelectedGroupModelIDs(groups, "unknown")
+	ids := selectedGroupModelIDs(groups, "unknown")
 	if ids != nil {
 		t.Fatalf("expected nil, got %v", ids)
 	}
@@ -62,7 +62,7 @@ func TestSelectedGroupModelIDs_NotFound(t *testing.T) {
 
 func TestSelectedGroupModelIDs_EmptyGroup(t *testing.T) {
 	groups := types.ModelGroups{"coding": {}}
-	ids := SelectedGroupModelIDs(groups, "coding")
+	ids := selectedGroupModelIDs(groups, "coding")
 	if ids != nil {
 		t.Fatalf("expected nil, got %v", ids)
 	}

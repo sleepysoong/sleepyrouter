@@ -18,26 +18,26 @@ func resolveAPIKey(name string, env utils.Environment, localEnv map[string]strin
 	return strings.TrimSpace(localEnv[name])
 }
 
-func ResolveOpenRouterAPIKey(env utils.Environment, localEnv map[string]string) string {
+func resolveOpenRouterAPIKey(env utils.Environment, localEnv map[string]string) string {
 	return resolveAPIKey("OPENROUTER_API_KEY", env, localEnv)
 }
-func ResolveNVIDIAAPIKey(env utils.Environment, localEnv map[string]string) string {
+func resolveNVIDIAAPIKey(env utils.Environment, localEnv map[string]string) string {
 	return resolveAPIKey("NVIDIA_API_KEY", env, localEnv)
 }
-func ResolveCopilotAPIKey(env utils.Environment, localEnv map[string]string) string {
+func resolveCopilotAPIKey(env utils.Environment, localEnv map[string]string) string {
 	return resolveAPIKey("GITHUB_COPILOT_TOKEN", env, localEnv)
 }
-func ResolveZenAPIKey(env utils.Environment, localEnv map[string]string) string {
+func resolveZenAPIKey(env utils.Environment, localEnv map[string]string) string {
 	return resolveAPIKey("OPENCODE_API_KEY", env, localEnv)
 }
 
 func ResolveProviderAPIKeys(env utils.Environment, root string) types.ProviderAPIKeys {
 	localEnv := utils.ReadLocalEnv(root)
 	return types.ProviderAPIKeys{
-		OpenRouter: ResolveOpenRouterAPIKey(env, localEnv),
-		NVIDIA:     ResolveNVIDIAAPIKey(env, localEnv),
-		Copilot:    ResolveCopilotAPIKey(env, localEnv),
-		Zen:        ResolveZenAPIKey(env, localEnv),
+		OpenRouter: resolveOpenRouterAPIKey(env, localEnv),
+		NVIDIA:     resolveNVIDIAAPIKey(env, localEnv),
+		Copilot:    resolveCopilotAPIKey(env, localEnv),
+		Zen:        resolveZenAPIKey(env, localEnv),
 	}
 }
 

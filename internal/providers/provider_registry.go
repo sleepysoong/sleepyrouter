@@ -61,25 +61,4 @@ func postChatCompletion(ctx context.Context, url string, headers map[string]stri
 	return utils.HTTPClient(client).Do(req)
 }
 
-func AllProviders() []Provider {
-	order := types.AllModelSources
-	list := make([]Provider, 0, len(providers))
-	for _, source := range order {
-		if p, ok := providers[source]; ok {
-			list = append(list, p)
-		}
-	}
-	for source, p := range providers {
-		found := false
-		for _, o := range order {
-			if o == source {
-				found = true
-				break
-			}
-		}
-		if !found {
-			list = append(list, p)
-		}
-	}
-	return list
-}
+

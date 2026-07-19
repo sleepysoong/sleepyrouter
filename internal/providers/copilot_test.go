@@ -27,20 +27,20 @@ func copilotJSONResponse(status int, body any) *http.Response {
 }
 
 func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
-	ResetCopilotTokenCache()
+	resetCopilotTokenCache()
 	var capturedURL string
 	var capturedAuth string
 	var capturedBody map[string]any
 
 	mock := copilotMockClient(func(req *http.Request) (*http.Response, error) {
 		url := req.URL.String()
-		if url == CopilotTokenURL {
+		if url == copilotTokenURL {
 			return copilotJSONResponse(200, map[string]any{
 				"token":      "copilot-session-xyz",
 				"expires_at": float64(time.Now().Unix() + 3600),
 			}), nil
 		}
-		if url == CopilotChatCompletionsURL {
+		if url == copilotChatCompletionsURL {
 			capturedURL = url
 			capturedAuth = req.Header.Get("Authorization")
 			capturedBody, _ = utils.ReadBody(req)
@@ -61,7 +61,7 @@ func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
 	if !utils.IsOK(resp) {
 		t.Fatalf("response not OK: %d", resp.StatusCode)
 	}
-	if capturedURL != CopilotChatCompletionsURL {
+	if capturedURL != copilotChatCompletionsURL {
 		t.Fatalf("url: %s", capturedURL)
 	}
 	if capturedAuth != "Bearer copilot-session-xyz" {
@@ -74,7 +74,7 @@ func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
 		// no-op, just ensuring the mock is used
 	}
 	// Check Copilot-Integration-Id header
-	req, _ := http.NewRequest("GET", CopilotChatCompletionsURL, nil)
+	req, _ := http.NewRequest("GET", copilotChatCompletionsURL, nil)
 	req.Header.Set("Copilot-Integration-Id", "vscode-chat")
 	if req.Header.Get("Copilot-Integration-Id") != "vscode-chat" {
 		t.Fatal("Copilot-Integration-Id header")
@@ -82,10 +82,10 @@ func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
 }
 
 func TestCopilot_TokenCache_ReusesWithinWindow(t *testing.T) {
-	ResetCopilotTokenCache()
+	resetCopilotTokenCache()
 	tokenCallCount := 0
 	mock := copilotMockClient(func(req *http.Request) (*http.Response, error) {
-		if req.URL.String() == CopilotTokenURL {
+		if req.URL.String() == copilotTokenURL {
 			tokenCallCount++
 			return copilotJSONResponse(200, map[string]any{
 				"token":      "token-" + string(rune('a'+tokenCallCount)),

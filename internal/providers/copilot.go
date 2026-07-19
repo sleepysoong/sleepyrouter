@@ -11,8 +11,8 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
-const CopilotChatCompletionsURL = "https://api.githubcopilot.com/chat/completions"
-const CopilotTokenURL = "https://api.github.com/copilot_internal/v2/token"
+const copilotChatCompletionsURL = "https://api.githubcopilot.com/chat/completions"
+const copilotTokenURL = "https://api.github.com/copilot_internal/v2/token"
 
 type copilotToken struct {
 	Token     string
@@ -25,7 +25,7 @@ var copilotTokenCache struct {
 }
 
 func exchangeCopilotToken(ctx context.Context, apiKey string, client types.HTTPDoer) (*copilotToken, error) {
-	req, err := utils.GetRequest(ctx, CopilotTokenURL, map[string]string{
+	req, err := utils.GetRequest(ctx, copilotTokenURL, map[string]string{
 		"Authorization": "token " + apiKey,
 		"User-Agent":    "sleepyrouter/" + types.Version,
 	})
@@ -76,7 +76,7 @@ func PostCopilotChatCompletion(ctx context.Context, apiKey string, body any, cli
 	if err != nil {
 		return nil, err
 	}
-	req, err := utils.JSONRequest(ctx, http.MethodPost, CopilotChatCompletionsURL, map[string]string{
+	req, err := utils.JSONRequest(ctx, http.MethodPost, copilotChatCompletionsURL, map[string]string{
 		"Authorization":          "Bearer " + sessionToken,
 		"Content-Type":           "application/json",
 		"Copilot-Integration-Id": "vscode-chat",
@@ -90,7 +90,7 @@ func PostCopilotChatCompletion(ctx context.Context, apiKey string, body any, cli
 	return utils.HTTPClient(client).Do(req)
 }
 
-func ResetCopilotTokenCache() {
+func resetCopilotTokenCache() {
 	copilotTokenCache.Lock()
 	copilotTokenCache.token = nil
 	copilotTokenCache.Unlock()
