@@ -11,8 +11,10 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
-const copilotChatCompletionsURL = "https://api.githubcopilot.com/chat/completions"
-const copilotTokenURL = "https://api.github.com/copilot_internal/v2/token"
+const (
+	copilotChatCompletionsURL = "https://api.githubcopilot.com/chat/completions"
+	copilotTokenURL           = "https://api.github.com/copilot_internal/v2/token"
+)
 
 type copilotToken struct {
 	Token     string

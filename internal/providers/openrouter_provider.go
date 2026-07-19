@@ -7,8 +7,10 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
-const openRouterChatCompletionsURL = "https://openrouter.ai/api/v1/chat/completions"
-const openRouterAnthropicMessagesURL = "https://openrouter.ai/api/v1/messages"
+const (
+	openRouterChatCompletionsURL   = "https://openrouter.ai/api/v1/chat/completions"
+	openRouterAnthropicMessagesURL = "https://openrouter.ai/api/v1/messages"
+)
 
 type OpenRouterProvider struct {
 	BaseProvider

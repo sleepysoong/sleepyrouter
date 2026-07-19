@@ -21,15 +21,19 @@ func resolveAPIKey(name string, env utils.Environment, localEnv map[string]strin
 func resolveOpenRouterAPIKey(env utils.Environment, localEnv map[string]string) string {
 	return resolveAPIKey("OPENROUTER_API_KEY", env, localEnv)
 }
+
 func resolveNVIDIAAPIKey(env utils.Environment, localEnv map[string]string) string {
 	return resolveAPIKey("NVIDIA_API_KEY", env, localEnv)
 }
+
 func resolveCopilotAPIKey(env utils.Environment, localEnv map[string]string) string {
 	return resolveAPIKey("GITHUB_COPILOT_TOKEN", env, localEnv)
 }
+
 func resolveZenAPIKey(env utils.Environment, localEnv map[string]string) string {
 	return resolveAPIKey("OPENCODE_API_KEY", env, localEnv)
 }
+
 func resolveGoogleAPIKey(env utils.Environment, localEnv map[string]string) string {
 	if key := resolveAPIKey("GOOGLE_API_KEY", env, localEnv); key != "" {
 		return key
