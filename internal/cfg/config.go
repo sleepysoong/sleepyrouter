@@ -2,16 +2,19 @@ package cfg
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"sync"
 
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
+
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -34,6 +37,9 @@ func CreateStorePaths(root string) StorePaths {
 
 type ConfigStore struct {
 	Paths StorePaths
+	db    *sql.DB
+	once  sync.Once
+	dbErr error
 }
 
 func NewConfigStore(root string) *ConfigStore {
@@ -45,6 +51,27 @@ func NewConfigStore(root string) *ConfigStore {
 
 func (store *ConfigStore) EnsureRoot() error {
 	return os.MkdirAll(store.Paths.Root, 0o755)
+}
+
+func (store *ConfigStore) usageDBPath() string {
+	return filepath.Join(store.Paths.Root, "usage.db")
+}
+
+func (store *ConfigStore) initDB() error {
+	store.once.Do(func() {
+		store.db, store.dbErr = sql.Open("sqlite", store.usageDBPath())
+		if store.dbErr != nil {
+			return
+		}
+		_, store.dbErr = store.db.Exec(`CREATE TABLE IF NOT EXISTS usage_log (
+			ts TEXT NOT NULL,
+			model TEXT NOT NULL,
+			input_tokens INTEGER NOT NULL,
+			output_tokens INTEGER NOT NULL,
+			success INTEGER NOT NULL
+		)`)
+	})
+	return store.dbErr
 }
 
 func readFileJSON(path string, target any) (bool, error) {
@@ -186,49 +213,36 @@ func (store *ConfigStore) UpdateModelGroup(group string, modelIDs []string) (typ
 }
 
 func (store *ConfigStore) AppendUsage(entry types.UsageLogEntry) error {
-	if err := os.MkdirAll(filepath.Dir(store.Paths.UsagePath), 0o755); err != nil {
+	if err := store.initDB(); err != nil {
 		return err
 	}
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return err
+	success := 0
+	if entry.Success {
+		success = 1
 	}
-	file, err := os.OpenFile(store.Paths.UsagePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	_, err = file.Write(append(data, '\n'))
+	_, err := store.db.Exec("INSERT INTO usage_log(ts,model,input_tokens,output_tokens,success) VALUES(?,?,?,?,?)",
+		entry.TS, entry.Model, entry.InputTokens, entry.OutputTokens, success)
 	return err
 }
 
 func (store *ConfigStore) ReadUsageLogs() ([]types.UsageLogEntry, error) {
-	data, err := os.ReadFile(store.Paths.UsagePath)
-	if errors.Is(err, os.ErrNotExist) {
-		return []types.UsageLogEntry{}, nil
+	if err := store.initDB(); err != nil {
+		return nil, err
 	}
+	rows, err := store.db.Query("SELECT ts,model,input_tokens,output_tokens,success FROM usage_log ORDER BY rowid")
 	if err != nil {
 		return nil, err
 	}
-	text := strings.TrimSpace(string(data))
-	if text == "" {
-		return []types.UsageLogEntry{}, nil
-	}
-	entries := make([]types.UsageLogEntry, 0)
-	skipped := 0
-	for _, line := range strings.Split(text, "\n") {
-		if line == "" {
-			continue
-		}
+	defer rows.Close()
+	var entries []types.UsageLogEntry
+	for rows.Next() {
 		var entry types.UsageLogEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			skipped++
+		var success int
+		if err := rows.Scan(&entry.TS, &entry.Model, &entry.InputTokens, &entry.OutputTokens, &success); err != nil {
 			continue
 		}
+		entry.Success = success != 0
 		entries = append(entries, entry)
 	}
-	if skipped > 0 {
-		fmt.Fprintf(os.Stderr, "[sleepyrouter] 경고: 사용 기록 파일에서 %d줄이 손상되어 건너뛰었어요.\n", skipped)
-	}
-	return entries, nil
+	return entries, rows.Err()
 }
