@@ -44,8 +44,6 @@ func GetUsagePath(root string) string { return filepath.Join(root, usageFileName
 
 func GetEnvPath(root string) string { return filepath.Join(root, ".env") }
 
-func GetLogPath(root string) string { return filepath.Join(root, "sleepyrouter.log") }
-
 func ParseDotEnv(content string) map[string]string {
 	values := make(map[string]string)
 	for _, rawLine := range strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n") {
