@@ -89,6 +89,8 @@ func missingKeyMessage(model types.SleepyRouterModel) string {
 		keyName = "GITHUB_COPILOT_TOKEN"
 	case types.SourceZen:
 		keyName = "OPENCODE_API_KEY"
+	case types.SourceGoogle:
+		keyName = "GOOGLE_API_KEY"
 	}
 	return fmt.Sprintf("%s가 없어서 %s을(를) 사용할 수 없어요. 환경변수 또는 .env 파일에 키를 추가하세요.", keyName, model.ID)
 }

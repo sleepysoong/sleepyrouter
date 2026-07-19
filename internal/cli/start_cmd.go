@@ -52,6 +52,7 @@ func RunStartCommand(options StartCommandOptions) error {
 	hasNvidiaKey := keys.NVIDIA != ""
 	hasOpenRouterKey := keys.OpenRouter != ""
 	hasZenKey := keys.Zen != ""
+	hasGoogleKey := keys.Google != ""
 
 	fmt.Printf("\nsleepyrouter v%s\n", types.Version)
 	fmt.Printf("  config: %s\n", utils.GetConfigPath(store.Paths.Root))
@@ -59,6 +60,7 @@ func RunStartCommand(options StartCommandOptions) error {
 	fmt.Printf("  NVIDIA_API_KEY: %s\n", boolCheck(hasNvidiaKey))
 	fmt.Printf("  OPENROUTER_API_KEY: %s\n", boolCheck(hasOpenRouterKey))
 	fmt.Printf("  OPENCODE_API_KEY: %s\n", boolCheck(hasZenKey))
+	fmt.Printf("  GOOGLE_API_KEY: %s\n", boolCheck(hasGoogleKey))
 
 	if _, err := cfg.RequireAnyProviderAPIKey(env, store.Paths.Root); err != nil {
 		return err

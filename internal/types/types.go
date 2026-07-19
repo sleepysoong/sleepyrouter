@@ -15,11 +15,12 @@ const (
 	SourceNVIDIA     ModelSource = "nvidia"
 	SourceCopilot    ModelSource = "copilot"
 	SourceZen        ModelSource = "zen"
+	SourceGoogle     ModelSource = "google"
 )
 
 // AllModelSources is the canonical registration order used by provider_registry
 // and CLI validation. Order affects catalog fetch priority.
-var AllModelSources = []ModelSource{SourceOpenRouter, SourceNVIDIA, SourceCopilot, SourceZen}
+var AllModelSources = []ModelSource{SourceOpenRouter, SourceNVIDIA, SourceCopilot, SourceZen, SourceGoogle}
 
 type ModelGroups map[string][]string
 
@@ -34,7 +35,7 @@ type SleepyRouterModel struct {
 
 func SourceOf(model SleepyRouterModel) ModelSource {
 	switch model.Source {
-	case SourceNVIDIA, SourceCopilot, SourceZen:
+	case SourceNVIDIA, SourceCopilot, SourceZen, SourceGoogle:
 		return model.Source
 	default:
 		return SourceOpenRouter
@@ -77,6 +78,7 @@ type ProviderAPIKeys struct {
 	NVIDIA     string
 	Copilot    string
 	Zen        string
+	Google     string
 }
 
 func (keys ProviderAPIKeys) For(source ModelSource) string {
@@ -87,6 +89,8 @@ func (keys ProviderAPIKeys) For(source ModelSource) string {
 		return keys.Copilot
 	case SourceZen:
 		return keys.Zen
+	case SourceGoogle:
+		return keys.Google
 	default:
 		return keys.OpenRouter
 	}

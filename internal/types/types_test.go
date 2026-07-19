@@ -15,6 +15,7 @@ func TestSourceOf(t *testing.T) {
 		{SourceCopilot, SourceCopilot},
 		{SourceZen, SourceZen},
 		{SourceOpenRouter, SourceOpenRouter},
+		{SourceGoogle, SourceGoogle},
 		{"", SourceOpenRouter},
 		{"bogus", SourceOpenRouter},
 	}
@@ -27,7 +28,7 @@ func TestSourceOf(t *testing.T) {
 }
 
 func TestProviderAPIKeys_For(t *testing.T) {
-	keys := ProviderAPIKeys{OpenRouter: "or", NVIDIA: "nv", Copilot: "co", Zen: "zn"}
+	keys := ProviderAPIKeys{OpenRouter: "or", NVIDIA: "nv", Copilot: "co", Zen: "zn", Google: "gk"}
 	cases := []struct {
 		source ModelSource
 		want   string
@@ -35,6 +36,7 @@ func TestProviderAPIKeys_For(t *testing.T) {
 		{SourceNVIDIA, "nv"},
 		{SourceCopilot, "co"},
 		{SourceZen, "zn"},
+		{SourceGoogle, "gk"},
 		{SourceOpenRouter, "or"},
 		{"unknown", "or"},
 	}
@@ -113,7 +115,7 @@ func TestSleepyRouterConfig_MarshalJSON(t *testing.T) {
 func TestAllModelSources_Canonical(t *testing.T) {
 	// Registration order matters for catalog fetch priority; freezing it
 	// protects against accidental reordering.
-	want := []ModelSource{SourceOpenRouter, SourceNVIDIA, SourceCopilot, SourceZen}
+	want := []ModelSource{SourceOpenRouter, SourceNVIDIA, SourceCopilot, SourceZen, SourceGoogle}
 	if len(AllModelSources) != len(want) {
 		t.Fatalf("len: got %d, want %d", len(AllModelSources), len(want))
 	}
