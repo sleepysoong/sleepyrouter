@@ -184,25 +184,39 @@ func RunUsageCommand(options UsageCommandOptions) {
 					tw.AlignRight,
 					tw.AlignRight,
 					tw.AlignRight,
+					tw.AlignRight,
 				},
 			},
 		},
 	}
+	hasKRW := krwRate > 0
+	headers := []string{"Model", "Requests", "Failed", "Input", "Output", "Cost"}
+	if hasKRW {
+		headers = append(headers, "Cost (₩)")
+	}
 	table := tablewriter.NewTable(os.Stdout, tablewriter.WithConfig(cfg))
-	table.Header([]string{"Model", "Requests", "Failed", "Input", "Output", "Cost"})
+	table.Header(headers)
 	for _, row := range rows {
 		cost := "N/A"
+		krwStr := "N/A"
 		if row.Cost >= 0 {
-			cost = fmtCostKRW(row.Cost, krwRate)
+			cost = fmt.Sprintf("$%.4f", row.Cost)
+			if hasKRW {
+				krwStr = fmtKRW(int(row.Cost * krwRate)) + "원"
+			}
 		}
-		_ = table.Append([]string{
+		rowData := []string{
 			row.Model,
 			strconv.Itoa(row.Requests),
 			strconv.Itoa(row.Failed),
 			strconv.Itoa(row.InputTokens),
 			strconv.Itoa(row.OutputTokens),
 			cost,
-		})
+		}
+		if hasKRW {
+			rowData = append(rowData, krwStr)
+		}
+		_ = table.Append(rowData)
 	}
 
 	filterDesc := "전체"
@@ -214,32 +228,26 @@ func RunUsageCommand(options UsageCommandOptions) {
 	fmt.Printf("사용량 (%s)\n", filterDesc)
 	_ = table.Render()
 
-	summary := fmt.Sprintf("총 %d건 요청, %d건 실패 | in=%d | out=%d", totalRequests, totalFailed, totalInput, totalOutput)
+	summary := fmt.Sprintf("총 %d건 요청, %d건 실패 | in=%d | out=%d | cost=$%.4f", totalRequests, totalFailed, totalInput, totalOutput, totalCost)
+	if hasKRW {
+		summary += fmt.Sprintf(" (₩%s)", fmtKRW(int(totalCost*krwRate)))
+	}
 	if naCount > 0 {
-		summary += fmt.Sprintf(" | cost=%s (%d개 모델 가격 미설정, 합계에서 제외)", fmtCostKRW(totalCost, krwRate), naCount)
-	} else {
-		summary += fmt.Sprintf(" | cost=%s", fmtCostKRW(totalCost, krwRate))
+		summary += fmt.Sprintf(" (%d개 모델 가격 미설정, 합계에서 제외)", naCount)
 	}
 	fmt.Println(summary)
 }
 
-// fmtCostKRW renders USD cost as "$X (Y원)" with comma-separated KRW, e.g. "$3.0000 (5,400원)".
-// ponytail: rate≤0 → USD only (no fallback fetch here; caller handles)
-func fmtCostKRW(usd, rate float64) string {
-	usdStr := fmt.Sprintf("$%.4f", usd)
-	if rate <= 0 {
-		return usdStr
-	}
-	krw := int(usd * rate)
-	// ponytail: manual comma grouping — stdlib has no integer formatter with separators
+// ponytail: manual comma grouping — stdlib has no integer formatter with separators
+func fmtKRW(n int) string {
+	s := strconv.Itoa(n)
 	var buf []byte
-	s := strconv.Itoa(krw)
-	n := len(s)
-	for i := 0; i < n; i++ {
-		if i > 0 && (n-i)%3 == 0 {
+	l := len(s)
+	for i := 0; i < l; i++ {
+		if i > 0 && (l-i)%3 == 0 {
 			buf = append(buf, ',')
 		}
 		buf = append(buf, s[i])
 	}
-	return fmt.Sprintf("%s (%s원)", usdStr, string(buf))
+	return string(buf)
 }
