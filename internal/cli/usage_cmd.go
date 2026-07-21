@@ -187,9 +187,6 @@ func RunUsageCommand(options UsageCommandOptions) {
 				},
 			},
 		},
-		Footer: tw.CellConfig{
-			Alignment: tw.CellAlignment{Global: tw.AlignRight},
-		},
 	}
 	table := tablewriter.NewTable(os.Stdout, tablewriter.WithConfig(cfg))
 	table.Header([]string{"Model", "Requests", "Failed", "Input", "Output", "Cost"})
@@ -208,16 +205,6 @@ func RunUsageCommand(options UsageCommandOptions) {
 		})
 	}
 
-	// Summary footer
-	summary := fmt.Sprintf("총 %d건 요청, %d건 실패, in=%d out=%d cost=$%.4f", totalRequests, totalFailed, totalInput, totalOutput, totalCost)
-	if krwRate > 0 {
-		summary += fmt.Sprintf(" (₩%d)", int(totalCost*krwRate))
-	}
-	if naCount > 0 {
-		summary += fmt.Sprintf(" — %d개 모델 가격 미설정", naCount)
-	}
-	table.Footer([]string{"", "", "", "", "", summary})
-
 	filterDesc := "전체"
 	if options.Date != "" {
 		filterDesc = fmt.Sprintf("날짜: %s", options.Date)
@@ -226,4 +213,15 @@ func RunUsageCommand(options UsageCommandOptions) {
 	}
 	fmt.Printf("사용량 (%s)\n", filterDesc)
 	_ = table.Render()
+
+	summary := fmt.Sprintf("총 %d건 요청, %d건 실패 | in=%d | out=%d", totalRequests, totalFailed, totalInput, totalOutput)
+	if naCount > 0 {
+		summary += fmt.Sprintf(" | cost=$%.4f (%d개 모델 가격 미설정, 합계에서 제외)", totalCost, naCount)
+	} else {
+		summary += fmt.Sprintf(" | cost=$%.4f", totalCost)
+	}
+	if krwRate > 0 {
+		summary += fmt.Sprintf(" (₩%d)", int(totalCost*krwRate))
+	}
+	fmt.Println(summary)
 }
