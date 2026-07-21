@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/sleepysoong/sleepyrouter/internal/providers"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
+	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
 // ModelAttemptFunc is invoked once per candidate model with the resolved
@@ -24,7 +27,7 @@ type ModelAttemptFunc func(ctx context.Context, w http.ResponseWriter, model typ
 // stops; on failure the accumulated error becomes the 502 envelope body.
 // failureExtras are merged into the 502 envelope (e.g. {"type":"api_error"}
 // for Anthropic-shaped errors).
-func TryModelCandidates(ctx context.Context, pre *HandlerPreamble, w http.ResponseWriter, st *HandlerState, requestLogger func(ServerLogEvent), failureExtras map[string]any, attempt ModelAttemptFunc) {
+func TryModelCandidates(ctx context.Context, pre *HandlerPreamble, w http.ResponseWriter, st *HandlerState, requestLogger func(ServerLogEvent), failureExtras map[string]any, cfgRoot string, attempt ModelAttemptFunc) {
 	apiKeys := pre.ApiKeys
 	selected := pre.Selected
 	candidates := pre.Candidates
@@ -64,6 +67,21 @@ func TryModelCandidates(ctx context.Context, pre *HandlerPreamble, w http.Respon
 		if attemptErr != "" {
 			upstreamError = attemptErr
 			st.LastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+			// ponytail: fire-and-forget Discord notification; use root env if OS env is empty
+			go func(modelID, attemptErr string) {
+				url := os.Getenv("DISCORD_WEBHOOK_URL")
+				if url == "" && cfgRoot != "" {
+					if local := utils.ReadLocalEnv(cfgRoot)["DISCORD_WEBHOOK_URL"]; local != "" {
+						url = local
+					}
+				}
+				if url != "" {
+					body := bytes.NewReader([]byte(fmt.Sprintf(`{"content":"Upstream failure [%s]: %s"}`, modelID, truncate(attemptErr, 1800))))
+					req, _ := http.NewRequest(http.MethodPost, url, body)
+					req.Header.Set("Content-Type", "application/json")
+					http.DefaultClient.Do(req)
+				}
+			}(modelID, attemptErr)
 		}
 	}
 	if !triedAny {

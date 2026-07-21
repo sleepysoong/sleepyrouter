@@ -247,7 +247,7 @@ func ReadHandlerPreamble(ctx context.Context, store *cfg.ConfigStore, env utils.
 // HandleChatCompletion iterates model candidates for POST /v1/chat/completions.
 func HandleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *HandlerPreamble, client types.HTTPDoer, w http.ResponseWriter, st *HandlerState, requestLogger func(ServerLogEvent)) {
 	body := pre.Body
-	TryModelCandidates(ctx, pre, w, st, requestLogger, nil, func(ctx context.Context, w http.ResponseWriter, model types.SleepyRouterModel, apiKey string, p providers.Provider, triedCount int) (bool, string) {
+	TryModelCandidates(ctx, pre, w, st, requestLogger, nil, store.Paths.Root, func(ctx context.Context, w http.ResponseWriter, model types.SleepyRouterModel, apiKey string, p providers.Provider, triedCount int) (bool, string) {
 		modelID := model.ID
 		upstreamBody := withUpstreamModel(body, model, st.Stream)
 		attemptStart := time.Now()
@@ -261,20 +261,15 @@ func HandleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *Hand
 				st.LastInputTokens, st.LastOutputTokens, st.LogTriedCount = WriteStreamResponse(w, upstream, store, model, triedCount)
 				return true, ""
 			}
-			data, err := utils.ResponseJSON(upstream)
-			if err != nil {
-				return false, err.Error()
-			}
-			choices, _ := data["choices"].([]any)
-			if len(choices) == 0 {
-				usageID := model.UsageID
-				if usageID == "" {
-					usageID = model.ID
-				}
-				_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
-				return false, fmt.Sprintf("choices가 비어있어요 (%d)", upstream.StatusCode)
-			}
-			in, out, _ := UsageFromResponse(data)
+		data, err := utils.ResponseJSON(upstream)
+		if err != nil {
+			return false, err.Error()
+		}
+		choices, _ := data["choices"].([]any)
+		if len(choices) == 0 {
+			return false, recordEmptyFailure(store, model, fmt.Sprintf("choices가 비어있어요 (%d)", upstream.StatusCode))
+		}
+		in, out, _ := UsageFromResponse(data)
 			st.LastInputTokens = in
 			st.LastOutputTokens = out
 			recordSuccessfulUsage(store, model, data)
@@ -287,10 +282,30 @@ func HandleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *Hand
 	})
 }
 
+func finishChatCompletionAsAnthropic(w http.ResponseWriter, store *cfg.ConfigStore, model types.SleepyRouterModel, upstream *http.Response, modelID string, st *HandlerState, triedCount int) (bool, string) {
+	t := triedCount
+	st.LogTriedCount = &t
+	if st.Stream {
+		recordSuccessfulUsage(store, model, nil)
+		PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
+	} else {
+		data, err := utils.ResponseJSON(upstream)
+		if err != nil {
+			return false, err.Error()
+		}
+		in, out, _ := UsageFromResponse(data)
+		st.LastInputTokens = in
+		st.LastOutputTokens = out
+		recordSuccessfulUsage(store, model, data)
+		WriteJSON(w, upstream.StatusCode, protocol.OpenAIToAnthropic(data, modelID))
+	}
+	return true, ""
+}
+
 // HandleAnthropicMessage iterates model candidates for POST /anthropic/v1/messages.
 func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *HandlerPreamble, client types.HTTPDoer, w http.ResponseWriter, st *HandlerState, requestLogger func(ServerLogEvent)) {
 	body := pre.Body
-	TryModelCandidates(ctx, pre, w, st, requestLogger, map[string]any{"type": "api_error"}, func(ctx context.Context, w http.ResponseWriter, model types.SleepyRouterModel, apiKey string, p providers.Provider, triedCount int) (bool, string) {
+	TryModelCandidates(ctx, pre, w, st, requestLogger, map[string]any{"type": "api_error"}, store.Paths.Root, func(ctx context.Context, w http.ResponseWriter, model types.SleepyRouterModel, apiKey string, p providers.Provider, triedCount int) (bool, string) {
 		modelID := model.ID
 		var upstream *http.Response
 		var upstreamErr error
@@ -308,23 +323,7 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 				upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, client)
 				LogUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
 				if upstreamErr == nil && utils.IsOK(upstream) {
-					t := triedCount
-					st.LogTriedCount = &t
-					if st.Stream {
-						recordSuccessfulUsage(store, model, nil)
-						PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
-					} else {
-						data, err := utils.ResponseJSON(upstream)
-						if err != nil {
-							return false, err.Error()
-						}
-						in, out, _ := UsageFromResponse(data)
-						st.LastInputTokens = in
-						st.LastOutputTokens = out
-						recordSuccessfulUsage(store, model, data)
-						WriteJSON(w, upstream.StatusCode, protocol.OpenAIToAnthropic(data, modelID))
-					}
-					return true, ""
+					return finishChatCompletionAsAnthropic(w, store, model, upstream, modelID, st, triedCount)
 				}
 			}
 			if upstreamErr != nil {
@@ -339,17 +338,11 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 				if err != nil {
 					return false, err.Error()
 				}
-				_, hasChoicesArr := data["choices"].([]any)
-				_, hasContentArr := data["content"].([]any)
-				empty := !hasChoicesArr && !hasContentArr
-				if empty {
-					usageID := model.UsageID
-					if usageID == "" {
-						usageID = model.ID
-					}
-					_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
-					return false, fmt.Sprintf("choices와 content가 모두 비어있어요 (%d)", upstream.StatusCode)
-				}
+			_, hasChoicesArr := data["choices"].([]any)
+			_, hasContentArr := data["content"].([]any)
+			if !hasChoicesArr && !hasContentArr {
+				return false, recordEmptyFailure(store, model, fmt.Sprintf("choices와 content가 모두 비어있어요 (%d)", upstream.StatusCode))
+			}
 				in, out, _ := UsageFromResponse(data)
 				st.LastInputTokens = in
 				st.LastOutputTokens = out
@@ -368,23 +361,7 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 				return false, upstreamErr.Error()
 			}
 			if utils.IsOK(upstream) {
-				t := triedCount
-				st.LogTriedCount = &t
-				if st.Stream {
-					recordSuccessfulUsage(store, model, nil)
-					PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
-				} else {
-					data, err := utils.ResponseJSON(upstream)
-					if err != nil {
-						return false, err.Error()
-					}
-					in, out, _ := UsageFromResponse(data)
-					st.LastInputTokens = in
-					st.LastOutputTokens = out
-					recordSuccessfulUsage(store, model, data)
-					WriteJSON(w, upstream.StatusCode, protocol.OpenAIToAnthropic(data, modelID))
-				}
-				return true, ""
+				return finishChatCompletionAsAnthropic(w, store, model, upstream, modelID, st, triedCount)
 			}
 		}
 		return false, RecordUpstreamFailure(store, model, upstream)

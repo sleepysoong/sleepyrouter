@@ -182,6 +182,15 @@ func recordSuccessfulUsage(store *cfg.ConfigStore, model types.SleepyRouterModel
 	_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: in, OutputTokens: out, Success: true})
 }
 
+func recordEmptyFailure(store *cfg.ConfigStore, model types.SleepyRouterModel, message string) string {
+	usageID := model.UsageID
+	if usageID == "" {
+		usageID = model.ID
+	}
+	_ = store.AppendUsage(types.UsageLogEntry{TS: time.Now().UTC().Format(time.RFC3339), Model: usageID, InputTokens: 0, OutputTokens: 0, Success: false})
+	return message
+}
+
 // RecordUpstreamFailure logs a usage failure and returns an error string.
 func RecordUpstreamFailure(store *cfg.ConfigStore, model types.SleepyRouterModel, response *http.Response) string {
 	text, _ := io.ReadAll(response.Body)
