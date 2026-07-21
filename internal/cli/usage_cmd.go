@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
@@ -101,10 +103,12 @@ func aggregateUsage(logs []types.UsageLogEntry, prices map[string]types.ModelDef
 	result := make([]usageAggregateRow, 0, len(order))
 	for _, model := range order {
 		r := *m[model]
-		if def, ok := prices[model]; ok {
+		if def, ok := prices[model]; ok && (def.InputPrice > 0 || def.OutputPrice > 0) {
 			inCost := float64(r.InputTokens) * def.InputPrice / 1_000_000
 			outCost := float64(r.OutputTokens) * def.OutputPrice / 1_000_000
 			r.Cost = inCost + outCost
+		} else {
+			r.Cost = -1 // ponytail: sentinel for N/A — excluded from totals
 		}
 		result = append(result, r)
 	}
@@ -149,37 +153,67 @@ func RunUsageCommand(options UsageCommandOptions) {
 	totalInput := 0
 	totalOutput := 0
 	totalCost := 0.0
+	naCount := 0
 	for _, row := range rows {
 		totalRequests += row.Requests
 		totalFailed += row.Failed
 		totalInput += row.InputTokens
 		totalOutput += row.OutputTokens
-		totalCost += row.Cost
+		if row.Cost >= 0 {
+			totalCost += row.Cost
+		} else {
+			naCount++
+		}
 	}
 
-	// Build a simple table similar to cli-table3
-	var sb strings.Builder
-	sb.WriteString("┌──────────────────────────────────────────────────────┬──────────┬────────┬──────────────┬──────────────┬─────────────┐\n")
-	sb.WriteString("│ Model ID                                             │ Requests │ Failed │ Input Tokens │ Output Token │ Cost        │\n")
-	sb.WriteString("├──────────────────────────────────────────────────────┼──────────┼────────┼──────────────┼──────────────┼─────────────┤\n")
-	for _, row := range rows {
-		id := padRight(row.Model, 52)
-		req := padLeft(strconv.Itoa(row.Requests), 8)
-		failed := padLeft(strconv.Itoa(row.Failed), 6)
-		in := padLeft(strconv.Itoa(row.InputTokens), 12)
-		out := padLeft(strconv.Itoa(row.OutputTokens), 12)
-		cost := padLeft(fmt.Sprintf("$%.4f", row.Cost), 11)
-		fmt.Fprintf(&sb, "│ %s │ %s │ %s │ %s │ %s │ %s │\n", id, req, failed, in, out, cost)
+	// ponytail: tablewriter v1 auto-sizes columns to content — no hardcoded widths
+	cfg := tablewriter.Config{
+		Header: tw.CellConfig{
+			Alignment: tw.CellAlignment{Global: tw.AlignLeft},
+		},
+		Row: tw.CellConfig{
+			Alignment: tw.CellAlignment{
+				Global: tw.AlignLeft,
+				PerColumn: []tw.Align{
+					tw.AlignLeft,
+					tw.AlignRight,
+					tw.AlignRight,
+					tw.AlignRight,
+					tw.AlignRight,
+					tw.AlignRight,
+				},
+			},
+		},
+		Footer: tw.CellConfig{
+			Alignment: tw.CellAlignment{Global: tw.AlignRight},
+		},
 	}
-	// Summary row
+	table := tablewriter.NewTable(os.Stdout, tablewriter.WithConfig(cfg))
+	table.Header([]string{"Model", "Requests", "Failed", "Input", "Output", "Cost"})
+	for _, row := range rows {
+		cost := "N/A"
+		if row.Cost >= 0 {
+			cost = fmt.Sprintf("$%.4f", row.Cost)
+		}
+		_ = table.Append([]string{
+			row.Model,
+			strconv.Itoa(row.Requests),
+			strconv.Itoa(row.Failed),
+			strconv.Itoa(row.InputTokens),
+			strconv.Itoa(row.OutputTokens),
+			cost,
+		})
+	}
+
+	// Summary footer
 	summary := fmt.Sprintf("총 %d건 요청, %d건 실패, in=%d out=%d cost=$%.4f", totalRequests, totalFailed, totalInput, totalOutput, totalCost)
 	if krwRate > 0 {
 		summary += fmt.Sprintf(" (₩%d)", int(totalCost*krwRate))
 	}
-	blank := padRight("", 52)
-	sb.WriteString("├──────────────────────────────────────────────────────┴──────────┴────────┴──────────────┴──────────────┴─────────────┤\n")
-	fmt.Fprintf(&sb, "│ %s %s │\n", blank, padRight(summary, 63))
-	sb.WriteString("└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n")
+	if naCount > 0 {
+		summary += fmt.Sprintf(" — %d개 모델 가격 미설정", naCount)
+	}
+	table.Footer([]string{"", "", "", "", "", summary})
 
 	filterDesc := "전체"
 	if options.Date != "" {
@@ -188,19 +222,5 @@ func RunUsageCommand(options UsageCommandOptions) {
 		filterDesc = fmt.Sprintf("주차: %d주차", options.Week)
 	}
 	fmt.Printf("사용량 (%s)\n", filterDesc)
-	fmt.Print(sb.String())
-}
-
-func padRight(s string, width int) string {
-	if len(s) >= width {
-		return s[:width]
-	}
-	return s + strings.Repeat(" ", width-len(s))
-}
-
-func padLeft(s string, width int) string {
-	if len(s) >= width {
-		return s
-	}
-	return strings.Repeat(" ", width-len(s)) + s
+	_ = table.Render()
 }
