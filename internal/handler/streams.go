@@ -152,6 +152,27 @@ func (s *anthropicStreamState) ensureToolBlock(toolIndex int, delta map[string]a
 	return state
 }
 
+type openAIStreamToolCall struct {
+	Index    *int    `json:"index"`
+	ID       *string `json:"id"`
+	Function *struct {
+		Name      *string `json:"name"`
+		Arguments *string `json:"arguments"`
+	} `json:"function"`
+}
+
+type openAIStreamChoice struct {
+	FinishReason any `json:"finish_reason"`
+	Delta        *struct {
+		Content      *string `json:"content"`
+		FunctionCall *struct {
+			Name      *string `json:"name"`
+			Arguments *string `json:"arguments"`
+		} `json:"function_call"`
+		ToolCalls []openAIStreamToolCall `json:"tool_calls"`
+	} `json:"delta"`
+}
+
 // PipeOpenAIStreamAsAnthropic reads an OpenAI streaming response and
 // converts each `data:` chunk to the equivalent Anthropic SSE event sequence
 // (message_start, content_block_*, message_delta, message_stop).
@@ -200,27 +221,6 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 		data := strings.TrimSpace(line[5:])
 		if data == "" || data == "[DONE]" || !strings.HasPrefix(data, "{") {
 			continue
-		}
-
-		type openAIStreamToolCall struct {
-			Index    *int    `json:"index"`
-			ID       *string `json:"id"`
-			Function *struct {
-				Name      *string `json:"name"`
-				Arguments *string `json:"arguments"`
-			} `json:"function"`
-		}
-
-		type openAIStreamChoice struct {
-			FinishReason any `json:"finish_reason"`
-			Delta        *struct {
-				Content      *string `json:"content"`
-				FunctionCall *struct {
-					Name      *string `json:"name"`
-					Arguments *string `json:"arguments"`
-				} `json:"function_call"`
-				ToolCalls []openAIStreamToolCall `json:"tool_calls"`
-			} `json:"delta"`
 		}
 
 		var chunk struct {
