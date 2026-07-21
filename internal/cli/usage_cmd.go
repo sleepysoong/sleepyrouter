@@ -193,7 +193,7 @@ func RunUsageCommand(options UsageCommandOptions) {
 	for _, row := range rows {
 		cost := "N/A"
 		if row.Cost >= 0 {
-			cost = fmt.Sprintf("$%.4f", row.Cost)
+			cost = fmtCostKRW(row.Cost, krwRate)
 		}
 		_ = table.Append([]string{
 			row.Model,
@@ -216,12 +216,30 @@ func RunUsageCommand(options UsageCommandOptions) {
 
 	summary := fmt.Sprintf("총 %d건 요청, %d건 실패 | in=%d | out=%d", totalRequests, totalFailed, totalInput, totalOutput)
 	if naCount > 0 {
-		summary += fmt.Sprintf(" | cost=$%.4f (%d개 모델 가격 미설정, 합계에서 제외)", totalCost, naCount)
+		summary += fmt.Sprintf(" | cost=%s (%d개 모델 가격 미설정, 합계에서 제외)", fmtCostKRW(totalCost, krwRate), naCount)
 	} else {
-		summary += fmt.Sprintf(" | cost=$%.4f", totalCost)
-	}
-	if krwRate > 0 {
-		summary += fmt.Sprintf(" (₩%d)", int(totalCost*krwRate))
+		summary += fmt.Sprintf(" | cost=%s", fmtCostKRW(totalCost, krwRate))
 	}
 	fmt.Println(summary)
+}
+
+// fmtCostKRW renders USD cost as "$X (Y원)" with comma-separated KRW, e.g. "$3.0000 (5,400원)".
+// ponytail: rate≤0 → USD only (no fallback fetch here; caller handles)
+func fmtCostKRW(usd, rate float64) string {
+	usdStr := fmt.Sprintf("$%.4f", usd)
+	if rate <= 0 {
+		return usdStr
+	}
+	krw := int(usd * rate)
+	// ponytail: manual comma grouping — stdlib has no integer formatter with separators
+	var buf []byte
+	s := strconv.Itoa(krw)
+	n := len(s)
+	for i := 0; i < n; i++ {
+		if i > 0 && (n-i)%3 == 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, s[i])
+	}
+	return fmt.Sprintf("%s (%s원)", usdStr, string(buf))
 }
