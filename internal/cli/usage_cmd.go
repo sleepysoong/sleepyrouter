@@ -167,11 +167,14 @@ func RunUsageCommand(options UsageCommandOptions) {
 	}
 
 	// ponytail: tablewriter v1 auto-sizes columns to content — no hardcoded widths
+	// ponytail: AutoWrap=WrapNone disables wrapping so columns grow to fit content
 	cfg := tablewriter.Config{
+		MaxWidth: 0,
 		Header: tw.CellConfig{
 			Alignment: tw.CellAlignment{Global: tw.AlignLeft},
 		},
 		Row: tw.CellConfig{
+			Formatting: tw.CellFormatting{AutoWrap: tw.WrapNone},
 			Alignment: tw.CellAlignment{
 				Global: tw.AlignLeft,
 				PerColumn: []tw.Align{
