@@ -192,7 +192,7 @@ func RunUsageCommand(options UsageCommandOptions) {
 	hasKRW := krwRate > 0
 	headers := []string{"Model", "Requests", "Failed", "Input", "Output", "Cost"}
 	if hasKRW {
-		headers = append(headers, "Cost (₩)")
+		headers = append(headers, "원")
 	}
 	table := tablewriter.NewTable(os.Stdout, tablewriter.WithConfig(cfg))
 	table.Header(headers)
