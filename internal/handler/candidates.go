@@ -45,6 +45,7 @@ func TryModelCandidates(ctx context.Context, pre *HandlerPreamble, w http.Respon
 		if apiKey == "" {
 			upstreamError = MissingKeyMessage(model)
 			st.LastError = upstreamError
+			notifyDiscord(cfgRoot, modelID, upstreamError)
 			continue
 		}
 		if requestLogger != nil {
@@ -58,6 +59,7 @@ func TryModelCandidates(ctx context.Context, pre *HandlerPreamble, w http.Respon
 		if p == nil {
 			upstreamError = fmt.Sprintf("unsupported provider: %s", source)
 			st.LastError = upstreamError
+			notifyDiscord(cfgRoot, modelID, upstreamError)
 			continue
 		}
 		handled, attemptErr := attempt(ctx, w, model, apiKey, p, triedCount)
@@ -67,21 +69,7 @@ func TryModelCandidates(ctx context.Context, pre *HandlerPreamble, w http.Respon
 		if attemptErr != "" {
 			upstreamError = attemptErr
 			st.LastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
-			// ponytail: fire-and-forget Discord notification; use root env if OS env is empty
-			go func(modelID, attemptErr string) {
-				url := os.Getenv("DISCORD_WEBHOOK_URL")
-				if url == "" && cfgRoot != "" {
-					if local := utils.ReadLocalEnv(cfgRoot)["DISCORD_WEBHOOK_URL"]; local != "" {
-						url = local
-					}
-				}
-				if url != "" {
-					body := bytes.NewReader([]byte(fmt.Sprintf(`{"content":"Upstream failure [%s]: %s"}`, modelID, truncate(attemptErr, 1800))))
-					req, _ := http.NewRequest(http.MethodPost, url, body)
-					req.Header.Set("Content-Type", "application/json")
-					http.DefaultClient.Do(req)
-				}
-			}(modelID, attemptErr)
+			notifyDiscord(cfgRoot, modelID, attemptErr)
 		}
 	}
 	if !triedAny {
@@ -93,4 +81,24 @@ func TryModelCandidates(ctx context.Context, pre *HandlerPreamble, w http.Respon
 		extras[k] = v
 	}
 	WriteJSONError(w, 502, "선택된 모든 무료 모델이 실패했어요.", extras)
+}
+
+// ponytail: fire-and-forget Discord notification; use root env if OS env is empty
+func notifyDiscord(cfgRoot, modelID, errMsg string) {
+	go func() {
+		url := os.Getenv("DISCORD_WEBHOOK_URL")
+		if url == "" && cfgRoot != "" {
+			if local := utils.ReadLocalEnv(cfgRoot)["DISCORD_WEBHOOK_URL"]; local != "" {
+				url = local
+			}
+		}
+		// ponytail: skip early if no webhook — avoids spawning goroutine that does nothing
+		if url == "" {
+			return
+		}
+		body := bytes.NewReader([]byte(fmt.Sprintf(`{"content":"Upstream failure [%s]: %s"}`, modelID, truncate(errMsg, 1800))))
+		req, _ := http.NewRequest(http.MethodPost, url, body)
+		req.Header.Set("Content-Type", "application/json")
+		http.DefaultClient.Do(req)
+	}()
 }
