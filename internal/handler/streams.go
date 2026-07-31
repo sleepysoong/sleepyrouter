@@ -86,19 +86,44 @@ type openAIToolStreamState struct {
 	name              string
 	started           bool
 	bufferedArguments string
+	thoughtSignature  string
 }
 
 // anthropicStreamState carries the mutable scan state shared by the closures
 // that PipeOpenAIStreamAsAnthropic previously defined inline.
 type anthropicStreamState struct {
-	w              http.ResponseWriter
-	nextBlockIndex int
-	textBlockIndex int
-	textBlockOpen  bool
-	usedTool       bool
-	toolBlocks     map[int]*openAIToolStreamState
-	toolOrder      []int
-	mu             sync.Mutex
+	w                 http.ResponseWriter
+	nextBlockIndex    int
+	textBlockIndex    int
+	textBlockOpen     bool
+	thinkingBlockIdx  int
+	thinkingBlockOpen bool
+	thinkingSignature string
+	usedTool          bool
+	toolBlocks        map[int]*openAIToolStreamState
+	toolOrder         []int
+	mu                sync.Mutex
+}
+
+func (s *anthropicStreamState) ensureThinkingBlock() int {
+	if !s.thinkingBlockOpen {
+		s.thinkingBlockIdx = s.nextBlockIndex
+		s.nextBlockIndex++
+		sseutil.WriteEvent(s.w, "content_block_start", map[string]any{"type": "content_block_start", "index": s.thinkingBlockIdx, "content_block": map[string]any{"type": "thinking", "thinking": ""}})
+		s.thinkingBlockOpen = true
+	}
+	return s.thinkingBlockIdx
+}
+
+func (s *anthropicStreamState) stopThinkingBlock() {
+	if s.thinkingBlockOpen && s.thinkingBlockIdx >= 0 {
+		if s.thinkingSignature != "" {
+			sseutil.WriteEvent(s.w, "content_block_delta", map[string]any{"type": "content_block_delta", "index": s.thinkingBlockIdx, "delta": map[string]any{"type": "signature_delta", "signature": s.thinkingSignature}})
+		}
+		sseutil.WriteEvent(s.w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": s.thinkingBlockIdx})
+		s.thinkingBlockOpen = false
+		s.thinkingBlockIdx = -1
+	}
 }
 
 func (s *anthropicStreamState) ensureTextBlock() int {
@@ -139,9 +164,18 @@ func (s *anthropicStreamState) ensureToolBlock(toolIndex int, delta map[string]a
 	if name, ok := delta["name"].(string); ok && name != "" {
 		state.name = name
 	}
+	if sig, ok := delta["thought_signature"].(string); ok && sig != "" {
+		state.thoughtSignature = sig
+	}
 	if !state.started && state.name != "" {
 		s.stopTextBlock()
-		sseutil.WriteEvent(s.w, "content_block_start", map[string]any{"type": "content_block_start", "index": state.blockIndex, "content_block": map[string]any{"type": "tool_use", "id": state.id, "name": state.name, "input": map[string]any{}}})
+		cb := map[string]any{"type": "tool_use", "id": state.id, "name": state.name, "input": map[string]any{}}
+		if state.thoughtSignature != "" {
+			cb["thought_signature"] = state.thoughtSignature
+			cb["signature"] = state.thoughtSignature
+			cb["extra_fields"] = map[string]any{"thought_signature": state.thoughtSignature}
+		}
+		sseutil.WriteEvent(s.w, "content_block_start", map[string]any{"type": "content_block_start", "index": state.blockIndex, "content_block": cb})
 		state.started = true
 		s.usedTool = true
 		if state.bufferedArguments != "" {
@@ -153,19 +187,30 @@ func (s *anthropicStreamState) ensureToolBlock(toolIndex int, delta map[string]a
 }
 
 type openAIStreamToolCall struct {
-	Index    *int    `json:"index"`
-	ID       *string `json:"id"`
-	Function *struct {
-		Name      *string `json:"name"`
-		Arguments *string `json:"arguments"`
+	Index            *int           `json:"index"`
+	ID               *string        `json:"id"`
+	ThoughtSignature *string        `json:"thought_signature"`
+	Signature        *string        `json:"signature"`
+	ExtraFields      map[string]any `json:"extra_fields"`
+	Function         *struct {
+		Name             *string `json:"name"`
+		Arguments        *string `json:"arguments"`
+		ThoughtSignature *string `json:"thought_signature"`
+		Signature        *string `json:"signature"`
 	} `json:"function"`
 }
 
 type openAIStreamChoice struct {
 	FinishReason any `json:"finish_reason"`
 	Delta        *struct {
-		Content      *string `json:"content"`
-		FunctionCall *struct {
+		Content          *string `json:"content"`
+		ReasoningContent *string `json:"reasoning_content"`
+		Reasoning        *string `json:"reasoning"`
+		Thinking         *string `json:"thinking"`
+		Thought          *string `json:"thought"`
+		ThoughtSignature *string `json:"thought_signature"`
+		Signature        *string `json:"signature"`
+		FunctionCall     *struct {
 			Name      *string `json:"name"`
 			Arguments *string `json:"arguments"`
 		} `json:"function_call"`
@@ -201,14 +246,16 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 	defer func() { _ = body.Close() }()
 
 	st := &anthropicStreamState{
-		w:              w,
-		textBlockIndex: -1,
-		toolBlocks:     make(map[int]*openAIToolStreamState),
+		w:                w,
+		textBlockIndex:   -1,
+		thinkingBlockIdx: -1,
+		toolBlocks:       make(map[int]*openAIToolStreamState),
 	}
 
 	var (
-		finishReason any
-		outputTokens int
+		finishReason  any
+		outputTokens  int
+		thinkingTokens int
 	)
 
 	scanner := bufio.NewScanner(body)
@@ -225,8 +272,11 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 
 		var chunk struct {
 			Usage *struct {
-				CompletionTokens any `json:"completion_tokens"`
-				OutputTokens     any `json:"output_tokens"`
+				CompletionTokens        any `json:"completion_tokens"`
+				OutputTokens            any `json:"output_tokens"`
+				CompletionTokensDetails *struct {
+					ReasoningTokens any `json:"reasoning_tokens"`
+				} `json:"completion_tokens_details"`
 			} `json:"usage"`
 			Choices []openAIStreamChoice `json:"choices"`
 		}
@@ -250,8 +300,32 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 			if v := sseutil.ParseToken(chunk.Usage.OutputTokens); v != nil {
 				outputTokens = *v
 			}
+			if chunk.Usage.CompletionTokensDetails != nil {
+				if v := sseutil.ParseToken(chunk.Usage.CompletionTokensDetails.ReasoningTokens); v != nil {
+					thinkingTokens = *v
+				}
+			}
 		}
 		if choice != nil && choice.Delta != nil {
+			if choice.Delta.ThoughtSignature != nil && *choice.Delta.ThoughtSignature != "" {
+				st.thinkingSignature = *choice.Delta.ThoughtSignature
+			} else if choice.Delta.Signature != nil && *choice.Delta.Signature != "" {
+				st.thinkingSignature = *choice.Delta.Signature
+			}
+			thinkingText := ""
+			switch {
+			case choice.Delta.ReasoningContent != nil:
+				thinkingText = *choice.Delta.ReasoningContent
+			case choice.Delta.Reasoning != nil:
+				thinkingText = *choice.Delta.Reasoning
+			case choice.Delta.Thinking != nil:
+				thinkingText = *choice.Delta.Thinking
+			case choice.Delta.Thought != nil:
+				thinkingText = *choice.Delta.Thought
+			}
+			if thinkingText != "" {
+				sseutil.WriteEvent(w, "content_block_delta", map[string]any{"type": "content_block_delta", "index": st.ensureThinkingBlock(), "delta": map[string]any{"type": "thinking_delta", "thinking": thinkingText}})
+			}
 			if choice.Delta.Content != nil && *choice.Delta.Content != "" {
 				sseutil.WriteEvent(w, "content_block_delta", map[string]any{"type": "content_block_delta", "index": st.ensureTextBlock(), "delta": map[string]any{"type": "text_delta", "text": *choice.Delta.Content}})
 			}
@@ -266,6 +340,17 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 				}
 				if tc.Function != nil && tc.Function.Name != nil {
 					delta["name"] = *tc.Function.Name
+				}
+				if tc.ThoughtSignature != nil {
+					delta["thought_signature"] = *tc.ThoughtSignature
+				} else if tc.Signature != nil {
+					delta["thought_signature"] = *tc.Signature
+				} else if tc.Function != nil && tc.Function.ThoughtSignature != nil {
+					delta["thought_signature"] = *tc.Function.ThoughtSignature
+				} else if tc.Function != nil && tc.Function.Signature != nil {
+					delta["thought_signature"] = *tc.Function.Signature
+				} else if sig, ok := tc.ExtraFields["thought_signature"].(string); ok && sig != "" {
+					delta["thought_signature"] = sig
 				}
 				state := st.ensureToolBlock(toolIndex, delta)
 				if tc.Function != nil && tc.Function.Arguments != nil {
@@ -295,7 +380,8 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 		}
 	}
 
-	if !st.textBlockOpen && len(st.toolBlocks) == 0 {
+	st.stopThinkingBlock()
+	if !st.textBlockOpen && len(st.toolBlocks) == 0 && !st.thinkingBlockOpen {
 		st.ensureTextBlock()
 	}
 	st.stopTextBlock()
@@ -326,7 +412,11 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 	if st.usedTool {
 		stopReason = "tool_use"
 	}
-	sseutil.WriteEvent(w, "message_delta", map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": stopReason, "stop_sequence": nil}, "usage": map[string]any{"output_tokens": outputTokens}})
+	usage := map[string]any{"output_tokens": outputTokens}
+	if thinkingTokens > 0 {
+		usage["output_tokens_details"] = map[string]any{"thinking_tokens": thinkingTokens}
+	}
+	sseutil.WriteEvent(w, "message_delta", map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": stopReason, "stop_sequence": nil}, "usage": usage})
 	sseutil.WriteEvent(w, "message_stop", map[string]any{"type": "message_stop"})
 }
 

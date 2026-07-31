@@ -30,9 +30,12 @@ func anthropicMessagesToOpenAI(messages any) []map[string]any {
 			}
 		}
 		var toolUses []map[string]any
+		var thinkingBlocks []map[string]any
 		for _, b := range blocks {
 			if b["type"] == "tool_use" {
 				toolUses = append(toolUses, b)
+			} else if b["type"] == "thinking" {
+				thinkingBlocks = append(thinkingBlocks, b)
 			}
 		}
 		if role == "assistant" && len(toolUses) > 0 {
@@ -42,6 +45,21 @@ func anthropicMessagesToOpenAI(messages any) []map[string]any {
 					nonToolBlocks = append(nonToolBlocks, b)
 				}
 			}
+			inheritedSig := ""
+			thinkingTexts := make([]string, 0, len(thinkingBlocks))
+			for _, tb := range thinkingBlocks {
+				if sig := utils.StringFromUnknown(tb["signature"]); sig != "" {
+					inheritedSig = sig
+				} else if sig := utils.StringFromUnknown(tb["thought_signature"]); sig != "" {
+					inheritedSig = sig
+				}
+				if t := utils.StringFromUnknown(tb["thinking"]); t != "" {
+					thinkingTexts = append(thinkingTexts, t)
+				} else if t := utils.StringFromUnknown(tb["text"]); t != "" {
+					thinkingTexts = append(thinkingTexts, t)
+				}
+			}
+
 			content := openAIContentFromBlocks(nonToolBlocks)
 			contentStr, _ := content.(string)
 			var contentVal any
@@ -52,13 +70,17 @@ func anthropicMessagesToOpenAI(messages any) []map[string]any {
 			}
 			toolCalls := make([]map[string]any, 0, len(toolUses))
 			for _, tu := range toolUses {
-				toolCalls = append(toolCalls, toolUseToOpenAICall(tu))
+				toolCalls = append(toolCalls, toolUseToOpenAICall(tu, inheritedSig))
 			}
-			out = append(out, map[string]any{
+			msgMap := map[string]any{
 				"role":       "assistant",
 				"content":    contentVal,
 				"tool_calls": toolCalls,
-			})
+			}
+			if len(thinkingTexts) > 0 {
+				msgMap["reasoning_content"] = strings.Join(thinkingTexts, "\n")
+			}
+			out = append(out, msgMap)
 			continue
 		}
 		var pendingContentBlocks []map[string]any
@@ -200,7 +222,14 @@ func AnthropicToOpenAI(body map[string]any, modelID string) map[string]any {
 			result["parallel_tool_calls"] = false
 		}
 	}
-	for _, key := range []string{"max_tokens", "temperature", "top_p"} {
+	if v, ok := body["max_tokens"]; ok {
+		if n := utils.NumberValue(v); n != nil && *n == 0 {
+			// ponytail: max_tokens:0 means prewarm prompt cache in Anthropic; omit for OpenAI upstreams that may reject 0
+		} else {
+			result["max_tokens"] = v
+		}
+	}
+	for _, key := range []string{"temperature", "top_p"} {
 		if v, ok := body[key]; ok {
 			result[key] = v
 		}
@@ -214,6 +243,35 @@ func AnthropicToOpenAI(body map[string]any, modelID string) map[string]any {
 	}
 	if stream, ok := body["stream"]; ok {
 		result["stream"] = stream
+	}
+	// thinking (Anthropic extended thinking) maps to OpenAI reasoning_effort.
+	if thinking, ok := body["thinking"].(map[string]any); ok {
+		switch thinking["type"] {
+		case "disabled":
+			result["reasoning_effort"] = "none"
+		case "enabled", "adaptive":
+			// ponytail: budget_tokens doesn't map cleanly to effort levels; medium is the reasonable default
+			result["reasoning_effort"] = "medium"
+		}
+		// Forward as-is for providers that understand Anthropic fields (OpenRouter).
+		result["thinking"] = thinking
+	}
+	// output_config (Anthropic structured outputs) — forward for OpenRouter passthrough.
+	if outputConfig, ok := body["output_config"].(map[string]any); ok {
+		result["output_config"] = outputConfig
+		// output_config.effort is more specific than the thinking-derived default, so it wins.
+		if effort, ok := outputConfig["effort"]; ok {
+			result["reasoning_effort"] = effort
+		}
+	}
+	if metadata, ok := body["metadata"].(map[string]any); ok {
+		if userID, ok := metadata["user_id"]; ok {
+			result["user"] = userID
+		}
+		result["metadata"] = metadata
+	}
+	if cacheControl, ok := body["cache_control"]; ok {
+		result["cache_control"] = cacheControl
 	}
 	return result
 }

@@ -22,6 +22,12 @@ func MapStopReason(reason any) string {
 		return "tool_use"
 	case "content_filter":
 		return "refusal"
+	// Anthropic-shaped stop reasons that some providers (e.g. OpenRouter)
+	// pass through unchanged in an OpenAI-style response.
+	case "pause_turn":
+		return "pause_turn"
+	case "model_context_window_exceeded":
+		return "model_context_window_exceeded"
 	default:
 		return "end_turn"
 	}
@@ -72,6 +78,32 @@ func parseToolArguments(value any) map[string]any {
 	return map[string]any{}
 }
 
+func extractSignatureFromToolCall(tc map[string]any) string {
+	if sig := utils.StringFromUnknown(tc["thought_signature"]); sig != "" {
+		return sig
+	}
+	if sig := utils.StringFromUnknown(tc["signature"]); sig != "" {
+		return sig
+	}
+	if ef, ok := tc["extra_fields"].(map[string]any); ok {
+		if sig := utils.StringFromUnknown(ef["thought_signature"]); sig != "" {
+			return sig
+		}
+		if sig := utils.StringFromUnknown(ef["signature"]); sig != "" {
+			return sig
+		}
+	}
+	if fn, ok := tc["function"].(map[string]any); ok {
+		if sig := utils.StringFromUnknown(fn["thought_signature"]); sig != "" {
+			return sig
+		}
+		if sig := utils.StringFromUnknown(fn["signature"]); sig != "" {
+			return sig
+		}
+	}
+	return ""
+}
+
 // OpenAIToAnthropic converts an OpenAI chat completion response to Anthropic
 // message format. The fallbackModel is used when the upstream response
 // omitted the model field.
@@ -101,9 +133,25 @@ func OpenAIToAnthropic(response map[string]any, fallbackModel string) map[string
 	}
 	content := contentFromOpenAI(contentVal)
 
-	blocks := []map[string]any{}
-	if content != "" {
-		blocks = append(blocks, map[string]any{"type": "text", "text": content})
+	reasoningText := utils.StringFromUnknown(message["reasoning_content"])
+	if reasoningText == "" {
+		reasoningText = utils.StringFromUnknown(message["reasoning"])
+	}
+	if reasoningText == "" {
+		reasoningText = utils.StringFromUnknown(message["thinking"])
+	}
+	if reasoningText == "" {
+		reasoningText = utils.StringFromUnknown(message["thought"])
+	}
+
+	msgSig := utils.StringFromUnknown(message["thought_signature"])
+	if msgSig == "" {
+		msgSig = utils.StringFromUnknown(message["signature"])
+	}
+	if msgSig == "" {
+		if ef, ok := message["extra_fields"].(map[string]any); ok {
+			msgSig = utils.StringFromUnknown(ef["thought_signature"])
+		}
 	}
 
 	toolCalls, _ := message["tool_calls"].([]any)
@@ -115,6 +163,34 @@ func OpenAIToAnthropic(response map[string]any, fallbackModel string) map[string
 			"function": fc,
 		})
 	}
+
+	if msgSig == "" {
+		for _, raw := range allToolCalls {
+			if tc, ok := raw.(map[string]any); ok {
+				if sig := extractSignatureFromToolCall(tc); sig != "" {
+					msgSig = sig
+					break
+				}
+			}
+		}
+	}
+
+	blocks := []map[string]any{}
+	if reasoningText != "" || msgSig != "" {
+		tb := map[string]any{
+			"type":     "thinking",
+			"thinking": reasoningText,
+		}
+		if msgSig != "" {
+			tb["signature"] = msgSig
+		}
+		blocks = append(blocks, tb)
+	}
+
+	if content != "" {
+		blocks = append(blocks, map[string]any{"type": "text", "text": content})
+	}
+
 	for _, raw := range allToolCalls {
 		tc, ok := raw.(map[string]any)
 		if !ok {
@@ -128,12 +204,26 @@ func OpenAIToAnthropic(response map[string]any, fallbackModel string) map[string
 		if fn == nil {
 			fn = map[string]any{}
 		}
-		blocks = append(blocks, map[string]any{
+
+		sig := extractSignatureFromToolCall(tc)
+		if sig == "" {
+			sig = msgSig
+		}
+
+		tu := map[string]any{
 			"type":  "tool_use",
 			"id":    sanitizeAnthropicID(tc["id"]),
 			"name":  utils.StringFromUnknown(fn["name"]),
 			"input": parseToolArguments(fn["arguments"]),
-		})
+		}
+		if sig != "" {
+			tu["thought_signature"] = sig
+			tu["signature"] = sig
+			tu["extra_fields"] = map[string]any{"thought_signature": sig}
+		} else if ef, ok := tc["extra_fields"].(map[string]any); ok && len(ef) > 0 {
+			tu["extra_fields"] = ef
+		}
+		blocks = append(blocks, tu)
 	}
 
 	if len(blocks) == 0 {
@@ -167,17 +257,42 @@ func OpenAIToAnthropic(response map[string]any, fallbackModel string) map[string
 		outputTokens = *v
 	}
 
-	return map[string]any{
+	usageMap := map[string]any{
+		"input_tokens":  inputTokens,
+		"output_tokens": outputTokens,
+	}
+	if ctd, ok := usage["completion_tokens_details"].(map[string]any); ok {
+		if rt := utils.NumberValue(ctd["reasoning_tokens"]); rt != nil {
+			usageMap["output_tokens_details"] = map[string]any{"thinking_tokens": *rt}
+		}
+	}
+
+	stopReason := MapStopReason(choice["finish_reason"])
+
+	// Some providers (e.g. OpenRouter) pass Anthropic-shaped fields through
+	// in an OpenAI-style response; forward stop_details when present.
+	stopDetails, _ := response["stop_details"].(map[string]any)
+	if stopDetails == nil {
+		stopDetails, _ = choice["stop_details"].(map[string]any)
+	}
+	if stopReason == "refusal" && stopDetails == nil {
+		if refusalText := utils.StringFromUnknown(message["refusal"]); refusalText != "" {
+			stopDetails = map[string]any{"type": "refusal", "refusal": refusalText}
+		}
+	}
+
+	result := map[string]any{
 		"id":            idStr,
 		"type":          "message",
 		"role":          "assistant",
 		"content":       blocks,
 		"model":         model,
-		"stop_reason":   MapStopReason(choice["finish_reason"]),
+		"stop_reason":   stopReason,
 		"stop_sequence": nil,
-		"usage": map[string]any{
-			"input_tokens":  inputTokens,
-			"output_tokens": outputTokens,
-		},
+		"usage":         usageMap,
 	}
+	if stopDetails != nil {
+		result["stop_details"] = stopDetails
+	}
+	return result
 }

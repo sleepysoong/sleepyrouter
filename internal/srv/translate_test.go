@@ -7,33 +7,33 @@ import (
 )
 
 func TestExtractTextContent_String(t *testing.T) {
-	if got := protocol.ExtractTextContent("hello"); got != "hello" {
-		t.Fatalf("expected 'hello', got %q", got)
+	got, err := protocol.ExtractTextContent("hello")
+	if err != nil || got != "hello" {
+		t.Fatalf("expected 'hello', got %q (err: %v)", got, err)
 	}
 }
 
 func TestExtractTextContent_StringArray(t *testing.T) {
-	if got := protocol.ExtractTextContent([]any{"a", "b"}); got != "a\nb" {
-		t.Fatalf("expected 'a\\nb', got %q", got)
+	got, err := protocol.ExtractTextContent([]any{"a", "b"})
+	if err != nil || got != "a\nb" {
+		t.Fatalf("expected 'a\\nb', got %q (err: %v)", got, err)
 	}
 }
 
 func TestExtractTextContent_Blocks(t *testing.T) {
-	if got := protocol.ExtractTextContent([]any{
+	got, err := protocol.ExtractTextContent([]any{
 		map[string]any{"type": "text", "text": "hello"},
 		map[string]any{"type": "text", "text": "world"},
-	}); got != "hello\nworld" {
-		t.Fatalf("expected 'hello\\nworld', got %q", got)
+	})
+	if err != nil || got != "hello\nworld" {
+		t.Fatalf("expected 'hello\\nworld', got %q (err: %v)", got, err)
 	}
 }
 
 func TestExtractTextContent_RejectsImage(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic for unsupported block")
-		}
-	}()
-	protocol.ExtractTextContent([]any{map[string]any{"type": "image", "source": map[string]any{}}})
+	if _, err := protocol.ExtractTextContent([]any{map[string]any{"type": "image", "source": map[string]any{}}}); err == nil {
+		t.Fatal("expected error for unsupported block")
+	}
 }
 
 func TestAnthropicToOpenAI_TextSystem(t *testing.T) {
@@ -259,12 +259,9 @@ func TestAnthropicToOpenAI_ToolChoiceNone(t *testing.T) {
 }
 
 func TestExtractTextContent_RejectsNonTextBlocks(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic")
-		}
-	}()
-	protocol.ExtractTextContent([]any{map[string]any{"type": "image", "source": map[string]any{}}})
+	if _, err := protocol.ExtractTextContent([]any{map[string]any{"type": "image", "source": map[string]any{}}}); err == nil {
+		t.Fatal("expected error for unsupported block")
+	}
 }
 
 func TestOpenAIToAnthropic_TextMessage(t *testing.T) {
@@ -380,3 +377,116 @@ func TestAnthropicToOpenAI_PassStop(t *testing.T) {
 		t.Fatal("expected stop field")
 	}
 }
+
+func TestAnthropicToOpenAI_ThoughtSignaturePreservation(t *testing.T) {
+	out := protocol.AnthropicToOpenAI(map[string]any{
+		"messages": []any{
+			map[string]any{
+				"role": "assistant",
+				"content": []any{
+					map[string]any{
+						"type":      "thinking",
+						"thinking":  "I should run bash to see files",
+						"signature": "sig_gemini_thought_12345",
+					},
+					map[string]any{
+						"type":              "tool_use",
+						"id":                "toolu_test_1",
+						"name":              "Bash",
+						"input":             map[string]any{"command": "ls"},
+						"thought_signature": "sig_gemini_thought_12345",
+					},
+				},
+			},
+		},
+	}, "google/gemini-3.6-flash")
+
+	messages := out["messages"].([]map[string]any)
+	if len(messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(messages))
+	}
+
+	msg := messages[0]
+	if msg["role"] != "assistant" {
+		t.Fatalf("expected role assistant, got %v", msg["role"])
+	}
+
+	if msg["reasoning_content"] != "I should run bash to see files" {
+		t.Fatalf("expected reasoning_content, got %v", msg["reasoning_content"])
+	}
+
+	toolCalls, ok := msg["tool_calls"].([]map[string]any)
+	if !ok || len(toolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %v", msg["tool_calls"])
+	}
+
+	tc := toolCalls[0]
+	if tc["thought_signature"] != "sig_gemini_thought_12345" {
+		t.Fatalf("expected tool_call.thought_signature 'sig_gemini_thought_12345', got %v", tc["thought_signature"])
+	}
+
+	fn := tc["function"].(map[string]any)
+	if fn["thought_signature"] != "sig_gemini_thought_12345" {
+		t.Fatalf("expected function.thought_signature 'sig_gemini_thought_12345', got %v", fn["thought_signature"])
+	}
+
+	extraFields, ok := tc["extra_fields"].(map[string]any)
+	if !ok || extraFields["thought_signature"] != "sig_gemini_thought_12345" {
+		t.Fatalf("expected extra_fields.thought_signature 'sig_gemini_thought_12345', got %v", extraFields)
+	}
+}
+
+func TestOpenAIToAnthropic_ThoughtSignatureAndReasoning(t *testing.T) {
+	out := protocol.OpenAIToAnthropic(map[string]any{
+		"id":    "chatcmpl_gemini_123",
+		"model": "google/gemini-3.6-flash",
+		"choices": []any{
+			map[string]any{
+				"message": map[string]any{
+					"role":              "assistant",
+					"reasoning_content": "Let me search the files",
+					"thought_signature": "sig_gemini_resp_999",
+					"tool_calls": []any{
+						map[string]any{
+							"id":                "call_gemini_1",
+							"type":              "function",
+							"thought_signature": "sig_gemini_resp_999",
+							"function": map[string]any{
+								"name":      "Bash",
+								"arguments": `{"command":"pwd"}`,
+							},
+						},
+					},
+				},
+				"finish_reason": "tool_calls",
+			},
+		},
+	}, "google/gemini-3.6-flash")
+
+	content, ok := out["content"].([]map[string]any)
+	if !ok || len(content) != 2 {
+		t.Fatalf("expected 2 blocks (thinking + tool_use), got %d (%v)", len(content), out["content"])
+	}
+
+	thinkingBlock := content[0]
+	if thinkingBlock["type"] != "thinking" || thinkingBlock["thinking"] != "Let me search the files" || thinkingBlock["signature"] != "sig_gemini_resp_999" {
+		t.Fatalf("unexpected thinking block: %v", thinkingBlock)
+	}
+
+	toolBlock := content[1]
+	if toolBlock["type"] != "tool_use" || toolBlock["thought_signature"] != "sig_gemini_resp_999" {
+		t.Fatalf("unexpected tool block: %v", toolBlock)
+	}
+}
+
+func TestExtractTextContent_WithThinkingBlocks(t *testing.T) {
+	got, err := protocol.ExtractTextContent([]any{
+		map[string]any{"type": "thinking", "thinking": "analyzing request..."},
+		map[string]any{"type": "redacted_thinking", "data": "abc"},
+		map[string]any{"type": "text", "text": "final answer"},
+	})
+	if err != nil || got != "analyzing request...\nfinal answer" {
+		t.Fatalf("expected 'analyzing request...\\nfinal answer', got %q (err: %v)", got, err)
+	}
+}
+

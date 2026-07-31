@@ -11,14 +11,17 @@ import (
 
 // ExtractTextContent extracts the textual content from an Anthropic
 // "content" field, which may be either a plain string or an array of typed
-// blocks.
-func ExtractTextContent(content any) string {
+// blocks. Unsupported block types produce an error rather than a panic.
+func ExtractTextContent(content any) (string, error) {
+	if content == nil {
+		return "", nil
+	}
 	if text, ok := content.(string); ok {
-		return text
+		return text, nil
 	}
 	blocks, ok := content.([]any)
 	if !ok {
-		return ""
+		return "", nil
 	}
 	parts := make([]string, 0, len(blocks))
 	for _, block := range blocks {
@@ -26,20 +29,32 @@ func ExtractTextContent(content any) string {
 			parts = append(parts, s)
 			continue
 		}
-		if m, ok := block.(map[string]any); ok {
-			if m["type"] == "text" {
-				parts = append(parts, utils.StringFromUnknown(m["text"]))
-				continue
+		m, ok := block.(map[string]any)
+		if !ok {
+			return "", fmt.Errorf("unsupported Anthropic content block: %s", "unknown")
+		}
+		switch m["type"] {
+		case "text":
+			parts = append(parts, utils.StringFromUnknown(m["text"]))
+		case "thinking":
+			t := utils.StringFromUnknown(m["thinking"])
+			if t == "" {
+				t = utils.StringFromUnknown(m["text"])
 			}
+			if t != "" {
+				parts = append(parts, t)
+			}
+		case "redacted_thinking":
+			// Skip redacted thinking blocks; there is no usable text.
+		default:
 			typeName := utils.UnknownString(m["type"])
 			if typeName == "" {
 				typeName = "unknown"
 			}
-			panic(fmt.Errorf("지원하지 않는 Anthropic 콘텐츠 블록이에요: %s", typeName))
+			return "", fmt.Errorf("unsupported Anthropic content block: %s", typeName)
 		}
-		panic(fmt.Errorf("지원하지 않는 Anthropic 콘텐츠 블록이에요: %s", "unknown"))
 	}
-	return strings.Join(filterEmpty(parts), "\n")
+	return strings.Join(filterEmpty(parts), "\n"), nil
 }
 
 func filterEmpty(items []string) []string {
@@ -94,15 +109,27 @@ func openAIContentFromBlocks(blocks []map[string]any) any {
 		if block["type"] == "text" {
 			text := utils.StringFromUnknown(block["text"])
 			if text != "" {
-				parts = append(parts, map[string]any{"type": "text", "text": text})
+				part := map[string]any{"type": "text", "text": text}
+				if cc, ok := block["cache_control"]; ok {
+					part["cache_control"] = cc
+				}
+				parts = append(parts, part)
 			}
 			continue
 		}
 		if block["type"] == "image" {
 			url := imageUrlFromAnthropic(block)
 			if url != "" {
-				parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}})
+				part := map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}}
+				if cc, ok := block["cache_control"]; ok {
+					part["cache_control"] = cc
+				}
+				parts = append(parts, part)
 			}
+			continue
+		}
+		if block["type"] == "thinking" || block["type"] == "redacted_thinking" {
+			continue
 		}
 	}
 	if len(parts) == 0 {
@@ -149,18 +176,47 @@ func stringifyToolResult(content any) string {
 	return strings.Join(parts, "\n")
 }
 
-func toolUseToOpenAICall(block map[string]any) map[string]any {
+func toolUseToOpenAICall(block map[string]any, inheritedSig string) map[string]any {
 	input := block["input"]
 	if input == nil {
 		input = map[string]any{}
 	}
 	data, _ := json.Marshal(input)
-	return map[string]any{
-		"id":   sanitizeAnthropicID(block["id"]),
-		"type": "function",
-		"function": map[string]any{
-			"name":      utils.StringFromUnknown(block["name"]),
-			"arguments": string(data),
-		},
+
+	sig := utils.StringFromUnknown(block["thought_signature"])
+	if sig == "" {
+		sig = utils.StringFromUnknown(block["signature"])
 	}
+	if sig == "" {
+		if ef, ok := block["extra_fields"].(map[string]any); ok {
+			sig = utils.StringFromUnknown(ef["thought_signature"])
+			if sig == "" {
+				sig = utils.StringFromUnknown(ef["signature"])
+			}
+		}
+	}
+	if sig == "" {
+		sig = inheritedSig
+	}
+
+	fnMap := map[string]any{
+		"name":      utils.StringFromUnknown(block["name"]),
+		"arguments": string(data),
+	}
+	if sig != "" {
+		fnMap["thought_signature"] = sig
+	}
+
+	tc := map[string]any{
+		"id":       sanitizeAnthropicID(block["id"]),
+		"type":     "function",
+		"function": fnMap,
+	}
+	if sig != "" {
+		tc["thought_signature"] = sig
+		tc["extra_fields"] = map[string]any{"thought_signature": sig}
+	} else if ef, ok := block["extra_fields"].(map[string]any); ok && len(ef) > 0 {
+		tc["extra_fields"] = ef
+	}
+	return tc
 }
