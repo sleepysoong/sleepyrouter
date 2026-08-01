@@ -101,6 +101,13 @@ func extractSignatureFromToolCall(tc map[string]any) string {
 			return sig
 		}
 	}
+	if ec, ok := tc["extra_content"].(map[string]any); ok {
+		if g, ok := ec["google"].(map[string]any); ok {
+			if sig := utils.StringFromUnknown(g["thought_signature"]); sig != "" {
+				return sig
+			}
+		}
+	}
 	return ""
 }
 
@@ -151,6 +158,13 @@ func OpenAIToAnthropic(response map[string]any, fallbackModel string) map[string
 	if msgSig == "" {
 		if ef, ok := message["extra_fields"].(map[string]any); ok {
 			msgSig = utils.StringFromUnknown(ef["thought_signature"])
+		}
+	}
+	if msgSig == "" {
+		if ec, ok := message["extra_content"].(map[string]any); ok {
+			if g, ok := ec["google"].(map[string]any); ok {
+				msgSig = utils.StringFromUnknown(g["thought_signature"])
+			}
 		}
 	}
 

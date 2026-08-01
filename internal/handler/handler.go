@@ -315,7 +315,7 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 			upstream, upstreamErr = p.Messages(ctx, apiKey, upstreamBody, client)
 			LogUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
 			if upstreamErr == nil && !utils.IsOK(upstream) && (upstream.StatusCode == 404 || upstream.StatusCode == 405) {
-				fallbackBody := protocol.AnthropicToOpenAI(body, modelUpstreamID(model))
+				fallbackBody := protocol.AnthropicToOpenAI(body, modelUpstreamID(model), p.Name())
 				if st.Stream {
 					fallbackBody["stream_options"] = map[string]any{"include_usage": true}
 				}
@@ -353,7 +353,7 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 				return true, ""
 			}
 		} else { // providers.ProtocolOpenAI
-			fallbackBody := protocol.AnthropicToOpenAI(body, modelUpstreamID(model))
+			fallbackBody := protocol.AnthropicToOpenAI(body, modelUpstreamID(model), p.Name())
 			attemptStart := time.Now()
 			upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, client)
 			LogUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)

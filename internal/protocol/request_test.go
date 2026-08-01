@@ -7,7 +7,7 @@ func TestAnthropicToOpenAI_ThinkingEnabled(t *testing.T) {
 		"messages": []any{},
 		"thinking": map[string]any{"type": "enabled", "budget_tokens": 1024},
 	}
-	result := AnthropicToOpenAI(body, "model-x")
+	result := AnthropicToOpenAI(body, "model-x", "OpenRouter")
 	if got := result["reasoning_effort"]; got != "medium" {
 		t.Errorf("reasoning_effort = %v, want medium", got)
 	}
@@ -22,7 +22,7 @@ func TestAnthropicToOpenAI_ThinkingDisabled(t *testing.T) {
 		"messages": []any{},
 		"thinking": map[string]any{"type": "disabled"},
 	}
-	result := AnthropicToOpenAI(body, "model-x")
+	result := AnthropicToOpenAI(body, "model-x", "OpenRouter")
 	if got := result["reasoning_effort"]; got != "none" {
 		t.Errorf("reasoning_effort = %v, want none", got)
 	}
@@ -32,7 +32,7 @@ func TestAnthropicToOpenAI_ThinkingAbsent(t *testing.T) {
 	body := map[string]any{
 		"messages": []any{},
 	}
-	result := AnthropicToOpenAI(body, "model-x")
+	result := AnthropicToOpenAI(body, "model-x", "OpenRouter")
 	if _, ok := result["reasoning_effort"]; ok {
 		t.Errorf("reasoning_effort set to %v when thinking absent, want unset", result["reasoning_effort"])
 	}
@@ -43,7 +43,7 @@ func TestAnthropicToOpenAI_OutputConfig(t *testing.T) {
 		"messages":      []any{},
 		"output_config": map[string]any{"effort": "high", "format": "json_schema"},
 	}
-	result := AnthropicToOpenAI(body, "model-x")
+	result := AnthropicToOpenAI(body, "model-x", "OpenRouter")
 	oc, ok := result["output_config"].(map[string]any)
 	if !ok || oc["format"] != "json_schema" {
 		t.Errorf("output_config not forwarded: %#v", result["output_config"])
@@ -58,7 +58,7 @@ func TestAnthropicToOpenAI_Metadata(t *testing.T) {
 		"messages": []any{},
 		"metadata": map[string]any{"user_id": "user-42"},
 	}
-	result := AnthropicToOpenAI(body, "model-x")
+	result := AnthropicToOpenAI(body, "model-x", "OpenRouter")
 	if got := result["user"]; got != "user-42" {
 		t.Errorf("user = %v, want user-42", got)
 	}
@@ -73,7 +73,7 @@ func TestAnthropicToOpenAI_CacheControl(t *testing.T) {
 		"messages":      []any{},
 		"cache_control": map[string]any{"type": "ephemeral"},
 	}
-	result := AnthropicToOpenAI(body, "model-x")
+	result := AnthropicToOpenAI(body, "model-x", "OpenRouter")
 	cc, ok := result["cache_control"].(map[string]any)
 	if !ok || cc["type"] != "ephemeral" {
 		t.Errorf("cache_control not forwarded: %#v", result["cache_control"])
@@ -107,7 +107,7 @@ func TestAnthropicToOpenAI_MaxTokensZero(t *testing.T) {
 		"messages":   []any{},
 		"max_tokens": 0,
 	}
-	result := AnthropicToOpenAI(body, "model-x")
+	result := AnthropicToOpenAI(body, "model-x", "OpenRouter")
 	if _, ok := result["max_tokens"]; ok {
 		t.Errorf("max_tokens = %v, want omitted when 0", result["max_tokens"])
 	}
@@ -118,7 +118,7 @@ func TestAnthropicToOpenAI_MaxTokensPositive(t *testing.T) {
 		"messages":   []any{},
 		"max_tokens": 512,
 	}
-	result := AnthropicToOpenAI(body, "model-x")
+	result := AnthropicToOpenAI(body, "model-x", "OpenRouter")
 	if got := result["max_tokens"]; got != 512 {
 		t.Errorf("max_tokens = %v, want 512", got)
 	}

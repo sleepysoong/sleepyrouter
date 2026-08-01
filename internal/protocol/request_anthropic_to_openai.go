@@ -197,7 +197,11 @@ func systemToText(system any) any {
 }
 
 // AnthropicToOpenAI converts an Anthropic messages request to OpenAI chat format.
-func AnthropicToOpenAI(body map[string]any, modelID string) map[string]any {
+// Provider-specific passthrough fields (thinking, output_config, cache_control,
+// metadata) are forwarded only for OpenRouter, which understands Anthropic
+// fields; strict OpenAI-compat providers (Google/NVIDIA) reject unknown
+// fields with 400.
+func AnthropicToOpenAI(body map[string]any, modelID, provider string) map[string]any {
 	messages := []map[string]any{}
 	system := systemToText(body["system"])
 	if system != nil {
@@ -253,25 +257,35 @@ func AnthropicToOpenAI(body map[string]any, modelID string) map[string]any {
 			// ponytail: budget_tokens doesn't map cleanly to effort levels; medium is the reasonable default
 			result["reasoning_effort"] = "medium"
 		}
-		// Forward as-is for providers that understand Anthropic fields (OpenRouter).
-		result["thinking"] = thinking
+		// Forward as-is only for OpenRouter; Google rejects unknown fields with 400.
+		if provider == "OpenRouter" {
+			result["thinking"] = thinking
+		}
 	}
-	// output_config (Anthropic structured outputs) — forward for OpenRouter passthrough.
+	// output_config (Anthropic structured outputs) — OpenRouter passthrough only.
 	if outputConfig, ok := body["output_config"].(map[string]any); ok {
-		result["output_config"] = outputConfig
 		// output_config.effort is more specific than the thinking-derived default, so it wins.
 		if effort, ok := outputConfig["effort"]; ok {
 			result["reasoning_effort"] = effort
+		}
+		if provider == "OpenRouter" {
+			result["output_config"] = outputConfig
 		}
 	}
 	if metadata, ok := body["metadata"].(map[string]any); ok {
 		if userID, ok := metadata["user_id"]; ok {
 			result["user"] = userID
 		}
-		result["metadata"] = metadata
+		// ponytail: user_id→user is standard OpenAI; the raw metadata passthrough is OpenRouter-only
+		if provider == "OpenRouter" {
+			result["metadata"] = metadata
+		}
 	}
 	if cacheControl, ok := body["cache_control"]; ok {
-		result["cache_control"] = cacheControl
+		// ponytail: cache_control is Anthropic-only; OpenRouter understands it, strict providers reject it
+		if provider == "OpenRouter" {
+			result["cache_control"] = cacheControl
+		}
 	}
 	return result
 }

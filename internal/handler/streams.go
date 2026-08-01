@@ -210,7 +210,13 @@ type openAIStreamChoice struct {
 		Thought          *string `json:"thought"`
 		ThoughtSignature *string `json:"thought_signature"`
 		Signature        *string `json:"signature"`
-		FunctionCall     *struct {
+		// ponytail: Google nests the thinking signature under extra_content.google; top-level fields stay for OpenAI/OpenRouter
+		ExtraContent *struct {
+			Google *struct {
+				ThoughtSignature *string `json:"thought_signature"`
+			} `json:"google"`
+		} `json:"extra_content"`
+		FunctionCall *struct {
 			Name      *string `json:"name"`
 			Arguments *string `json:"arguments"`
 		} `json:"function_call"`
@@ -311,6 +317,8 @@ func PipeOpenAIStreamAsAnthropic(body io.ReadCloser, w http.ResponseWriter, mode
 				st.thinkingSignature = *choice.Delta.ThoughtSignature
 			} else if choice.Delta.Signature != nil && *choice.Delta.Signature != "" {
 				st.thinkingSignature = *choice.Delta.Signature
+			} else if choice.Delta.ExtraContent != nil && choice.Delta.ExtraContent.Google != nil && choice.Delta.ExtraContent.Google.ThoughtSignature != nil {
+				st.thinkingSignature = *choice.Delta.ExtraContent.Google.ThoughtSignature
 			}
 			thinkingText := ""
 			switch {

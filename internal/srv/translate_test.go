@@ -43,7 +43,7 @@ func TestAnthropicToOpenAI_TextSystem(t *testing.T) {
 		"messages": []any{
 			map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "hi"}}},
 		},
-	}, "m")
+	}, "m", "OpenRouter")
 	if out["model"] != "m" {
 		t.Fatalf("model: %v", out["model"])
 	}
@@ -79,7 +79,7 @@ func TestAnthropicToOpenAI_ToolsHistory(t *testing.T) {
 				map[string]any{"type": "tool_result", "tool_use_id": "toolu_1", "content": []any{map[string]any{"type": "text", "text": "README.md"}}},
 			}},
 		},
-	}, "m")
+	}, "m", "OpenRouter")
 
 	// Check tools
 	tools, ok := out["tools"].([]map[string]any)
@@ -145,7 +145,7 @@ func TestAnthropicToOpenAI_ToolUseHistory(t *testing.T) {
 				map[string]any{"type": "tool_use", "id": "call_2", "name": "Bash", "input": map[string]any{"command": "pwd"}},
 			}},
 		},
-	}, "m")
+	}, "m", "OpenRouter")
 	messages := out["messages"].([]map[string]any)
 	if len(messages) != 4 {
 		t.Fatalf("expected 4 messages, got %d: %v", len(messages), messages)
@@ -169,7 +169,7 @@ func TestAnthropicToOpenAI_ToolUseHistory(t *testing.T) {
 }
 
 func TestAnthropicToOpenAI_EmptyMessages(t *testing.T) {
-	out := protocol.AnthropicToOpenAI(map[string]any{"max_tokens": float64(5)}, "m")
+	out := protocol.AnthropicToOpenAI(map[string]any{"max_tokens": float64(5)}, "m", "OpenRouter")
 	if out["model"] != "m" {
 		t.Fatalf("model: %v", out["model"])
 	}
@@ -186,7 +186,7 @@ func TestAnthropicToOpenAI_SystemArrayBlocks(t *testing.T) {
 			map[string]any{"type": "text", "text": "rule2"},
 		},
 		"messages": []any{},
-	}, "m")
+	}, "m", "OpenRouter")
 	messages := out["messages"].([]map[string]any)
 	if len(messages) != 1 {
 		t.Fatalf("expected 1 msg, got %d", len(messages))
@@ -204,7 +204,7 @@ func TestAnthropicToOpenAI_PreservesToolResultOrder(t *testing.T) {
 				map[string]any{"type": "text", "text": "continue"},
 			}},
 		},
-	}, "m")
+	}, "m", "OpenRouter")
 	messages := out["messages"].([]map[string]any)
 	if len(messages) != 2 {
 		t.Fatalf("expected 2, got %d", len(messages))
@@ -225,7 +225,7 @@ func TestAnthropicToOpenAI_ImageBlocks(t *testing.T) {
 				map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": "image/png", "data": "abc"}},
 			}},
 		},
-	}, "m")
+	}, "m", "OpenRouter")
 	content := out["messages"].([]map[string]any)[0]["content"]
 	parts, ok := content.([]map[string]any)
 	if !ok {
@@ -249,7 +249,7 @@ func TestAnthropicToOpenAI_ImageBlocks(t *testing.T) {
 func TestAnthropicToOpenAI_ToolChoiceNone(t *testing.T) {
 	out := protocol.AnthropicToOpenAI(map[string]any{
 		"tool_choice": map[string]any{"type": "none", "disable_parallel_tool_use": true},
-	}, "m")
+	}, "m", "OpenRouter")
 	if out["tool_choice"] != "none" {
 		t.Fatalf("tool_choice: %v", out["tool_choice"])
 	}
@@ -372,7 +372,7 @@ func TestMapStopReason(t *testing.T) {
 }
 
 func TestAnthropicToOpenAI_PassStop(t *testing.T) {
-	out := protocol.AnthropicToOpenAI(map[string]any{"stop": []any{"\n"}}, "m")
+	out := protocol.AnthropicToOpenAI(map[string]any{"stop": []any{"\n"}}, "m", "OpenRouter")
 	if out["stop"] == nil {
 		t.Fatal("expected stop field")
 	}
@@ -399,7 +399,7 @@ func TestAnthropicToOpenAI_ThoughtSignaturePreservation(t *testing.T) {
 				},
 			},
 		},
-	}, "google/gemini-3.6-flash")
+	}, "google/gemini-3.6-flash", "Google")
 
 	messages := out["messages"].([]map[string]any)
 	if len(messages) != 1 {
