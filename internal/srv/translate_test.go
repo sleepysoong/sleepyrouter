@@ -81,7 +81,6 @@ func TestAnthropicToOpenAI_ToolsHistory(t *testing.T) {
 		},
 	}, "m", "OpenRouter")
 
-	// Check tools
 	tools, ok := out["tools"].([]map[string]any)
 	if !ok || len(tools) != 1 {
 		t.Fatalf("tools: %v", tools)
@@ -94,12 +93,10 @@ func TestAnthropicToOpenAI_ToolsHistory(t *testing.T) {
 		t.Fatalf("tools[0].function.name: %v", fn["name"])
 	}
 
-	// Check tool_choice
 	if out["tool_choice"] != "auto" {
 		t.Fatalf("tool_choice: %v", out["tool_choice"])
 	}
 
-	// Check messages
 	messages := out["messages"].([]map[string]any)
 	if len(messages) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(messages))
@@ -150,19 +147,15 @@ func TestAnthropicToOpenAI_ToolUseHistory(t *testing.T) {
 	if len(messages) != 4 {
 		t.Fatalf("expected 4 messages, got %d: %v", len(messages), messages)
 	}
-	// msg0: user "hi"
 	if messages[0]["role"] != "user" || messages[0]["content"] != "hi" {
 		t.Fatalf("msg[0]: %v", messages[0])
 	}
-	// msg1: assistant with tool_calls
 	if messages[1]["role"] != "assistant" {
 		t.Fatalf("msg[1] role: %v", messages[1]["role"])
 	}
-	// msg2: tool result
 	if messages[2]["role"] != "tool" || messages[2]["content"] != "done" {
 		t.Fatalf("msg[2]: %v", messages[2])
 	}
-	// msg3: assistant with tool_calls
 	if messages[3]["role"] != "assistant" {
 		t.Fatalf("msg[3] role: %v", messages[3]["role"])
 	}
@@ -489,4 +482,3 @@ func TestExtractTextContent_WithThinkingBlocks(t *testing.T) {
 		t.Fatalf("expected 'analyzing request...\\nfinal answer', got %q (err: %v)", got, err)
 	}
 }
-

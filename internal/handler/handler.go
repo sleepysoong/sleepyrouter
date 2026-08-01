@@ -19,10 +19,6 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
-// ---------------------------------------------------------------------------
-// HTTP helpers — shared by handler and srv layers
-// ---------------------------------------------------------------------------
-
 // HTTPError is a typed error with an HTTP status code.
 type HTTPError struct {
 	StatusCode int
@@ -76,10 +72,6 @@ func truncate(s string, max int) string {
 	return s
 }
 
-// ---------------------------------------------------------------------------
-// Exported pipeline types
-// ---------------------------------------------------------------------------
-
 // HandlerPreamble holds the shared state extracted from the preamble of
 // both POST /v1/chat/completions and POST /anthropic/v1/messages handlers.
 type HandlerPreamble struct {
@@ -123,10 +115,6 @@ type ServerLogEvent struct {
 	CandidateCount *int
 	TriedCount     *int
 }
-
-// ---------------------------------------------------------------------------
-// Logging helpers
-// ---------------------------------------------------------------------------
 
 // controlCharPattern produces a sanitizer that replaces ASCII control
 // characters with '?' so a misbehaving upstream can't push terminal
@@ -187,10 +175,6 @@ func LogUpstreamAttempt(logger func(ServerLogEvent), st *HandlerState, modelID s
 		Group:          st.LogGroup,
 	})
 }
-
-// ---------------------------------------------------------------------------
-// Pipeline handlers
-// ---------------------------------------------------------------------------
 
 // ReadHandlerPreamble reads the request body, selects models, and computes
 // route candidates. On error it writes the response to w and returns nil, false.
@@ -261,15 +245,15 @@ func HandleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *Hand
 				st.LastInputTokens, st.LastOutputTokens, st.LogTriedCount = WriteStreamResponse(w, upstream, store, model, triedCount)
 				return true, ""
 			}
-		data, err := utils.ResponseJSON(upstream)
-		if err != nil {
-			return false, err.Error()
-		}
-		choices, _ := data["choices"].([]any)
-		if len(choices) == 0 {
-			return false, recordEmptyFailure(store, model, fmt.Sprintf("choices가 비어있어요 (%d)", upstream.StatusCode))
-		}
-		in, out, _ := UsageFromResponse(data)
+			data, err := utils.ResponseJSON(upstream)
+			if err != nil {
+				return false, err.Error()
+			}
+			choices, _ := data["choices"].([]any)
+			if len(choices) == 0 {
+				return false, recordEmptyFailure(store, model, fmt.Sprintf("choices가 비어있어요 (%d)", upstream.StatusCode))
+			}
+			in, out, _ := UsageFromResponse(data)
 			st.LastInputTokens = in
 			st.LastOutputTokens = out
 			recordSuccessfulUsage(store, model, data)
@@ -338,11 +322,11 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 				if err != nil {
 					return false, err.Error()
 				}
-			_, hasChoicesArr := data["choices"].([]any)
-			_, hasContentArr := data["content"].([]any)
-			if !hasChoicesArr && !hasContentArr {
-				return false, recordEmptyFailure(store, model, fmt.Sprintf("choices와 content가 모두 비어있어요 (%d)", upstream.StatusCode))
-			}
+				_, hasChoicesArr := data["choices"].([]any)
+				_, hasContentArr := data["content"].([]any)
+				if !hasChoicesArr && !hasContentArr {
+					return false, recordEmptyFailure(store, model, fmt.Sprintf("choices와 content가 모두 비어있어요 (%d)", upstream.StatusCode))
+				}
 				in, out, _ := UsageFromResponse(data)
 				st.LastInputTokens = in
 				st.LastOutputTokens = out
