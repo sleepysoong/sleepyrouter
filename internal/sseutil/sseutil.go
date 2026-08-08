@@ -4,7 +4,7 @@
 // The package deliberately keeps the surface tiny: SSE headers, single-event
 // helper, buffer frame splitting, and a usage-token extractor. Higher-level
 // orchestration (OpenAI→Anthropic translation, streaming fallbacks) lives in
-// internal/srv/streams.go.
+// internal/handler/streams.go.
 package sseutil
 
 import (

@@ -91,21 +91,17 @@ func MissingKeyMessage(model types.SleepyRouterModel) string {
 	return fmt.Sprintf("%s가 없어서 %s을(를) 사용할 수 없어요. 환경변수 또는 .env 파일에 키를 추가하세요.", keyName, model.ID)
 }
 
-func modelUpstreamID(model types.SleepyRouterModel) string {
+// ModelUpstreamID returns the upstream model name (UpstreamID if set, otherwise ID).
+func ModelUpstreamID(model types.SleepyRouterModel) string {
 	if model.UpstreamID != "" {
 		return model.UpstreamID
 	}
 	return model.ID
 }
 
-// ModelUpstreamID returns the upstream model name (UpstreamID if set, otherwise ID).
-func ModelUpstreamID(model types.SleepyRouterModel) string {
-	return modelUpstreamID(model)
-}
-
 func withUpstreamModel(body map[string]any, model types.SleepyRouterModel, stream bool) map[string]any {
 	result := utils.CloneObject(body)
-	result["model"] = modelUpstreamID(model)
+	result["model"] = ModelUpstreamID(model)
 	if stream {
 		result["stream_options"] = map[string]any{"include_usage": true}
 	}
@@ -125,7 +121,7 @@ func RequestedModelForRouting(models []types.SleepyRouterModel, requestedModel a
 		}
 	}
 	for _, m := range models {
-		if modelUpstreamID(m) == s {
+		if ModelUpstreamID(m) == s {
 			return m.ID
 		}
 	}

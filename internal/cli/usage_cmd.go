@@ -202,7 +202,7 @@ func RunUsageCommand(options UsageCommandOptions) {
 		if row.Cost >= 0 {
 			cost = fmt.Sprintf("$%.4f", row.Cost)
 			if hasKRW {
-				krwStr = fmtKRW(int(row.Cost * krwRate)) + "원"
+				krwStr = fmtKRW(int(row.Cost*krwRate)) + "원"
 			}
 		}
 		rowData := []string{

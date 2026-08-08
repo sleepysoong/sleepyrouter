@@ -6,6 +6,20 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
 
+// maxReasoningEffort returns the strongest reasoning_effort value each provider
+// accepts (per provider docs, 2026-08): OpenRouter supports xhigh
+// (xhigh/high/medium/low/minimal/none), Gemini caps at high (24,576 thinking
+// tokens, no max/xhigh), NVIDIA deepseek-pro documents max but the hosted API
+// silently ignores reasoning_effort entirely — high is the working ceiling.
+func maxReasoningEffort(provider string) string {
+	switch provider {
+	case "OpenRouter":
+		return "xhigh"
+	default:
+		return "high"
+	}
+}
+
 func anthropicMessagesToOpenAI(messages any) []map[string]any {
 	msgs, ok := messages.([]any)
 	if !ok {
@@ -110,92 +124,6 @@ func anthropicMessagesToOpenAI(messages any) []map[string]any {
 	return out
 }
 
-func toolsToOpenAI(tools any) []map[string]any {
-	toolList, ok := tools.([]any)
-	if !ok || len(toolList) == 0 {
-		return nil
-	}
-	result := make([]map[string]any, 0, len(toolList))
-	for _, raw := range toolList {
-		tool, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		name := utils.StringFromUnknown(tool["name"])
-		if name == "" {
-			continue
-		}
-		params := tool["input_schema"]
-		if params == nil {
-			params = map[string]any{"type": "object"}
-		}
-		result = append(result, map[string]any{
-			"type": "function",
-			"function": map[string]any{
-				"name":        name,
-				"description": tool["description"],
-				"parameters":  params,
-			},
-		})
-	}
-	if len(result) == 0 {
-		return nil
-	}
-	return result
-}
-
-func toolChoiceToOpenAI(toolChoice any) any {
-	tc, ok := toolChoice.(map[string]any)
-	if !ok {
-		return nil
-	}
-	tcType := utils.StringFromUnknown(tc["type"])
-	if tcType == "" {
-		return nil
-	}
-	switch tcType {
-	case "none":
-		return "none"
-	case "auto":
-		return "auto"
-	case "any":
-		return "required"
-	case "tool":
-		name := utils.StringFromUnknown(tc["name"])
-		if name != "" {
-			return map[string]any{"type": "function", "function": map[string]any{"name": name}}
-		}
-	}
-	return nil
-}
-
-func systemToText(system any) any {
-	if system == nil {
-		return nil
-	}
-	if s, ok := system.(string); ok {
-		if s == "" {
-			return nil
-		}
-		return s
-	}
-	blocks, ok := system.([]any)
-	if !ok {
-		return nil
-	}
-	parts := make([]string, 0, len(blocks))
-	for _, raw := range blocks {
-		if block, ok := raw.(map[string]any); ok {
-			parts = append(parts, utils.StringFromUnknown(block["text"]))
-		}
-	}
-	result := strings.Join(filterEmpty(parts), "\n")
-	if result == "" {
-		return nil
-	}
-	return result
-}
-
 // AnthropicToOpenAI converts an Anthropic messages request to OpenAI chat format.
 // Provider-specific passthrough fields (thinking, output_config, cache_control,
 // metadata) are forwarded only for OpenRouter, which understands Anthropic
@@ -254,8 +182,7 @@ func AnthropicToOpenAI(body map[string]any, modelID, provider string) map[string
 		case "disabled":
 			result["reasoning_effort"] = "none"
 		case "enabled", "adaptive":
-			// ponytail: budget_tokens doesn't map cleanly to effort levels; medium is the reasonable default
-			result["reasoning_effort"] = "medium"
+			result["reasoning_effort"] = maxReasoningEffort(provider)
 		}
 		// Forward as-is only for OpenRouter; Google rejects unknown fields with 400.
 		if provider == "OpenRouter" {

@@ -70,13 +70,6 @@ func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
 	if capturedBody["model"] != "gpt-4o" {
 		t.Fatalf("body model: %v", capturedBody["model"])
 	}
-	_ = mock.(utils.HTTPClientFunc) // compile-time check: mock satisfies HTTPClientFunc
-	// Check Copilot-Integration-Id header
-	req, _ := http.NewRequest("GET", copilotChatCompletionsURL, nil)
-	req.Header.Set("Copilot-Integration-Id", "vscode-chat")
-	if req.Header.Get("Copilot-Integration-Id") != "vscode-chat" {
-		t.Fatal("Copilot-Integration-Id header")
-	}
 }
 
 func TestCopilot_TokenCache_ReusesWithinWindow(t *testing.T) {

@@ -8,12 +8,30 @@ func TestAnthropicToOpenAI_ThinkingEnabled(t *testing.T) {
 		"thinking": map[string]any{"type": "enabled", "budget_tokens": 1024},
 	}
 	result := AnthropicToOpenAI(body, "model-x", "OpenRouter")
-	if got := result["reasoning_effort"]; got != "medium" {
-		t.Errorf("reasoning_effort = %v, want medium", got)
+	if got := result["reasoning_effort"]; got != "xhigh" {
+		t.Errorf("reasoning_effort = %v, want xhigh (OpenRouter max)", got)
 	}
 	thinking, ok := result["thinking"].(map[string]any)
 	if !ok || thinking["type"] != "enabled" {
 		t.Errorf("thinking not forwarded: %#v", result["thinking"])
+	}
+}
+
+func TestAnthropicToOpenAI_ThinkingEnabled_MaxPerProvider(t *testing.T) {
+	for provider, want := range map[string]string{
+		"OpenRouter": "xhigh", // strongest of xhigh/high/medium/low/minimal/none
+		"Google":     "high",  // Gemini caps at high, no max/xhigh
+		"NVIDIA":     "high",  // deepseek-pro documents max but hosted API ignores it
+		"Zen":        "high",
+	} {
+		body := map[string]any{
+			"messages": []any{},
+			"thinking": map[string]any{"type": "enabled", "budget_tokens": 1024},
+		}
+		result := AnthropicToOpenAI(body, "model-x", provider)
+		if got := result["reasoning_effort"]; got != want {
+			t.Errorf("%s: reasoning_effort = %v, want %v", provider, got, want)
+		}
 	}
 }
 
