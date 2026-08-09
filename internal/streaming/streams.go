@@ -1,4 +1,13 @@
-package handler
+// Package streaming translates and pipes upstream SSE streams between
+// sleepyrouter's OpenAI and Anthropic HTTP surfaces.
+//
+// PipeOpenAIStreamAsAnthropic converts an OpenAI Chat Completions stream
+// into the Anthropic Messages SSE event sequence (message_start,
+// content_block_*, message_delta, message_stop).
+// PipeWebStreamToNode pipes an SSE stream verbatim while harvesting the
+// trailing usage block.
+// WriteStreamResponse wraps the piping with usage recording.
+package streaming
 
 import (
 	"bufio"

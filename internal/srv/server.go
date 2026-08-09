@@ -10,6 +10,7 @@ import (
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
 	"github.com/sleepysoong/sleepyrouter/internal/handler"
+	"github.com/sleepysoong/sleepyrouter/internal/httperr"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
@@ -107,12 +108,12 @@ func withObservation(mux *http.ServeMux, nextID *int64, requestLogger func(handl
 		defer func() {
 			if err := recover(); err != nil {
 				statusCode := 500
-				if he, ok := err.(*handler.HTTPError); ok {
+				if he, ok := err.(*httperr.HTTPError); ok {
 					statusCode = he.StatusCode
 				}
 				msg := fmt.Sprint(err)
 				slog.Error("panic recovered", "method", r.Method, "path", r.URL.Path, "error", msg)
-				handler.WriteJSONError(w, statusCode, msg, map[string]any{"request": r.Method + " " + r.URL.String()})
+				httperr.WriteJSONError(w, statusCode, msg, map[string]any{"request": r.Method + " " + r.URL.String()})
 			}
 		}()
 

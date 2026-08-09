@@ -1,3 +1,7 @@
+// Package protocol translates between Anthropic Messages API and OpenAI
+// Chat Completions API request/response shapes. The package has no router
+// or HTTP concerns; it is pure data transforms over generic map[string]any
+// so the upstream mapping can be unit-tested without spinning up a server.
 package protocol
 
 import (

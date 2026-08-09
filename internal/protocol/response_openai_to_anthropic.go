@@ -1,3 +1,6 @@
+// File response_openai_to_anthropic.go converts the upstream OpenAI
+// response back into what Anthropic-compatible callers expect, mapping
+// finish reasons and assembling tool_use blocks.
 package protocol
 
 import (

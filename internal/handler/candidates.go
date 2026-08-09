@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/sleepysoong/sleepyrouter/internal/httperr"
 	"github.com/sleepysoong/sleepyrouter/internal/providers"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
@@ -68,7 +69,7 @@ func TryModelCandidates(ctx context.Context, pre *HandlerPreamble, w http.Respon
 		}
 		if attemptErr != "" {
 			upstreamError = attemptErr
-			st.LastError = fmt.Sprintf("[%s] %s", modelID, truncate(upstreamError, 300))
+			st.LastError = fmt.Sprintf("[%s] %s", modelID, httperr.Truncate(upstreamError, 300))
 			notifyDiscord(cfgRoot, modelID, attemptErr)
 		}
 	}
@@ -80,7 +81,7 @@ func TryModelCandidates(ctx context.Context, pre *HandlerPreamble, w http.Respon
 	for k, v := range failureExtras {
 		extras[k] = v
 	}
-	WriteJSONError(w, 502, "선택된 모든 무료 모델이 실패했어요.", extras)
+	httperr.WriteJSONError(w, 502, "선택된 모든 무료 모델이 실패했어요.", extras)
 }
 
 // ponytail: fire-and-forget Discord notification; use root env if OS env is empty
@@ -96,7 +97,7 @@ func notifyDiscord(cfgRoot, modelID, errMsg string) {
 		if url == "" {
 			return
 		}
-		body := bytes.NewReader([]byte(fmt.Sprintf(`{"content":"Upstream failure [%s]: %s"}`, modelID, truncate(errMsg, 1800))))
+		body := bytes.NewReader([]byte(fmt.Sprintf(`{"content":"Upstream failure [%s]: %s"}`, modelID, httperr.Truncate(errMsg, 1800))))
 		req, _ := http.NewRequest(http.MethodPost, url, body)
 		req.Header.Set("Content-Type", "application/json")
 		http.DefaultClient.Do(req)

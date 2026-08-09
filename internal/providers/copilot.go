@@ -9,6 +9,7 @@ import (
 
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
+	"github.com/sleepysoong/sleepyrouter/internal/version"
 )
 
 const (
@@ -29,7 +30,7 @@ var copilotTokenCache struct {
 func exchangeCopilotToken(ctx context.Context, apiKey string, client types.HTTPDoer) (*copilotToken, error) {
 	req, err := utils.GetRequest(ctx, copilotTokenURL, map[string]string{
 		"Authorization": "token " + apiKey,
-		"User-Agent":    "sleepyrouter/" + types.Version,
+		"User-Agent":    "sleepyrouter/" + version.Version,
 	})
 	if err != nil {
 		return nil, err

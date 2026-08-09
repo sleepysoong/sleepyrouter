@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sleepysoong/sleepyrouter/internal/httperr"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
@@ -43,7 +44,7 @@ func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
 		if url == copilotChatCompletionsURL {
 			capturedURL = url
 			capturedAuth = req.Header.Get("Authorization")
-			capturedBody, _ = utils.ReadBody(req)
+			capturedBody, _ = httperr.ReadBody(req)
 			return copilotJSONResponse(200, map[string]any{
 				"choices": []any{map[string]any{"message": map[string]any{"content": "ok"}}},
 			}), nil

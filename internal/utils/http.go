@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -140,20 +139,4 @@ func UnknownString(value any) string {
 		return s
 	}
 	return fmt.Sprint(value)
-}
-
-func ReadBody(r *http.Request) (map[string]any, error) {
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
-	}
-	text := string(data)
-	if text == "" {
-		return map[string]any{}, nil
-	}
-	var body map[string]any
-	if json.Unmarshal(data, &body) != nil {
-		return nil, fmt.Errorf("요청 본문을 파싱할 수 없어요. 유효한 JSON을 보내주세요. (%d바이트 수신)", len(text))
-	}
-	return body, nil
 }

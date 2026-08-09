@@ -15,6 +15,7 @@ import (
 	"github.com/sleepysoong/sleepyrouter/internal/srv"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
+	"github.com/sleepysoong/sleepyrouter/internal/version"
 )
 
 // StartCommandOptions is the parameter struct for RunStartCommand.
@@ -56,7 +57,7 @@ func RunStartCommand(options StartCommandOptions) error {
 	hasZenKey := keys.Zen != ""
 	hasGoogleKey := keys.Google != ""
 
-	fmt.Printf("\nsleepyrouter v%s\n", types.Version)
+	fmt.Printf("\nsleepyrouter v%s\n", version.Version)
 	fmt.Printf("  config: %s\n", utils.GetConfigPath(store.Paths.Root))
 	fmt.Printf("  env: %s\n", utils.GetEnvPath(store.Paths.Root))
 	fmt.Printf("  NVIDIA_API_KEY: %s\n", boolCheck(hasNvidiaKey))

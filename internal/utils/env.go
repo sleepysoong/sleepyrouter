@@ -1,3 +1,6 @@
+// Package utils provides small shared helpers grouped by domain:
+// HTTP client plumbing in http.go, environment/config discovery in env.go,
+// and terminal detection in isatty.go.
 package utils
 
 import (

@@ -1,4 +1,4 @@
-package handler
+package streaming
 
 import (
 	"encoding/json"

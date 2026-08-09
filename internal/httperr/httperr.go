@@ -1,4 +1,12 @@
-package handler
+// Package httperr contains the small HTTP error and JSON response helpers
+// shared across sleepyrouter's HTTP surface.
+//
+// HTTPError is the typed error handler routes raise when the request
+// fails validation; WriteJSON and WriteJSONError serialize responses in
+// the upstream-style error envelope. SafeLogValue sanitizes log strings
+// so a misbehaving upstream cannot push terminal escape sequences into
+// the router's log lines.
+package httperr
 
 import (
 	"encoding/json"
@@ -40,7 +48,9 @@ func WriteJSONError(w http.ResponseWriter, status int, message string, extras ..
 	WriteJSON(w, status, map[string]any{"error": inner})
 }
 
-// ReadBody reads the request body and parses it as JSON.
+// ReadBody reads the request body and parses it as JSON. An empty body
+// yields an empty map; an unparseable body yields an HTTPError so the
+// caller can forward the 400 status code.
 func ReadBody(r *http.Request) (map[string]any, error) {
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -57,7 +67,8 @@ func ReadBody(r *http.Request) (map[string]any, error) {
 	return body, nil
 }
 
-func truncate(s string, max int) string {
+// Truncate clamps s to at most max bytes, returning s unchanged when shorter.
+func Truncate(s string, max int) string {
 	if len(s) > max {
 		return s[:max]
 	}
@@ -81,6 +92,8 @@ var controlCharPattern = sync.OnceValue(func() func(string) string {
 	}
 })
 
+// SafeLogValue sanitizes value for inclusion in a log line: it strips
+// ASCII control characters and truncates to 200 bytes with an ellipsis.
 func SafeLogValue(value string) string {
 	sanitized := controlCharPattern()(value)
 	if len(sanitized) > 200 {

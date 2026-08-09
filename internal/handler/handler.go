@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
+	"github.com/sleepysoong/sleepyrouter/internal/httperr"
 	"github.com/sleepysoong/sleepyrouter/internal/protocol"
 	"github.com/sleepysoong/sleepyrouter/internal/providers"
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
+	"github.com/sleepysoong/sleepyrouter/internal/streaming"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
@@ -72,13 +74,13 @@ func LogUpstreamAttempt(logger func(ServerLogEvent), st *HandlerState, modelID s
 	errText := ""
 	statusCode := 0
 	if err != nil {
-		errText = SafeLogValue(err.Error())
+		errText = httperr.SafeLogValue(err.Error())
 	} else if resp != nil {
 		statusCode = resp.StatusCode
 		if !utils.IsOK(resp) {
 			bodyBytes, _ := io.ReadAll(resp.Body)
 			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-			errText = SafeLogValue(string(bodyBytes))
+			errText = httperr.SafeLogValue(string(bodyBytes))
 		}
 	}
 	logger(ServerLogEvent{
@@ -101,33 +103,33 @@ func LogUpstreamAttempt(logger func(ServerLogEvent), st *HandlerState, modelID s
 func ReadHandlerPreamble(ctx context.Context, store *cfg.ConfigStore, env utils.Environment, client types.HTTPDoer, w http.ResponseWriter, r *http.Request) (*HandlerPreamble, bool) {
 	apiKeys, err := cfg.RequireAnyProviderAPIKey(env, store.Paths.Root)
 	if err != nil {
-		WriteJSONError(w, 500, err.Error())
+		httperr.WriteJSONError(w, 500, err.Error())
 		return nil, false
 	}
-	body, err := ReadBody(r)
+	body, err := httperr.ReadBody(r)
 	if err != nil {
 		status := 500
 		msg := err.Error()
-		if he, ok := err.(*HTTPError); ok {
+		if he, ok := err.(*httperr.HTTPError); ok {
 			status = he.StatusCode
 			msg = he.Message
 		}
-		WriteJSONError(w, status, msg)
+		httperr.WriteJSONError(w, status, msg)
 		return nil, false
 	}
 	selected, err := SelectedModelSelection(ctx, store, apiKeys, client)
 	if err != nil {
-		WriteJSONError(w, 500, err.Error())
+		httperr.WriteJSONError(w, 500, err.Error())
 		return nil, false
 	}
 	if err := AssertSelectedFree(selected.Models); err != nil {
 		status := 500
 		msg := err.Error()
-		if he, ok := err.(*HTTPError); ok {
+		if he, ok := err.(*httperr.HTTPError); ok {
 			status = he.StatusCode
 			msg = he.Message
 		}
-		WriteJSONError(w, status, msg)
+		httperr.WriteJSONError(w, status, msg)
 		return nil, false
 	}
 	routingModel := RequestedModelForRouting(selected.Models, body["model"])
@@ -161,7 +163,7 @@ func HandleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *Hand
 		}
 		if utils.IsOK(upstream) {
 			if st.Stream {
-				st.LastInputTokens, st.LastOutputTokens, st.LogTriedCount = WriteStreamResponse(w, upstream, store, model, triedCount)
+				st.LastInputTokens, st.LastOutputTokens, st.LogTriedCount = streaming.WriteStreamResponse(w, upstream, store, model, triedCount)
 				return true, ""
 			}
 			data, err := utils.ResponseJSON(upstream)
@@ -178,7 +180,7 @@ func HandleChatCompletion(ctx context.Context, store *cfg.ConfigStore, pre *Hand
 			recordSuccessfulUsage(store, model, data)
 			t := triedCount
 			st.LogTriedCount = &t
-			WriteJSON(w, upstream.StatusCode, data)
+			httperr.WriteJSON(w, upstream.StatusCode, data)
 			return true, ""
 		}
 		return false, RecordUpstreamFailure(store, model, upstream)
@@ -190,7 +192,7 @@ func finishChatCompletionAsAnthropic(w http.ResponseWriter, store *cfg.ConfigSto
 	st.LogTriedCount = &t
 	if st.Stream {
 		recordSuccessfulUsage(store, model, nil)
-		PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
+		streaming.PipeOpenAIStreamAsAnthropic(upstream.Body, w, modelID)
 	} else {
 		data, err := utils.ResponseJSON(upstream)
 		if err != nil {
@@ -200,7 +202,7 @@ func finishChatCompletionAsAnthropic(w http.ResponseWriter, store *cfg.ConfigSto
 		st.LastInputTokens = in
 		st.LastOutputTokens = out
 		recordSuccessfulUsage(store, model, data)
-		WriteJSON(w, upstream.StatusCode, protocol.OpenAIToAnthropic(data, modelID))
+		httperr.WriteJSON(w, upstream.StatusCode, protocol.OpenAIToAnthropic(data, modelID))
 	}
 	return true, ""
 }
@@ -222,9 +224,9 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 				if st.Stream {
 					fallbackBody["stream_options"] = map[string]any{"include_usage": true}
 				}
-				attemptStart := time.Now()
+				tryStart := time.Now()
 				upstream, upstreamErr = p.ChatCompletion(ctx, apiKey, fallbackBody, client)
-				LogUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)
+				LogUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, tryStart)
 				if upstreamErr == nil && utils.IsOK(upstream) {
 					return finishChatCompletionAsAnthropic(w, store, model, upstream, modelID, st, triedCount)
 				}
@@ -234,7 +236,7 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 			}
 			if utils.IsOK(upstream) {
 				if st.Stream {
-					st.LastInputTokens, st.LastOutputTokens, st.LogTriedCount = WriteStreamResponse(w, upstream, store, model, triedCount)
+					st.LastInputTokens, st.LastOutputTokens, st.LogTriedCount = streaming.WriteStreamResponse(w, upstream, store, model, triedCount)
 					return true, ""
 				}
 				data, err := utils.ResponseJSON(upstream)
@@ -252,7 +254,7 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 				recordSuccessfulUsage(store, model, data)
 				t := triedCount
 				st.LogTriedCount = &t
-				WriteJSON(w, upstream.StatusCode, data)
+				httperr.WriteJSON(w, upstream.StatusCode, data)
 				return true, ""
 			}
 		} else { // providers.ProtocolOpenAI

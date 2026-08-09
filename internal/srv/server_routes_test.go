@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
+	"github.com/sleepysoong/sleepyrouter/internal/httperr"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 )
@@ -49,7 +50,7 @@ func TestServer_RoutesOpenAIChat(t *testing.T) {
 	defer cleanup()
 	var seenBody map[string]any
 	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
-		body, _ := utils.ReadBody(req)
+		body, _ := httperr.ReadBody(req)
 		seenBody = body
 		return mockResponse(200, map[string]any{
 			"id":    "chatcmpl_1",
@@ -124,7 +125,7 @@ func TestServer_RoutesNVIDIAAnthropic(t *testing.T) {
 	}()
 	var seenBody map[string]any
 	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
-		body, _ := utils.ReadBody(req)
+		body, _ := httperr.ReadBody(req)
 		seenBody = body
 		return mockResponse(200, map[string]any{
 			"id":    "chatcmpl_n1",
@@ -196,7 +197,7 @@ func TestServer_RejectsEmptyChoicesAndRetries(t *testing.T) {
 	callCount := 0
 	mock := utils.HTTPClientFunc(func(req *http.Request) (*http.Response, error) {
 		callCount++
-		body, _ := utils.ReadBody(req)
+		body, _ := httperr.ReadBody(req)
 		model := body["model"].(string)
 		if model == "model-empty:free" {
 			// Empty choices → should be treated as failure and retried

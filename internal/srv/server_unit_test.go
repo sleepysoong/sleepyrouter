@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/sleepysoong/sleepyrouter/internal/handler"
+	"github.com/sleepysoong/sleepyrouter/internal/httperr"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
@@ -29,10 +30,10 @@ func TestModelUpstreamID_MultiSlash(t *testing.T) {
 }
 
 func TestSafeLogValue(t *testing.T) {
-	if got := handler.SafeLogValue("hello"); got != "hello" {
+	if got := httperr.SafeLogValue("hello"); got != "hello" {
 		t.Fatalf("got %q", got)
 	}
-	if got := handler.SafeLogValue(strings.Repeat("x", 300)); len(got) > 203 {
+	if got := httperr.SafeLogValue(strings.Repeat("x", 300)); len(got) > 203 {
 		t.Fatalf("too long: %d", len(got))
 	}
 }

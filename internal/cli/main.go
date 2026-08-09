@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sleepysoong/sleepyrouter/internal/types"
+	"github.com/sleepysoong/sleepyrouter/internal/version"
 )
 
 func parseArgs(argv []string) (command string, flags map[string]any) {
@@ -45,7 +45,7 @@ func parsePort(value any) (int, error) {
 }
 
 func helpText() string {
-	return fmt.Sprintf("sleepyrouter %s\n\n사용법:\n  sleepyrouter start [--port 4567]\n  sleepyrouter usage [--date YYYYMMDD|--week NN]\n  sleepyrouter --version\n", types.Version)
+	return fmt.Sprintf("sleepyrouter %s\n\n사용법:\n  sleepyrouter start [--port 4567]\n  sleepyrouter usage [--date YYYYMMDD|--week NN]\n  sleepyrouter --version\n", version.Version)
 }
 
 func Main() {
@@ -53,7 +53,7 @@ func Main() {
 
 	switch command {
 	case "--version", "-v", "version":
-		fmt.Println(types.Version)
+		fmt.Println(version.Version)
 		return
 	case "help", "--help", "-h":
 		fmt.Print(helpText())

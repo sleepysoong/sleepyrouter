@@ -1,3 +1,7 @@
+// File request_anthropic_to_openai.go converts an inbound Anthropic
+// messages request into the form upstream OpenAI-compatible providers can
+// consume, including tool/tool_choice handling and the system/stop fields
+// that have slightly different names.
 package protocol
 
 import (

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/cfg"
+	"github.com/sleepysoong/sleepyrouter/internal/httperr"
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
@@ -69,7 +70,7 @@ func modelIDs(models []types.SleepyRouterModel) []string {
 // AssertSelectedFree checks that at least one model is configured.
 func AssertSelectedFree(models []types.SleepyRouterModel) error {
 	if len(models) == 0 {
-		return &HTTPError{StatusCode: 400, Message: "선택된 무료 모델이 없어요. config.json의 modelGroups에 사용할 모델을 하나 이상 추가하세요. (예: \"nvidia/z-ai/glm-5.1\")"}
+		return &httperr.HTTPError{StatusCode: 400, Message: "선택된 무료 모델이 없어요. config.json의 modelGroups에 사용할 모델을 하나 이상 추가하세요. (예: \"nvidia/z-ai/glm-5.1\")"}
 	}
 	return nil
 }
@@ -99,8 +100,25 @@ func ModelUpstreamID(model types.SleepyRouterModel) string {
 	return model.ID
 }
 
+// openAIChatCompletionsFields is the allow-list of top-level fields the
+// upstream OpenAI Chat Completions schema recognises. Strict OpenAI-compat
+// hosts (Google, NVIDIA) reject unknown fields with 400 INVALID_ARGUMENT, so
+// we copy only these from the client request and drop everything else (e.g.
+// OpenAI's "store" flag, which the Gemini compat endpoint does not model).
+var openAIChatCompletionsFields = []string{
+	"messages", "model", "frequency_penalty", "max_tokens", "n", "presence_penalty",
+	"response_format", "seed", "stop", "stream", "temperature", "top_p", "tools",
+	"tool_choice", "parallel_tool_calls", "user", "logprobs", "top_logprobs",
+	"reasoning_effort", "reasoning", "stream_options",
+}
+
 func withUpstreamModel(body map[string]any, model types.SleepyRouterModel, stream bool) map[string]any {
-	result := utils.CloneObject(body)
+	result := make(map[string]any, len(openAIChatCompletionsFields))
+	for _, key := range openAIChatCompletionsFields {
+		if v, ok := body[key]; ok {
+			result[key] = v
+		}
+	}
 	result["model"] = ModelUpstreamID(model)
 	if stream {
 		result["stream_options"] = map[string]any{"include_usage": true}
@@ -129,7 +147,7 @@ func RequestedModelForRouting(models []types.SleepyRouterModel, requestedModel a
 }
 
 func noUsableModelResponse(w http.ResponseWriter, lastError string) {
-	WriteJSONError(w, 400, "설정된 API 키로 사용 가능한 무료 모델이 없어요. API 키 설정과 모델 ID를 확인하세요.", map[string]any{"details": lastError})
+	httperr.WriteJSONError(w, 400, "설정된 API 키로 사용 가능한 무료 모델이 없어요. API 키 설정과 모델 ID를 확인하세요.", map[string]any{"details": lastError})
 }
 
 // UsageFromResponse extracts token counts from a response body's "usage" field.
