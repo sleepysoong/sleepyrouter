@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zendev-sh/goai/provider/compat"
+
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 	"github.com/sleepysoong/sleepyrouter/internal/utils"
 	"github.com/sleepysoong/sleepyrouter/internal/version"
@@ -16,6 +18,17 @@ const (
 	copilotChatCompletionsURL = "https://api.githubcopilot.com/chat/completions"
 	copilotTokenURL           = "https://api.github.com/copilot_internal/v2/token"
 )
+
+// copilotChatHeaders are sent on every Copilot chat request; the session
+// token lands on the Authorization header when the GoAI model executes.
+func copilotChatHeaders() map[string]string {
+	return map[string]string{
+		"Copilot-Integration-Id":      "vscode-chat",
+		"Editor-types.Version":        "vscode/1.99.0",
+		"Editor-Plugin-types.Version": "copilot-chat/0.26.7",
+		"x-github-api-version":        "2025-04-01",
+	}
+}
 
 type copilotToken struct {
 	Token     string
@@ -74,23 +87,26 @@ func copilotSessionToken(ctx context.Context, apiKey string, client types.HTTPDo
 	return token.Token, nil
 }
 
+// PostCopilotChatCompletion performs a Copilot chat completion through a GoAI
+// compat model authenticated with the PAT-exchanged session token.
 func PostCopilotChatCompletion(ctx context.Context, apiKey string, body any, client types.HTTPDoer) (*http.Response, error) {
 	sessionToken, err := copilotSessionToken(ctx, apiKey, client)
 	if err != nil {
 		return nil, err
 	}
-	req, err := utils.JSONRequest(ctx, http.MethodPost, copilotChatCompletionsURL, map[string]string{
-		"Authorization":               "Bearer " + sessionToken,
-		"Content-Type":                "application/json",
-		"Copilot-Integration-Id":      "vscode-chat",
-		"Editor-types.Version":        "vscode/1.99.0",
-		"Editor-Plugin-types.Version": "copilot-chat/0.26.7",
-		"x-github-api-version":        "2025-04-01",
-	}, body)
-	if err != nil {
-		return nil, err
+	bodyMap, ok := body.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("copilot 요청 본문이 객체가 아니에요: %T", body)
 	}
-	return utils.HTTPClient(client).Do(req)
+	modelID := modelIDFrom(bodyMap)
+	model := compat.Chat(
+		modelID,
+		compat.WithBaseURL("https://api.githubcopilot.com"),
+		compat.WithAPIKey(sessionToken),
+		compat.WithHeaders(copilotChatHeaders()),
+		compat.WithHTTPClient(httpClientFor(client)),
+	)
+	return goaiChatCompletion(ctx, model, modelID, bodyMap, client)
 }
 
 func resetCopilotTokenCache() {

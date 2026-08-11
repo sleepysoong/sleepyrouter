@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/zendev-sh/goai/provider/compat"
+
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
@@ -15,10 +17,15 @@ type GoogleProvider struct {
 }
 
 func (p *GoogleProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
-	return postChatCompletion(ctx, googleChatCompletionsURL, map[string]string{
-		"Authorization": "Bearer " + apiKey,
-		"Content-Type":  "application/json",
-	}, body, client)
+	modelID := modelIDFrom(body)
+	model := compat.Chat(
+		modelID,
+		compat.WithBaseURL("https://generativelanguage.googleapis.com/v1beta/openai"),
+		compat.WithAPIKey(apiKey),
+		compat.WithIncludeReasoningContent(true),
+		compat.WithHTTPClient(httpClientFor(client)),
+	)
+	return goaiChatCompletion(ctx, model, modelID, body, client)
 }
 
 func init() {

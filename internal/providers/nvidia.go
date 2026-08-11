@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/zendev-sh/goai/provider/nvidia"
+
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
@@ -15,10 +17,13 @@ type NVIDIAProvider struct {
 }
 
 func (p *NVIDIAProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
-	return postChatCompletion(ctx, nvidiaChatCompletionsURL, map[string]string{
-		"Authorization": "Bearer " + apiKey,
-		"Content-Type":  "application/json",
-	}, body, client)
+	modelID := modelIDFrom(body)
+	model := nvidia.Chat(
+		modelID,
+		nvidia.WithAPIKey(apiKey),
+		nvidia.WithHTTPClient(httpClientFor(client)),
+	)
+	return goaiChatCompletion(ctx, model, modelID, body, client)
 }
 
 func init() {

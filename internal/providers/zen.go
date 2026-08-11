@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/zendev-sh/goai/provider/compat"
+
 	"github.com/sleepysoong/sleepyrouter/internal/types"
 )
 
@@ -15,10 +17,14 @@ type ZenProvider struct {
 }
 
 func (p *ZenProvider) ChatCompletion(ctx context.Context, apiKey string, body map[string]any, client types.HTTPDoer) (*http.Response, error) {
-	return postChatCompletion(ctx, zenChatCompletionsURL, map[string]string{
-		"Authorization": "Bearer " + apiKey,
-		"Content-Type":  "application/json",
-	}, body, client)
+	modelID := modelIDFrom(body)
+	model := compat.Chat(
+		modelID,
+		compat.WithBaseURL("https://opencode.ai/zen/v1"),
+		compat.WithAPIKey(apiKey),
+		compat.WithHTTPClient(httpClientFor(client)),
+	)
+	return goaiChatCompletion(ctx, model, modelID, body, client)
 }
 
 func init() {

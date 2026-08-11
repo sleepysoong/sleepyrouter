@@ -237,6 +237,38 @@ Anthropic surface는 로컬 `count_tokens` 추정치도 제공하며, OpenAI 호
 
 모델을 고를 때는 라우팅 후보 풀마다 컨텍스트 크기 티어를 맞춰두세요. 모델의 컨텍스트 윈도 크기는 각 provider의 문서 페이지에서 확인할 수 있습니다.
 
+## 아키텍처
+
+`sleepyrouter`의 업스트림 전송 계층은 GoAI([github.com/zendev-sh/goai](https://github.com/zendev-sh/goai), v0.9.4, vendored)의 `LanguageModel` API(`ChatCompletion` / `Messages`) 위에 구축되어 있습니다. 기존의 손으로 짠 raw-HTTP provider 구현이 GoAI 모델 호출로 교체되었으며, 외부 계약(`providers.Provider` 인터페이스, 핸들러·라우팅 코드, OpenAI/Anthropic wire surface)은 그대로 유지됩니다.
+
+```
+핸들러/라우터 (변경 없음)
+        │  providers.Provider 인터페이스 (변경 없음)
+        ▼
+providers: GoAI ChatCompletion/Messages 모델 호출
+        │  adapt.OpenAIRequest / adapt.AnthropicRequest   (wire body → GenerateParams)
+        │  emit.OpenAIResponse / emit.AnthropicResponse / *StreamSSE (결과 → wire)
+        ▼
+goai (vendored) — openai-compat · anthropic · gemini-compat 모델
+```
+
+주요 구성 요소:
+
+| 구성 요소 | 역할 |
+| --- | --- |
+| `internal/adapt` | OpenAI chat.completions / Anthropic messages 요청 본문을 `provider.GenerateParams`로 변환. assistant thinking/reasoning, tool-call thought-signature, 이미지(anthropic base64 → data-URI), provider-defined tools(`computer_20241022` 등)을 보존합니다. |
+| `internal/emit` | `GenerateResult`/스트림 `StreamChunk`를 OpenAI/Anthropic wire 응답으로 직렬화. 스트리밍 role/reasoning/content/tool_call delta, thinking `signature_delta`, 종료 시 usage 청크를 재현합니다. |
+| `internal/providers` | Provider 인터페이스 유지. 각 provider 파일은 goai 모델을 per-call로 구성하며, Copilot token 캐시·갱신 로직은 원래 시맨틱을 유지합니다. |
+
+### Vendored 패치
+
+GoAI v0.9.4는 Claude Code ↔ Gemini 시그니처 연속성(thought-signature)을 기본 지원하지 않아 `vendor/`에 4개의 작은 패치를 적용했습니다. 재-vendor 시 다시 적용해야 합니다.
+
+1. `openaicompat/messages.go` — `ConvertMessages`가 per-message/per-part `ProviderOptions`를 직렬화에 deep-merge(기존 `role`/`content`/`tool_calls`/`reasoning_content` 보호). 요청 방향의 tool-call 시그니처와 extra_fields가 라운드트립됩니다.
+2. `openaicompat/openaicompat.go` — 스트림·비스트림 파싱에서 `thought_signature`/`signature`/`extra_content.google.thought_signature`를 캡처해 청크 `Metadata`(키 `thoughtSignature`)로 노출. 툴 콜은 3중 위치(tool_call·function·extra_fields)로 재출력됩니다.
+3. `openaicompat/openaicompat.go` — reasoning 파싱 보존 + `WithIncludeReasoningContent` 옵션.
+4. `anthropic.go` — `WithBetaFeatures` 옵션으로 Anthropic beta 헤더를 제어(빈 문자열이면 헤더 생략, OpenRouter가 Anthropic의 beta 목록을 거부).
+
 ## 라이선스
 
 [MIT](./LICENSE.md)

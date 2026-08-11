@@ -2,7 +2,11 @@ module github.com/sleepysoong/sleepyrouter
 
 go 1.26.0
 
-require modernc.org/sqlite v1.54.0
+require (
+	github.com/olekukonko/tablewriter v1.1.4
+	github.com/zendev-sh/goai v0.9.4
+	modernc.org/sqlite v1.54.0
+)
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -18,7 +22,6 @@ require (
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
 	github.com/olekukonko/errors v1.2.0 // indirect
 	github.com/olekukonko/ll v0.1.6 // indirect
-	github.com/olekukonko/tablewriter v1.1.4 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	modernc.org/libc v1.74.1 // indirect
