@@ -117,6 +117,15 @@ func AnthropicRequest(ctx context.Context, body map[string]any, modelID string) 
 		params.ToolChoice = toolChoiceString(v)
 	}
 	if v, ok := body["thinking"].(map[string]any); ok {
+		// goai's anthropic.Chat reads ProviderOptions["thinking"]["budgetTokens"]
+		// (camelCase), but the Anthropic Messages wire field the client sends is
+		// "budget_tokens" (snake_case). Normalize the key so goai can read the
+		// budget and serialise it back to the upstream as "budget_tokens".
+		if bt, ok := v["budget_tokens"]; ok {
+			if _, has := v["budgetTokens"]; !has {
+				v["budgetTokens"] = bt
+			}
+		}
 		params.ProviderOptions["thinking"] = v
 	}
 

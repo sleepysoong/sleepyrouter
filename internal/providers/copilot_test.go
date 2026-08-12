@@ -35,7 +35,7 @@ func TestCopilot_PostChatCompletion_UsesSessionToken(t *testing.T) {
 
 	mock := copilotMockClient(func(req *http.Request) (*http.Response, error) {
 		url := req.URL.String()
-		if url == copilotTokenURL {
+		if url == copilotTokenURLDefault {
 			return copilotJSONResponse(200, map[string]any{
 				"token":      "copilot-session-xyz",
 				"expires_at": float64(time.Now().Unix() + 3600),
@@ -77,7 +77,7 @@ func TestCopilot_TokenCache_ReusesWithinWindow(t *testing.T) {
 	resetCopilotTokenCache()
 	tokenCallCount := 0
 	mock := copilotMockClient(func(req *http.Request) (*http.Response, error) {
-		if req.URL.String() == copilotTokenURL {
+		if req.URL.String() == copilotTokenURLDefault {
 			tokenCallCount++
 			return copilotJSONResponse(200, map[string]any{
 				"token":      "token-" + string(rune('a'+tokenCallCount)),

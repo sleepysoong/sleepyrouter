@@ -16,7 +16,7 @@ import (
 
 const (
 	copilotChatCompletionsURL = "https://api.githubcopilot.com/chat/completions"
-	copilotTokenURL           = "https://api.github.com/copilot_internal/v2/token"
+	copilotTokenURLDefault   = "https://api.github.com/copilot_internal/v2/token"
 )
 
 // copilotChatHeaders are sent on every Copilot chat request; the session
@@ -41,7 +41,7 @@ var copilotTokenCache struct {
 }
 
 func exchangeCopilotToken(ctx context.Context, apiKey string, client types.HTTPDoer) (*copilotToken, error) {
-	req, err := utils.GetRequest(ctx, copilotTokenURL, map[string]string{
+	req, err := utils.GetRequest(ctx, baseURLFrom("SLEEPYROUTER_COPILOT_TOKEN_URL", copilotTokenURLDefault), map[string]string{
 		"Authorization": "token " + apiKey,
 		"User-Agent":    "sleepyrouter/" + version.Version,
 	})
@@ -101,7 +101,7 @@ func PostCopilotChatCompletion(ctx context.Context, apiKey string, body any, cli
 	modelID := modelIDFrom(bodyMap)
 	model := compat.Chat(
 		modelID,
-		compat.WithBaseURL("https://api.githubcopilot.com"),
+		compat.WithBaseURL(baseURLFrom("SLEEPYROUTER_COPILOT_BASE_URL", "https://api.githubcopilot.com")),
 		compat.WithAPIKey(sessionToken),
 		compat.WithHeaders(copilotChatHeaders()),
 		compat.WithHTTPClient(httpClientFor(client)),

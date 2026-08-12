@@ -21,6 +21,7 @@ func (p *NVIDIAProvider) ChatCompletion(ctx context.Context, apiKey string, body
 	model := nvidia.Chat(
 		modelID,
 		nvidia.WithAPIKey(apiKey),
+		nvidia.WithBaseURL(baseURLFrom("SLEEPYROUTER_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")),
 		nvidia.WithHTTPClient(httpClientFor(client)),
 	)
 	return goaiChatCompletion(ctx, model, modelID, body, client)

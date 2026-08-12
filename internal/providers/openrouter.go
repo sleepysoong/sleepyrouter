@@ -3,6 +3,8 @@ package providers
 import (
 	"context"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/zendev-sh/goai/provider/anthropic"
 	"github.com/zendev-sh/goai/provider/openrouter"
@@ -33,6 +35,7 @@ func (p *OpenRouterProvider) ChatCompletion(ctx context.Context, apiKey string, 
 	model := openrouter.Chat(
 		modelID,
 		openrouter.WithAPIKey(apiKey),
+		openrouter.WithBaseURL(baseURLFrom("SLEEPYROUTER_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")),
 		openrouter.WithHeaders(openRouterHeaders()),
 		openrouter.WithHTTPClient(httpClientFor(client)),
 	)
@@ -43,8 +46,12 @@ func (p *OpenRouterProvider) Messages(ctx context.Context, apiKey string, body m
 	modelID := modelIDFrom(body)
 	model := anthropic.Chat(
 		modelID,
-		anthropic.WithBaseURL("https://openrouter.ai"),
+		anthropic.WithBaseURL(baseURLFrom("SLEEPYROUTER_OPENROUTER_BASE_URL", "https://openrouter.ai")),
 		anthropic.WithURLBuilder(func(baseURL, modelID string, streaming bool) string {
+			chatEnv := os.Getenv("SLEEPYROUTER_OPENROUTER_BASE_URL")
+			if chatEnv != "" {
+				return strings.TrimRight(chatEnv, "/") + "/chat/completions"
+			}
 			return openRouterAnthropicMessagesURL
 		}),
 		anthropic.WithAPIKey(apiKey),

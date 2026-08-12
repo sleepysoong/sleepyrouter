@@ -215,7 +215,7 @@ func HandleAnthropicMessage(ctx context.Context, store *cfg.ConfigStore, pre *Ha
 		var upstream *http.Response
 		var upstreamErr error
 		if p.MessageProtocol() == providers.ProtocolAnthropic {
-			upstreamBody := withUpstreamModel(body, model, st.Stream)
+			upstreamBody := withUpstreamModelAnthropic(body, model)
 			attemptStart := time.Now()
 			upstream, upstreamErr = p.Messages(ctx, apiKey, upstreamBody, client)
 			LogUpstreamAttempt(requestLogger, st, modelID, upstream, upstreamErr, attemptStart)

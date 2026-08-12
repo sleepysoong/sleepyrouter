@@ -112,6 +112,19 @@ var openAIChatCompletionsFields = []string{
 	"reasoning_effort", "reasoning", "stream_options",
 }
 
+// anthropicMessagesFields is the pass-through allow-list for the upstream
+// Anthropic Messages schema. Unlike OpenAI-compat hosts, the Anthropic /
+// OpenRouter Messages surface accepts (and requires, for thinking) fields
+// outside the OpenAI Chat Completions schema, so the filter must preserve
+// them. "thinking" must survive so the goai adapter can forward it to the
+// upstream; "system" is the Anthropic top-level system prompt; "metadata",
+// "stop_sequences", and "anthropic_version" round out the documented schema.
+var anthropicMessagesFields = []string{
+	"messages", "model", "max_tokens", "stream", "temperature", "top_p", "top_k",
+	"stop_sequences", "tools", "tool_choice", "system", "thinking",
+	"metadata", "anthropic_version",
+}
+
 func withUpstreamModel(body map[string]any, model types.SleepyRouterModel, stream bool) map[string]any {
 	result := make(map[string]any, len(openAIChatCompletionsFields))
 	for _, key := range openAIChatCompletionsFields {
@@ -123,6 +136,22 @@ func withUpstreamModel(body map[string]any, model types.SleepyRouterModel, strea
 	if stream {
 		result["stream_options"] = map[string]any{"include_usage": true}
 	}
+	return result
+}
+
+// withUpstreamModelAnthropic is the Anthropic-Messages variant of
+// withUpstreamModel: it preserves the Anthropic-allowed fields (including
+// "thinking") instead of the OpenAI Chat Completions filter, and sets the
+// upstream model id. Unlike the OpenAI variant it does not inject
+// stream_options (the Anthropic Messages schema has no such field).
+func withUpstreamModelAnthropic(body map[string]any, model types.SleepyRouterModel) map[string]any {
+	result := make(map[string]any, len(anthropicMessagesFields))
+	for _, key := range anthropicMessagesFields {
+		if v, ok := body[key]; ok {
+			result[key] = v
+		}
+	}
+	result["model"] = ModelUpstreamID(model)
 	return result
 }
 

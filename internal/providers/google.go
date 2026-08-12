@@ -20,7 +20,7 @@ func (p *GoogleProvider) ChatCompletion(ctx context.Context, apiKey string, body
 	modelID := modelIDFrom(body)
 	model := compat.Chat(
 		modelID,
-		compat.WithBaseURL("https://generativelanguage.googleapis.com/v1beta/openai"),
+		compat.WithBaseURL(baseURLFrom("SLEEPYROUTER_GOOGLE_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")),
 		compat.WithAPIKey(apiKey),
 		compat.WithIncludeReasoningContent(true),
 		compat.WithHTTPClient(httpClientFor(client)),

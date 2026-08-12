@@ -32,11 +32,10 @@ func OpenAIResponse(result provider.GenerateResult, model string) ([]byte, error
 		message["reasoning_content"] = result.Reasoning
 	}
 	// Non-stream message-level thought signature (e.g. Google's
-	// message.thought_signature) rides in ProviderMetadata["openai"].
-	if pm := result.ProviderMetadata["openai"]; pm != nil {
-		if sig := thoughtSig(pm); sig != "" {
-			message["thought_signature"] = sig
-		}
+	// message.thought_signature) rides in ProviderMetadata buckets from any
+	// provider (OpenAI direct, Anthropic reasoning blocks).
+	if pm := providerSignatures(result.ProviderMetadata); pm != nil {
+		message["thought_signature"] = pm["thoughtSignature"]
 	}
 	if tcs := toolCallsWire(result.ToolCalls); len(tcs) > 0 {
 		message["tool_calls"] = tcs
@@ -178,11 +177,10 @@ func AnthropicResponse(result provider.GenerateResult, model string) ([]byte, er
 		message["reasoning_content"] = result.Reasoning
 	}
 	// Non-stream message-level thought signature (e.g. Google's
-	// message.thought_signature) rides in ProviderMetadata["openai"].
-	if pm := result.ProviderMetadata["openai"]; pm != nil {
-		if sig := thoughtSig(pm); sig != "" {
-			message["thought_signature"] = sig
-		}
+	// message.thought_signature) rides in ProviderMetadata buckets from any
+	// provider (OpenAI direct, Anthropic reasoning blocks).
+	if pm := providerSignatures(result.ProviderMetadata); pm != nil {
+		message["thought_signature"] = pm["thoughtSignature"]
 	}
 	if tcs := toolCallsWire(result.ToolCalls); len(tcs) > 0 {
 		message["tool_calls"] = tcs
@@ -526,6 +524,52 @@ func thoughtSig(m map[string]any) string {
 	return ""
 }
 
+// messageSignature harvests a non-stream message-level thought signature from
+// every provider metadata bucket sleepyrouter's upstreams use. The OpenAI /
+// Google-style bucket stores it directly under "thoughtSignature"/
+// "signature"; the Anthropic bucket stores it inside a "reasoning" slice as
+// {"type":"thinking","signature":...} entries (one per thinking block).
+func messageSignature(pm map[string]any) map[string]any {
+	if pm == nil {
+		return nil
+	}
+	if sig := thoughtSig(pm); sig != "" {
+		return map[string]any{"thoughtSignature": sig}
+	}
+	if r, ok := pm["reasoning"].([]any); ok {
+		for _, e := range r {
+			if m, ok := e.(map[string]any); ok {
+				if sig, _ := m["signature"].(string); sig != "" {
+					return map[string]any{"thoughtSignature": sig}
+				}
+			}
+		}
+	}
+	// goai's Anthropic parser stores reasoning as []map[string]any, not []any.
+	if r, ok := pm["reasoning"].([]map[string]any); ok {
+		for _, m := range r {
+			if sig, _ := m["signature"].(string); sig != "" {
+				return map[string]any{"thoughtSignature": sig}
+			}
+		}
+	}
+	return nil
+}
+
+// providerSignatures runs messageSignature across every metadata bucket
+// ("openai", "anthropic", ...) on a GenerateResult, returning the first
+// non-empty thought signature found.
+func providerSignatures(meta map[string]map[string]any) map[string]any {
+	for _, bucket := range []string{"openai", "anthropic"} {
+		if m, ok := meta[bucket]; ok && m != nil {
+			if out := messageSignature(m); out != nil {
+				return out
+			}
+		}
+	}
+	return nil
+}
+
 // openAIFinishReason maps a GoAI finish reason to the OpenAI wire value.
 func openAIFinishReason(fr provider.FinishReason) *string {
 	if fr == "" {
@@ -590,6 +634,17 @@ func sseEvent(w io.Writer, data any) {
 	b, err := json.Marshal(data)
 	if err != nil {
 		return
+	}
+	// Anthropic Messages SSE uses typed events: "event: <type>\ndata: <json>\n\n".
+	// OpenAI chat.completions SSE is untyped: just "data: <json>\n\n".
+	// Extract the "type" field to emit the Anthropic event line when present;
+	// OpenAI chunks don't set top-level "type" so they stay data-only.
+	if m, ok := data.(map[string]any); ok {
+		if t, _ := m["type"].(string); t != "" {
+			_, _ = w.Write([]byte("event: "))
+			_, _ = w.Write([]byte(t))
+			_, _ = w.Write([]byte("\n"))
+		}
 	}
 	_, _ = w.Write([]byte("data: "))
 	_, _ = w.Write(b)

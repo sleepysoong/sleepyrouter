@@ -20,7 +20,7 @@ func (p *ZenProvider) ChatCompletion(ctx context.Context, apiKey string, body ma
 	modelID := modelIDFrom(body)
 	model := compat.Chat(
 		modelID,
-		compat.WithBaseURL("https://opencode.ai/zen/v1"),
+		compat.WithBaseURL(baseURLFrom("SLEEPYROUTER_ZEN_BASE_URL", "https://opencode.ai/zen/v1")),
 		compat.WithAPIKey(apiKey),
 		compat.WithHTTPClient(httpClientFor(client)),
 	)

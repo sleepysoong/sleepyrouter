@@ -235,6 +235,14 @@ func TestAnthropicRequestFidelity(t *testing.T) {
 	if p.ProviderOptions["thinking"] == nil {
 		t.Errorf("thinking ProviderOptions missing: %v", p.ProviderOptions)
 	}
+	// The adapter must normalize the snake_case wire field "budget_tokens" to
+	// the camelCase key goai's anthropic.Chat reads ("budgetTokens"), otherwise
+	// the thinking budget is silently dropped before it reaches the upstream.
+	if th, ok := p.ProviderOptions["thinking"].(map[string]any); ok {
+		if _, has := th["budgetTokens"]; !has {
+			t.Errorf("thinking.budgetTokens missing after normalization: %v", th)
+		}
+	}
 	if len(p.Tools) != 1 || p.Tools[0].Name != "lookup" {
 		t.Errorf("tools wrong: %+v", p.Tools)
 	}

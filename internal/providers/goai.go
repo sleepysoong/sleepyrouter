@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	goai "github.com/zendev-sh/goai"
@@ -37,6 +38,17 @@ func httpClientFor(doer types.HTTPDoer) *http.Client {
 		return http.DefaultClient
 	}
 	return &http.Client{Transport: roundTripperFunc(doer.Do)}
+}
+
+// baseURLFrom resolves a per-provider base URL. The env override (e.g.
+// SLEEPYROUTER_OPENROUTER_BASE_URL) wins; otherwise the production default is
+// used. This keeps production behavior unchanged while allowing isolated
+// sandboxes and tests to point providers at fake upstreams.
+func baseURLFrom(envVar, def string) string {
+	if v := os.Getenv(envVar); v != "" {
+		return v
+	}
+	return def
 }
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)

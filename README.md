@@ -269,6 +269,32 @@ GoAI v0.9.4는 Claude Code ↔ Gemini 시그니처 연속성(thought-signature)�
 3. `openaicompat/openaicompat.go` — reasoning 파싱 보존 + `WithIncludeReasoningContent` 옵션.
 4. `anthropic.go` — `WithBetaFeatures` 옵션으로 Anthropic beta 헤더를 제어(빈 문자열이면 헤더 생략, OpenRouter가 Anthropic의 beta 목록을 거부).
 
+### 추가 수정
+
+리팩토링 과정에서 정규적으로 3개 패치가 추가로 적용되었습니다:
+
+1. `internal/handler/model_selection.go` — Anthropic Messages 경로가 OpenAI Chat Completions allow-list 대신 `withUpstreamModelAnthropic`를 사용하도록 분리. 이전에는 OpenAI 전용 allow-list가 `thinking`, `system`, `stop_sequences` 등 Anthropic Messages 필드를 제거했기 때문에 thinking 요청이 업스트림에 도달하지 못했습니다.
+2. `internal/adapt/adapt.go` — `thinking.budget_tokens`(snake_case, Anthropic wire)를 `thinking.budgetTokens`(camelCase, goai 읽는 키)로 정규화. 정규화 없이는 thinking budget이 업스트림에 도달하기 전에 조용히 사라집니다.
+3. `internal/emit/emit.go` — `providerSignatures`/`messageSignature` 헬퍼. 비스트림 message-level thought signature를 `ProviderMetadata["openai"]`(OpenAI/Google 직접)와 `ProviderMetadata["anthropic"]["reasoning"][i]["signature"]`(Anthropic reasoning 블록) 양쪽에서 수집. goai가 reasoning 슬라이스를 `[]any`와 `[]map[string]any` 어느 쪽으로 저장하든 읽습니다.
+
+### 샌드박스
+
+`sandbox/` 디렉토리는 격리된 end-to-end 테스트 하네스입니다. fake OpenAI/Anthropic 업스트림을 띄우고 실제 `./cmd/sleepyrouter` 바이너리를 랜덤 포트에 실행한 뒤 13개의 curl 기반 검사를 수행합니다.
+
+```bash
+go run ./sandbox
+```
+
+각 실행은 별도 임시 디렉토리(`SLEEPYROUTER_HOME`)와 별도 랜덤 포트를 사용하며, 업스트림은 `SLEEPYROUTER_{OPENROUTER,NVIDIA,GOOGLE,ZEN,COPILOT}_BASE_URL` 환경 변수를 통해 가짜 업스트림으로 재지정됩니다. 검사 항목:
+
+- health, models-list
+- openai 비스트림 텍스트, openai 스트림 텍스트, openai tool_use 라운드트립
+- anthropic 비스트림 텍스트, anthropic 스트림 텍스트, anthropic thinking 시그니처, anthropic tool_use 블록
+- failover(첫 후보 5xx → 둘째 후보 성공)
+- count_tokens, 404 알 수 없는 라우트, 업스트림 요청 shape 검증
+
+13/13이 녹색이면 통과입니다.
+
 ## 라이선스
 
 [MIT](./LICENSE.md)
