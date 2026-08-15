@@ -4,8 +4,6 @@ from typing import Any
 from sleepyrouter.types import SleepyRouterModel
 
 from .base import (
-    MAX_REASONING_EFFORT_HIGH,
-    MAX_THINKING_BUDGET,
     BaseProviderAdapter,
     inject_max_reasoning,
 )
@@ -18,8 +16,8 @@ class GoogleProviderAdapter(BaseProviderAdapter):
             source="google",
             api_key_env_var="GOOGLE_API_KEY",
             message_protocol="openai",
-            default_reasoning_effort=MAX_REASONING_EFFORT_HIGH,
-            default_thinking_budget=MAX_THINKING_BUDGET,
+            default_reasoning_effort="high",
+            default_thinking_budget=32000,
         )
 
     def map_litellm_kwargs(
@@ -28,8 +26,8 @@ class GoogleProviderAdapter(BaseProviderAdapter):
         upstream_id = model.upstream_id or model.id
         res = inject_max_reasoning(
             kwargs,
-            effort=MAX_REASONING_EFFORT_HIGH,
-            thinking_budget=MAX_THINKING_BUDGET,
+            effort="high",
+            thinking_budget=32000,
         )
         base_url = os.environ.get("SLEEPYROUTER_GOOGLE_BASE_URL")
         if base_url:

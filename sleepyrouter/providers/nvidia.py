@@ -3,7 +3,7 @@ from typing import Any
 
 from sleepyrouter.types import SleepyRouterModel
 
-from .base import MAX_REASONING_EFFORT_HIGH, BaseProviderAdapter, inject_max_reasoning
+from .base import BaseProviderAdapter, inject_max_reasoning
 
 
 class NVIDIAProviderAdapter(BaseProviderAdapter):
@@ -13,14 +13,14 @@ class NVIDIAProviderAdapter(BaseProviderAdapter):
             source="nvidia",
             api_key_env_var="NVIDIA_API_KEY",
             message_protocol="openai",
-            default_reasoning_effort=MAX_REASONING_EFFORT_HIGH,
+            default_reasoning_effort="high",
         )
 
     def map_litellm_kwargs(
         self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
     ) -> dict[str, Any]:
         upstream_id = model.upstream_id or model.id
-        res = inject_max_reasoning(kwargs, effort=MAX_REASONING_EFFORT_HIGH)
+        res = inject_max_reasoning(kwargs, effort="high")
         base_url = os.environ.get(
             "SLEEPYROUTER_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"
         )

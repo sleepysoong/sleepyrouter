@@ -1,4 +1,4 @@
-"""Base ProviderAdapter and ProviderRegistry abstraction with max reasoning & thinking budget injection."""
+"""Base ProviderAdapter and ProviderRegistry abstraction with reasoning & thinking budget injection."""
 
 import os
 from typing import Any, Protocol
@@ -7,10 +7,6 @@ from sleepyrouter.types import ModelSource, SleepyRouterModel, source_of
 
 MessageProtocol = str  # "openai" | "anthropic"
 
-MAX_THINKING_BUDGET = 32000
-MAX_REASONING_EFFORT_HIGH = "high"
-MAX_REASONING_EFFORT_XHIGH = "xhigh"
-
 
 def base_url_from(env_var: str, def_url: str) -> str:
     return os.environ.get(env_var, def_url)
@@ -18,7 +14,7 @@ def base_url_from(env_var: str, def_url: str) -> str:
 
 def inject_max_reasoning(
     kwargs: dict[str, Any],
-    effort: str = MAX_REASONING_EFFORT_HIGH,
+    effort: str = "high",
     thinking_budget: int | None = None,
 ) -> dict[str, Any]:
     res = dict(kwargs)
@@ -56,7 +52,7 @@ class BaseProviderAdapter:
         source: ModelSource,
         api_key_env_var: str,
         message_protocol: MessageProtocol = "openai",
-        default_reasoning_effort: str = MAX_REASONING_EFFORT_HIGH,
+        default_reasoning_effort: str = "high",
         default_thinking_budget: int | None = None,
     ):
         self._name = name
@@ -132,7 +128,7 @@ def map_to_litellm_kwargs(
         return adapter.map_litellm_kwargs(model, prepared_key, kwargs)
 
     upstream_id = model.upstream_id or model.id
-    res = inject_max_reasoning(kwargs, effort=MAX_REASONING_EFFORT_HIGH)
+    res = inject_max_reasoning(kwargs, effort="high")
     res["model"] = f"openai/{upstream_id}"
     res["api_key"] = api_key
     return res
