@@ -1,8 +1,8 @@
-# sleepyrouter
+# sleepyrouter (Python + LiteLLM Edition)
 
 `sleepyrouter`는 코딩 에이전트를 여러 무료 provider 중 설정된 순서대로 라우팅하는 로컬 프록시입니다. OpenAI 또는 Anthropic 호환 에이전트의 baseURL을 `localhost`로 바꾸고 free 모델 몇 개를 골라두면, rate-limit이나 quota 문제가 생겨도 `sleepyrouter`가 요청을 자동 페일오버하여 계속 흘려보냅니다.
 
-TypeScript와 [Vercel AI SDK](https://github.com/vercel/ai) 및 [Bun](https://bun.sh)을 기반으로 동작합니다.
+Python 3.14+, [LiteLLM](https://github.com/BerriAI/litellm), 그리고 [FastAPI](https://fastapi.tiangolo.com)를 기반으로 작동합니다.
 
 ## 왜 필요한가
 
@@ -20,11 +20,9 @@ Free tier 코딩 에이전트는 스펙 시트에서는 멀쩡해 보이지만, 
 
 | 기능 | 처리 방식 |
 | --- | --- |
-| 요청 라우팅 | 설정된 모델 순서대로 요청을 라우팅하고 실패 시 자동 페일오버합니다. |
+| 요청 라우팅 | 설정된 모델 순서대로 LiteLLM을 통해 요청을 라우팅하고 실패 시 자동 페일오버합니다. |
 | 클라이언트 호환성 | OpenAI 호환 `/v1` 과 Anthropic 호환 `/anthropic` surface를 노출하고, Anthropic tool-use 및 로컬 token count도 지원합니다. |
-| Vercel AI SDK 기반 | Vercel AI SDK(`ai`, `@ai-sdk/openai-compatible`)를 사용하여 다양한 provider 통합 및 스트리밍을 제공합니다. |
-
-에이전트는 `localhost`만 바라봅니다. provider 전환은 그 아래에서 조용히 일어납니다.
+| LiteLLM 통합 | LiteLLM 통합 연동 엔진을 통해 OpenRouter, NVIDIA, Copilot, Google, Zen 등 100+ LLM 모델 지원 |
 
 ## API 키 발급
 
@@ -38,45 +36,33 @@ Free tier 코딩 에이전트는 스펙 시트에서는 멀쩡해 보이지만, 
 
 가지고 있는 키를 `~/.sleepyrouter/.env`에 넣어 두면, `sleepyrouter`는 키가 설정된 provider만 사용합니다.
 
-## Quick Start (Bun)
+## Quick Start (Python)
 
-### 설치 및 실행
+### 가상환경 설정 및 의존성 설치
 
 ```bash
-# Bun 설치 (설치되어 있지 않은 경우)
-curl -fsSL https://bun.sh/install | bash
-
-# 의존성 설치
-bun install
-
-# sleepyrouter 시작 (기본 포트: 4567)
-bun start
-
-# 또는 옵션 지정
-bun run src/main.ts start --port 4567
+python3 -m venv .venv
+source .venv/bin/activate
+pip install litellm fastapi uvicorn pydantic pytest requests
 ```
 
-### CLI 사용법
+### 실행 및 CLI 사용법
 
 ```bash
-# 서버 시작
-bun run src/main.ts start [--port 4567]
+# 서버 시작 (기본 포트: 4567)
+python3 main.py start --port 4567
 
 # 사용량 확인
-bun run src/main.ts usage [--date YYYYMMDD | --week NN]
+python3 main.py usage [--date YYYYMMDD | --week NN]
 
 # 버전 확인
-bun run src/main.ts --version
+python3 main.py --version
 ```
 
-### 테스트 및 타입 체크
+### 테스트 실행
 
 ```bash
-# unit & integration 테스트 실행
-bun test
-
-# TypeScript 타입 체크
-bun run typecheck
+PYTHONPATH=. pytest -v
 ```
 
 ## 설정 예제
