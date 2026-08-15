@@ -3,7 +3,7 @@ from typing import Any
 
 from sleepyrouter.types import SleepyRouterModel
 
-from .base import BaseProviderAdapter
+from .base import MAX_REASONING_EFFORT_HIGH, BaseProviderAdapter, inject_max_reasoning
 
 
 class ZenProviderAdapter(BaseProviderAdapter):
@@ -13,13 +13,14 @@ class ZenProviderAdapter(BaseProviderAdapter):
             source="zen",
             api_key_env_var="OPENCODE_API_KEY",
             message_protocol="openai",
+            default_reasoning_effort=MAX_REASONING_EFFORT_HIGH,
         )
 
     def map_litellm_kwargs(
         self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
     ) -> dict[str, Any]:
         upstream_id = model.upstream_id or model.id
-        res = dict(kwargs)
+        res = inject_max_reasoning(kwargs, effort=MAX_REASONING_EFFORT_HIGH)
         base_url = os.environ.get("SLEEPYROUTER_ZEN_BASE_URL", "https://api.zen.dev/v1")
         res["model"] = f"openai/{upstream_id}"
         res["api_base"] = base_url

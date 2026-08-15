@@ -6,7 +6,7 @@ import requests
 
 from sleepyrouter.types import SleepyRouterModel
 
-from .base import BaseProviderAdapter
+from .base import MAX_REASONING_EFFORT_HIGH, BaseProviderAdapter, inject_max_reasoning
 
 COPILOT_TOKEN_URL_DEFAULT = "https://api.github.com/copilot_internal/v2/token"
 _copilot_token_cache: tuple[str, float] | None = None
@@ -48,6 +48,7 @@ class CopilotProviderAdapter(BaseProviderAdapter):
             source="copilot",
             api_key_env_var="GITHUB_COPILOT_TOKEN",
             message_protocol="openai",
+            default_reasoning_effort=MAX_REASONING_EFFORT_HIGH,
         )
 
     def prepare_api_key(self, api_key: str) -> str:
@@ -57,7 +58,7 @@ class CopilotProviderAdapter(BaseProviderAdapter):
         self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
     ) -> dict[str, Any]:
         upstream_id = model.upstream_id or model.id
-        res = dict(kwargs)
+        res = inject_max_reasoning(kwargs, effort=MAX_REASONING_EFFORT_HIGH)
         base_url = os.environ.get(
             "SLEEPYROUTER_COPILOT_BASE_URL", "https://api.githubcopilot.com"
         )

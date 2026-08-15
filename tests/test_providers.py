@@ -25,3 +25,29 @@ def test_antigravity_litellm_kwargs_mapping() -> None:
     assert mapped["api_base"] == "https://cloudcode-pa.googleapis.com/v1"
     assert "headers" in mapped
     assert mapped["headers"]["User-Agent"] == "antigravity/1.0.0"
+    assert mapped["reasoning_effort"] == "high"
+    assert mapped["thinking"] == {"type": "enabled", "budget_tokens": 32000}
+
+
+def test_openrouter_max_reasoning_and_thinking() -> None:
+    model = SleepyRouterModel(
+        id="openrouter/claude-3-7-sonnet",
+        upstream_id="anthropic/claude-3.7-sonnet",
+        provider="openrouter",
+        source="openrouter",
+    )
+    mapped = map_to_litellm_kwargs(model, "sk-or-test", {})
+    assert mapped["model"] == "openrouter/anthropic/claude-3.7-sonnet"
+    assert mapped["reasoning_effort"] == "xhigh"
+    assert mapped["thinking"] == {"type": "enabled", "budget_tokens": 32000}
+
+
+def test_nvidia_max_reasoning() -> None:
+    model = SleepyRouterModel(
+        id="nvidia/deepseek-r1",
+        upstream_id="deepseek-ai/deepseek-r1",
+        provider="nvidia",
+        source="nvidia",
+    )
+    mapped = map_to_litellm_kwargs(model, "nvapi-test", {})
+    assert mapped["reasoning_effort"] == "high"

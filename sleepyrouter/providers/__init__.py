@@ -1,11 +1,15 @@
 from .antigravity import AntigravityProviderAdapter
 from .base import (
+    MAX_REASONING_EFFORT_HIGH,
+    MAX_REASONING_EFFORT_XHIGH,
+    MAX_THINKING_BUDGET,
     BaseProviderAdapter,
     MessageProtocol,
     ProviderAdapter,
     ProviderRegistry,
     base_url_from,
     default_provider_registry,
+    inject_max_reasoning,
     map_to_litellm_kwargs,
 )
 from .copilot import CopilotProviderAdapter, exchange_copilot_token
@@ -23,6 +27,9 @@ default_provider_registry.register(ZenProviderAdapter())
 default_provider_registry.register(AntigravityProviderAdapter())
 
 __all__ = [
+    "MAX_REASONING_EFFORT_HIGH",
+    "MAX_REASONING_EFFORT_XHIGH",
+    "MAX_THINKING_BUDGET",
     "AntigravityProviderAdapter",
     "BaseProviderAdapter",
     "CopilotProviderAdapter",
@@ -36,5 +43,6 @@ __all__ = [
     "base_url_from",
     "default_provider_registry",
     "exchange_copilot_token",
+    "inject_max_reasoning",
     "map_to_litellm_kwargs",
 ]
