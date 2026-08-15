@@ -1,0 +1,43 @@
+Task 5 — docs sync with Go rewrite
+Date: 2026-07-18
+Commit: 1fdd4d6 (pushed to origin/main)
+
+Files touched (7):
+- README.md
+- docs/README.md
+- docs/INSTALLATION.md
+- docs/architecture.md
+- docs/client-compatibility.md
+- docs/latency-routing.md
+- docs/provider-guide.md
+
+Changes:
+- 24 internal/core/*.go link occurrences replaced with internal/ subpackage paths
+  (architecture 9, client-compatibility 8, provider-guide 5, latency-routing 2).
+  Mapping: core/server.go→internal/srv/server.go, translate.go→internal/srv/translate.go,
+  sse.go→internal/sseutil/sseutil.go (+srv/streams.go), router.go→internal/routing/router.go,
+  router_test.go→internal/routing/router_test.go, config.go→internal/cfg/config.go,
+  {openrouter,nvidia,copilot,catalog}.go→internal/providers/*.
+- Stale TS-era symbol `listAvailableFreeModels` removed; replaced with
+  catalog.go + provider_registry.go RegisterProvider init() reference.
+- npm install/pack/link → `go install github.com/sleepysoong/sleepyrouter/cmd/sleepyrouter@latest`
+  + `git clone sleepy-llm-router && go install ./cmd/sleepyrouter` (go install verified working 2026-07-18).
+- Node.js 20 → Go 1.26 requirement.
+- Nonexistent status/doctor command references removed; replaced with start + 3 usage variants.
+- GITHUB_COPILOT_TOKEN added to provider lists and .env example (was OpenRouter+NVIDIA only).
+- Context-tier sentences reworded to point at docs/provider-guide.md / provider pages
+  (was: "sleepyrouter status에서 각 모델의 컨텍스트 크기를 확인").
+
+Acceptance greps (all return zero):
+- grep -rn "internal/core" docs/ README.md       → 0
+- grep -rni "npm" docs/ README.md                → 0
+- grep -rn "sleepyrouter status\|sleepyrouter doctor" docs/ README.md → 0
+
+Build gate:
+- go build ./... → ok
+- go vet ./...   → ok
+- go test ./...  → ok (all packages green, cached)
+
+Doc anchor path resolution check: all 12 referenced internal/*.go paths exist on disk.
+
+Push: git push origin main → f47842e..1fdd4d6 main -> main

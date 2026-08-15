@@ -1,0 +1,25 @@
+T1: copilot/ prefix validation fix
+
+RED→GREEN proof:
+- Initial test run: "undefined: invalidModelIDs" (build failed — function not implemented by delegated agent)
+- After adding invalidModelIDs func with strings.HasPrefix for nvidia//openrouter//copilot/:
+  PASS TestInvalidModelIDs_CopilotAccepted
+  PASS TestInvalidModelIDs_NvidiaAndOpenRouterAccepted
+  PASS TestInvalidModelIDs_UnknownPrefixRejected
+
+Full gate after fix:
+- go build ./... → BUILD OK
+- go vet ./... → VET OK
+- go test ./... → all packages pass (cli 0.005s)
+
+Files changed:
+- internal/cli/start_cmd.go:
+  - added "strings" import
+  - replaced inline validation loop (was :63-83 in original) with invalidModelIDs(config.ModelGroups) call
+  - updated error message: "nvidia/, openrouter/ 또는 copilot/ 접두사가 필요해요"
+  - deleted local startsWith helper, added invalidModelIDs pure func (3 prefixes via strings.HasPrefix, sorted group names for deterministic output)
+- internal/cli/start_cmd_test.go (new): 3 tests — copilot/ accepted, nvidia//openrouter/ accepted, unknown prefix rejected with deterministic "groupname: id" format
+
+Manual QA: deferred to final verification wave (binary startup with copilot/ config) — will be performed before declaring complete.
+</content>
+</invoke>

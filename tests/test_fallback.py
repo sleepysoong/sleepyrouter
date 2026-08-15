@@ -38,7 +38,9 @@ def test_candidate_failover_all_fail():
         async def mock_acompletion(*args, **kwargs):
             raise RuntimeError("Upstream 500 connection error")
 
-        with patch("sleepyrouter.server.acompletion", side_effect=mock_acompletion):
+        with patch(
+            "sleepyrouter.server.failover.acompletion", side_effect=mock_acompletion
+        ):
             res = client.post(
                 "/v1/chat/completions",
                 json={"model": "high", "messages": [{"role": "user", "content": "hi"}]},
@@ -97,7 +99,9 @@ def test_candidate_failover_success_on_second():
                 raise RuntimeError("Rate limit exceeded 429")
             return MockResponseObj()
 
-        with patch("sleepyrouter.server.acompletion", side_effect=mock_acompletion):
+        with patch(
+            "sleepyrouter.server.failover.acompletion", side_effect=mock_acompletion
+        ):
             res = client.post(
                 "/v1/chat/completions",
                 json={"model": "high", "messages": [{"role": "user", "content": "hi"}]},

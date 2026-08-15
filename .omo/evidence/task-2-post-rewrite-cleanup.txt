@@ -1,0 +1,21 @@
+T2: dead code purge
+
+Deletions:
+- internal/srlog/ (srlog.go, 128 lines) — zero importers
+- internal/usagelog/ (usagelog.go, 128 lines) — zero importers
+- internal/httpx/ (httpx.go, 140 lines) — zero importers
+- internal/srv/selection/ (selection.go, 192 lines) — zero importers; near-duplicate of live internal/srv/model_selection.go
+- internal/srv/router/ (empty directory) — rm -rf, no git diff
+- internal/srv/model_selection.go: writeOpenAIAsAnthropic function (12 lines) — zero callers
+
+Pre-check: no .md/.yml/.yaml/.json references found.
+
+Gate after purge:
+- go build ./... → BUILD OK
+- go vet ./... → VET OK
+- go test ./... → all green (srv re-tested at 0.008s)
+
+grep zero-confirmation:
+- "sleepyrouter/internal/srlog|usagelog|httpx|srv/selection|writeOpenAIAsAnthropic" → 0 matches across *.go
+
+Net: 601 lines removed, no behavior change.

@@ -1,10 +1,8 @@
-"""Routing logic for model groups and candidates."""
+"""Model group normalization and ordering."""
 
 from typing import Any
 
-from .types import complete_group_order
-
-RouteReason = str  # "model-group" | "fallback-order"
+from sleepyrouter.types import complete_group_order
 
 
 def normalize_model_group_name(value: str) -> str:
@@ -47,28 +45,3 @@ def resolve_default_group(
         return default_group
     order = complete_group_order(groups, list(group_order))
     return order[0] if order else ""
-
-
-def candidate_ids(
-    groups: dict[str, list[str]],
-    requested_model: str,
-    default_group: str | None,
-    *group_order: str,
-) -> tuple[list[str], RouteReason]:
-    normalized = normalize_model_group_name(requested_model)
-    if normalized and normalized in groups:
-        return groups[normalized], "model-group"
-    resolved = resolve_default_group(groups, default_group, *group_order)
-    if not resolved:
-        return [], "fallback-order"
-    return groups.get(resolved, []), "fallback-order"
-
-
-def ordered_candidates(
-    groups: dict[str, list[str]],
-    requested_model: str,
-    default_group: str | None,
-    *group_order: str,
-) -> tuple[list[str], RouteReason]:
-    ids, reason = candidate_ids(groups, requested_model, default_group, *group_order)
-    return list(ids), reason

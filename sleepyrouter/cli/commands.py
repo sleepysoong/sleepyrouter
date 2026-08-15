@@ -1,21 +1,22 @@
-"""CLI interface for sleepyrouter."""
+"""CLI commands implementation (start and usage)."""
 
-import argparse
 import os
 import sys
 from typing import Any
 
 import uvicorn
 
-from .config import (
+from sleepyrouter.config import (
     DEFAULT_PORT,
     ConfigStore,
     require_any_provider_api_key,
     resolve_provider_api_keys,
 )
-from .routing import all_group_model_ids
-from .server import VERSION, create_app
-from .utils import get_config_path, get_env_path
+from sleepyrouter.routing import all_group_model_ids
+from sleepyrouter.server import VERSION, create_app
+from sleepyrouter.utils import get_config_path, get_env_path
+
+from .parser import build_cli_parser
 
 
 def bool_check(v: bool) -> str:
@@ -89,7 +90,6 @@ def run_usage_command(
         filtered = []
         for entry in logs:
             try:
-                # Expect ISO date like 2026-08-15T12:00:00Z -> YYYYMMDD
                 ymd = entry.ts.replace("-", "")[:8]
                 if ymd == date:
                     filtered.append(entry)
@@ -152,18 +152,7 @@ def run_usage_command(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="sleepyrouter")
-    subparsers = parser.add_subparsers(dest="command")
-
-    start_parser = subparsers.add_parser("start")
-    start_parser.add_argument("--port", type=int, default=0, help="Port to serve on")
-
-    usage_parser = subparsers.add_parser("usage")
-    usage_parser.add_argument("--date", type=str, help="Date filter (YYYYMMDD)")
-    usage_parser.add_argument("--week", type=int, help="Week filter")
-
-    parser.add_argument("-v", "--version", action="version", version=VERSION)
-
+    parser = build_cli_parser()
     args = parser.parse_args()
 
     if args.command == "start":
