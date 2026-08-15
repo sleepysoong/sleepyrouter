@@ -11,6 +11,7 @@ class SleepyRouterModel(BaseModel):
     provider: str
     source: ModelSource = "openrouter"
     usage_id: str | None = None
+    api_base: str | None = None
 
 
 def source_of(model: SleepyRouterModel) -> ModelSource:
@@ -30,6 +31,7 @@ class ModelDefinition(BaseModel):
     name: str
     input_price: float | None = None
     output_price: float | None = None
+    api_base: str | None = None
 
 
 class SleepyRouterConfig(BaseModel):

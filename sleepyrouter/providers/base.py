@@ -120,10 +120,15 @@ def map_to_litellm_kwargs(
     adapter = default_provider_registry.get(source)
     if adapter:
         prepared_key = adapter.prepare_api_key(api_key)
-        return adapter.map_litellm_kwargs(model, prepared_key, kwargs)
+        res = adapter.map_litellm_kwargs(model, prepared_key, kwargs)
+        if model.api_base:
+            res["api_base"] = model.api_base
+        return res
 
     upstream_id = model.upstream_id or model.id
     res = inject_max_reasoning(kwargs, effort="high")
     res["model"] = f"openai/{upstream_id}"
     res["api_key"] = api_key
+    if model.api_base:
+        res["api_base"] = model.api_base
     return res

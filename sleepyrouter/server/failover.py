@@ -1,6 +1,7 @@
 """Candidate failover and retry processing via LiteLLM."""
 
 import datetime
+import time
 from typing import Any
 
 from fastapi import Response
@@ -8,6 +9,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from litellm import acompletion
 
 from sleepyrouter.config import ConfigStore, api_key_for
+from sleepyrouter.events import CandidateFailedEvent, default_event_bus
 from sleepyrouter.protocol import (
     default_protocol_transformer_registry,
 )
@@ -43,6 +45,15 @@ async def process_chat_candidates(
 
         if not api_key:
             upstream_error = f"[{model_id}] API key missing for provider {model.source}"
+            default_event_bus.publish(
+                CandidateFailedEvent(
+                    ts=time.time(),
+                    request_id=0,
+                    model_id=model_id,
+                    provider=model.provider,
+                    error_message=upstream_error,
+                )
+            )
             continue
 
         request_kwargs = transformer.transform_request(
@@ -92,6 +103,15 @@ async def process_chat_candidates(
         except (RuntimeError, ValueError, KeyError, OSError) as e:
             err_msg = str(e)
             upstream_error = f"[{model_id}] {truncate(err_msg, 300)}"
+            default_event_bus.publish(
+                CandidateFailedEvent(
+                    ts=time.time(),
+                    request_id=0,
+                    model_id=model_id,
+                    provider=model.provider,
+                    error_message=err_msg,
+                )
+            )
             store.append_usage(
                 UsageLogEntry(
                     ts=datetime.datetime.now(datetime.timezone.utc).isoformat(),

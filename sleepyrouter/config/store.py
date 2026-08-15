@@ -61,6 +61,7 @@ class ConfigStore:
                         name=def_raw.get("name", ""),
                         input_price=def_raw.get("inputPrice"),
                         output_price=def_raw.get("outputPrice"),
+                        api_base=def_raw.get("apiBase") or def_raw.get("api_base"),
                     )
             config.models = models_map
 
@@ -89,6 +90,7 @@ class ConfigStore:
                         if v.output_price is not None
                         else {}
                     ),
+                    **({"apiBase": v.api_base} if v.api_base is not None else {}),
                 }
                 for k, v in config.models.items()
             }

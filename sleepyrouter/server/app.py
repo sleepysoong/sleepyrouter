@@ -42,6 +42,7 @@ def create_app(
                 provider=def_obj.provider,
                 source=def_obj.provider,
                 usage_id=mid,
+                api_base=def_obj.api_base,
             )
             models.append(m)
             by_id[mid] = m
