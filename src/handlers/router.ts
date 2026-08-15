@@ -4,7 +4,7 @@ import type { SelectedModelsResult, HandlerDeps, ApiType } from "./types.js";
 import { requireAnyProviderAPIKey } from "../config/index.js";
 import {
   allGroupModelIDs,
-  orderedCandidates,
+  defaultRoutingEngine,
 } from "../routing/index.js";
 import { estimateInputTokens } from "../protocol/index.js";
 import { stringFromUnknown, boolValue } from "../utils.js";
@@ -97,11 +97,11 @@ export function createRouter(deps: HandlerDeps) {
       const requestedModel = stringFromUnknown(body["model"]);
       const isStream = boolValue(body["stream"]);
 
-      const { ids: candidates, reason: candidateReason } = orderedCandidates(
+      const { ids: candidates, reason: candidateReason } = defaultRoutingEngine.resolve(
         selected.modelGroups,
         requestedModel,
         selected.defaultModelGroup,
-        ...selected.groupOrder,
+        selected.groupOrder,
       );
 
       if (deps.requestLogger) {

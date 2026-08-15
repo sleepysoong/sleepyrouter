@@ -4,7 +4,7 @@ import { sourceOf } from "../types.js";
 import type { SelectedModelsResult, HandlerDeps, ApiType } from "./types.js";
 import { apiKeyFor } from "../config/index.js";
 import { getProvider, copilotSessionToken } from "../providers/index.js";
-import { anthropicToOpenAI } from "../protocol/index.js";
+import { defaultProtocolTransformerRegistry } from "../protocol/index.js";
 import { truncate } from "../utils.js";
 import { buildOpenAIResponse, buildAnthropicResponse } from "./response-builder.js";
 import { streamOpenAIAsAnthropic } from "./stream-converter.js";
@@ -34,44 +34,22 @@ function modelUpstreamID(model: SleepyRouterModel): string {
   return model.upstreamId || model.id;
 }
 
-const OPENAI_CHAT_COMPLETIONS_FIELDS = new Set([
-  "messages",
-  "model",
-  "frequency_penalty",
-  "max_tokens",
-  "n",
-  "presence_penalty",
-  "response_format",
-  "seed",
-  "stop",
-  "stream",
-  "temperature",
-  "top_p",
-  "tools",
-  "tool_choice",
-  "parallel_tool_calls",
-  "user",
-  "logprobs",
-  "top_logprobs",
-  "reasoning_effort",
-  "reasoning",
-  "stream_options",
-]);
-
 export async function tryModelCandidates(
   deps: HandlerDeps,
   apiKeys: ProviderAPIKeys,
   selected: SelectedModelsResult,
   candidates: string[],
-  candidateReason: RouteReason,
+  _candidateReason: RouteReason,
   body: Record<string, unknown>,
   isStream: boolean,
   apiType: ApiType,
-  requestId: number,
+  _requestId: number,
 ): Promise<Response> {
   let upstreamError = "";
   let triedAny = false;
   let triedCount = 0;
+
+  const transformer = defaultProtocolTransformerRegistry.get(apiType);
 
   for (const modelID of candidates) {
     const model = selected.byId[modelID];
@@ -105,19 +83,7 @@ export async function tryModelCandidates(
     const upstreamModelID = modelUpstreamID(model);
 
     try {
-      let requestBody: Record<string, unknown>;
-      if (apiType === "anthropic") {
-        requestBody = anthropicToOpenAI(body, upstreamModelID, p.name);
-      } else {
-        requestBody = {};
-        for (const [key, value] of Object.entries(body)) {
-          if (OPENAI_CHAT_COMPLETIONS_FIELDS.has(key)) {
-            requestBody[key] = value;
-          }
-        }
-        requestBody["model"] = upstreamModelID;
-      }
-
+      const requestBody = transformer.transformRequest(body, upstreamModelID, p.name);
       const langModel = p.chatModel(upstreamModelID, apiKey);
 
       if (isStream) {

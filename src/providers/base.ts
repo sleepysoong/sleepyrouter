@@ -3,21 +3,48 @@ import type { ModelSource } from "../types.js";
 
 export type MessageProtocol = "openai" | "anthropic";
 
-export interface Provider {
-  name: string;
-  source: ModelSource;
-  messageProtocol: MessageProtocol;
+export interface ProviderAdapter {
+  readonly name: string;
+  readonly source: ModelSource;
+  readonly messageProtocol: MessageProtocol;
   chatModel(modelId: string, apiKey: string, customFetch?: typeof fetch): LanguageModel;
 }
 
-const providers = new Map<ModelSource, Provider>();
+export type Provider = ProviderAdapter;
 
-export function registerProvider(source: ModelSource, p: Provider): void {
-  providers.set(source, p);
+export class ProviderRegistry {
+  private adapters = new Map<string, ProviderAdapter>();
+
+  register(adapter: ProviderAdapter): this {
+    this.adapters.set(adapter.source, adapter);
+    return this;
+  }
+
+  get(source: ModelSource): ProviderAdapter | undefined {
+    return this.adapters.get(source);
+  }
+
+  has(source: ModelSource): boolean {
+    return this.adapters.has(source);
+  }
+
+  getAll(): ProviderAdapter[] {
+    return [...this.adapters.values()];
+  }
+
+  unregister(source: ModelSource): boolean {
+    return this.adapters.delete(source);
+  }
 }
 
-export function getProvider(source: ModelSource): Provider | undefined {
-  return providers.get(source);
+export const defaultProviderRegistry = new ProviderRegistry();
+
+export function registerProvider(source: ModelSource, adapter: ProviderAdapter): void {
+  defaultProviderRegistry.register(adapter);
+}
+
+export function getProvider(source: ModelSource): ProviderAdapter | undefined {
+  return defaultProviderRegistry.get(source);
 }
 
 export function baseURLFrom(envVar: string, def: string): string {
