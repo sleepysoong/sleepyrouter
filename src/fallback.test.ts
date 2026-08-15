@@ -2,9 +2,9 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createSleepyRouterServer } from "./server.js";
-import { ConfigStore } from "./config.js";
-import { registerProvider, type Provider } from "./providers.js";
+import { createSleepyRouterServer } from "./server/index.js";
+import { ConfigStore } from "./config/index.js";
+import { registerProvider, type Provider } from "./providers/index.js";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
 describe("Candidate Failover & Retry Logic", () => {

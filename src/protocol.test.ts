@@ -4,7 +4,7 @@ import {
   openAIToAnthropic,
   mapStopReason,
   estimateInputTokens,
-} from "./protocol.js";
+} from "./protocol/index.js";
 
 describe("Protocol Transformations", () => {
   test("mapStopReason maps OpenAI finish_reasons to Anthropic stop_reasons", () => {

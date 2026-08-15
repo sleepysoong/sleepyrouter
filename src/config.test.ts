@@ -6,7 +6,7 @@ import {
   ConfigStore,
   resolveProviderAPIKeys,
   requireAnyProviderAPIKey,
-} from "./config.js";
+} from "./config/index.js";
 import { parseDotEnv } from "./utils.js";
 
 describe("Config & Env", () => {

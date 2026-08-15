@@ -2,8 +2,8 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createSleepyRouterServer } from "./server.js";
-import { ConfigStore } from "./config.js";
+import { createSleepyRouterServer } from "./server/index.js";
+import { ConfigStore } from "./config/index.js";
 
 describe("HTTP Server & Router", () => {
   let tmpDir: string;

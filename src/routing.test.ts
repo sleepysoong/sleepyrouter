@@ -7,7 +7,7 @@ import {
   candidateIDs,
   orderedCandidates,
   objectKeysInJSON,
-} from "./routing.js";
+} from "./routing/index.js";
 
 describe("Routing Logic", () => {
   test("normalizeModelGroupName", () => {

@@ -1,6 +1,5 @@
-// HTTP Server - mirrors internal/srv/
-import { createRouter, type HandlerDeps, type ServerLogEvent } from "./handler.js";
-import { ConfigStore } from "./config.js";
+import { createRouter, type HandlerDeps, type ServerLogEvent } from "../handlers/index.js";
+import { ConfigStore } from "../config/index.js";
 
 export interface ServerOptions {
   store?: ConfigStore;
@@ -70,23 +69,19 @@ async function routeRequest(
   req: Request,
   requestId: number,
 ): Promise<Response> {
-  // GET /health
   if (method === "GET" && path === "/health") {
     return router.handleHealth();
   }
 
-  // GET /v1/models
   if (method === "GET" && path === "/v1/models") {
     return router.handleModels();
   }
 
-  // POST /v1/chat/completions
   if (method === "POST" && path === "/v1/chat/completions") {
     const body = await req.json();
     return router.handleChat(body, "openai", requestId);
   }
 
-  // POST /anthropic/v1/messages or /anthropic/messages
   if (
     method === "POST" &&
     (path === "/anthropic/v1/messages" || path === "/anthropic/messages")
@@ -95,7 +90,6 @@ async function routeRequest(
     return router.handleChat(body, "anthropic", requestId);
   }
 
-  // POST /anthropic/v1/messages/count_tokens or /anthropic/messages/count_tokens
   if (
     method === "POST" &&
     (path === "/anthropic/v1/messages/count_tokens" ||
@@ -105,7 +99,6 @@ async function routeRequest(
     return router.handleCountTokens(body);
   }
 
-  // 404
   return Response.json(
     {
       error: {

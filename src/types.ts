@@ -55,21 +55,6 @@ export interface ProviderAPIKeys {
   google: string;
 }
 
-export function apiKeyFor(keys: ProviderAPIKeys, source: ModelSource): string {
-  switch (source) {
-    case "nvidia":
-      return keys.nvidia;
-    case "copilot":
-      return keys.copilot;
-    case "zen":
-      return keys.zen;
-    case "google":
-      return keys.google;
-    default:
-      return keys.openRouter;
-  }
-}
-
 export function completeGroupOrder(
   groups: ModelGroups,
   preferred: string[],
