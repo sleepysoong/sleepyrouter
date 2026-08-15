@@ -29,7 +29,6 @@ class OpenRouterProviderAdapter(BaseProviderAdapter):
         res = inject_max_reasoning(
             kwargs,
             effort=MAX_REASONING_EFFORT_XHIGH,
-            include_thinking=True,
             thinking_budget=MAX_THINKING_BUDGET,
         )
         res["model"] = f"openrouter/{upstream_id}"

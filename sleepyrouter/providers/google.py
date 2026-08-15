@@ -29,7 +29,6 @@ class GoogleProviderAdapter(BaseProviderAdapter):
         res = inject_max_reasoning(
             kwargs,
             effort=MAX_REASONING_EFFORT_HIGH,
-            include_thinking=True,
             thinking_budget=MAX_THINKING_BUDGET,
         )
         base_url = os.environ.get("SLEEPYROUTER_GOOGLE_BASE_URL")

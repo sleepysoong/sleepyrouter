@@ -19,13 +19,12 @@ def base_url_from(env_var: str, def_url: str) -> str:
 def inject_max_reasoning(
     kwargs: dict[str, Any],
     effort: str = MAX_REASONING_EFFORT_HIGH,
-    include_thinking: bool = False,
-    thinking_budget: int = MAX_THINKING_BUDGET,
+    thinking_budget: int | None = None,
 ) -> dict[str, Any]:
     res = dict(kwargs)
     if "reasoning_effort" not in res:
         res["reasoning_effort"] = effort
-    if include_thinking and "thinking" not in res:
+    if thinking_budget is not None and "thinking" not in res:
         res["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
     return res
 
@@ -93,8 +92,7 @@ class BaseProviderAdapter:
         litellm_kwargs = inject_max_reasoning(
             kwargs,
             effort=self._default_reasoning_effort,
-            include_thinking=self._default_thinking_budget is not None,
-            thinking_budget=self._default_thinking_budget or MAX_THINKING_BUDGET,
+            thinking_budget=self._default_thinking_budget,
         )
         litellm_kwargs["model"] = f"openai/{upstream_id}"
         litellm_kwargs["api_key"] = api_key
