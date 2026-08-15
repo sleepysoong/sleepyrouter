@@ -1,3 +1,4 @@
+from .antigravity import AntigravityProviderAdapter
 from .base import (
     BaseProviderAdapter,
     MessageProtocol,
@@ -19,8 +20,10 @@ default_provider_registry.register(NVIDIAProviderAdapter())
 default_provider_registry.register(CopilotProviderAdapter())
 default_provider_registry.register(GoogleProviderAdapter())
 default_provider_registry.register(ZenProviderAdapter())
+default_provider_registry.register(AntigravityProviderAdapter())
 
 __all__ = [
+    "AntigravityProviderAdapter",
     "BaseProviderAdapter",
     "CopilotProviderAdapter",
     "GoogleProviderAdapter",
