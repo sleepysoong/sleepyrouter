@@ -63,15 +63,15 @@ export async function tryModelCandidates(
   apiKeys: ProviderAPIKeys,
   selected: SelectedModelsResult,
   candidates: string[],
-  _candidateReason: RouteReason,
+  candidateReason: RouteReason,
   body: Record<string, unknown>,
   isStream: boolean,
   apiType: ApiType,
-  _requestId: number,
+  requestId: number,
 ): Promise<Response> {
   let upstreamError = "";
   let triedAny = false;
-  let _triedCount = 0;
+  let triedCount = 0;
 
   for (const modelID of candidates) {
     const model = selected.byId[modelID];
@@ -100,7 +100,7 @@ export async function tryModelCandidates(
     }
 
     triedAny = true;
-    _triedCount++;
+    triedCount++;
 
     const upstreamModelID = modelUpstreamID(model);
 

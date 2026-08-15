@@ -23,11 +23,13 @@ function filterEmpty(items: string[]): string[] {
   return items.filter((s) => s !== "");
 }
 
+const ANTHROPIC_ID_SANITIZER = /[^a-zA-Z0-9_-]/g;
+
 function sanitizeAnthropicID(value: unknown): string {
   const fallback = `toolu_${Date.now()}`;
   let raw = fallback;
   if (typeof value === "string" && value) raw = value;
-  const sanitized = raw.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const sanitized = raw.replace(ANTHROPIC_ID_SANITIZER, "_");
   return sanitized || fallback;
 }
 

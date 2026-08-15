@@ -1,10 +1,12 @@
-import { Database } from "bun:sqlite";
+import { Database, type Statement } from "bun:sqlite";
 import { join } from "node:path";
 import type { UsageLogEntry } from "../types.js";
 
 export class UsageLogger {
   private db: Database | null = null;
   private dbPath: string;
+  private insertStmt: Statement | null = null;
+  private selectStmt: Statement | null = null;
 
   constructor(root: string) {
     this.dbPath = join(root, "usage.db");
@@ -20,16 +22,20 @@ export class UsageLogger {
         output_tokens INTEGER NOT NULL,
         success INTEGER NOT NULL
       )`);
+      this.insertStmt = this.db.prepare(
+        `INSERT INTO usage_log (ts, model, input_tokens, output_tokens, success) VALUES (?, ?, ?, ?, ?)`,
+      );
+      this.selectStmt = this.db.prepare(
+        `SELECT ts, model, input_tokens as inputTokens, output_tokens as outputTokens, success FROM usage_log ORDER BY ts`,
+      );
     }
     return this.db;
   }
 
   appendUsage(entry: UsageLogEntry): void {
     try {
-      const db = this.initDB();
-      db.prepare(
-        `INSERT INTO usage_log (ts, model, input_tokens, output_tokens, success) VALUES (?, ?, ?, ?, ?)`,
-      ).run(
+      this.initDB();
+      this.insertStmt?.run(
         entry.ts,
         entry.model,
         entry.inputTokens,
@@ -43,12 +49,8 @@ export class UsageLogger {
 
   readUsageLogs(): UsageLogEntry[] {
     try {
-      const db = this.initDB();
-      const rows = db
-        .prepare(
-          `SELECT ts, model, input_tokens as inputTokens, output_tokens as outputTokens, success FROM usage_log ORDER BY ts`,
-        )
-        .all() as Array<{
+      this.initDB();
+      const rows = (this.selectStmt?.all() ?? []) as Array<{
         ts: string;
         model: string;
         inputTokens: number;
@@ -68,6 +70,8 @@ export class UsageLogger {
   }
 
   close(): void {
+    this.insertStmt = null;
+    this.selectStmt = null;
     this.db?.close();
     this.db = null;
   }

@@ -37,8 +37,12 @@ export function apiKeyFor(keys: ProviderAPIKeys, source: ModelSource): string {
       return keys.zen;
     case "google":
       return keys.google;
-    default:
+    case "openrouter":
       return keys.openRouter;
+    default: {
+      const customKeyName = `${source.toUpperCase().replace(/[^A-Z0-9_]/g, "_")}_API_KEY`;
+      return (process.env[customKeyName] ?? "").trim();
+    }
   }
 }
 

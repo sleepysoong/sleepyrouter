@@ -1,6 +1,12 @@
 // Types module - mirrors internal/types/types.go
 
-export type ModelSource = "openrouter" | "nvidia" | "copilot" | "zen" | "google";
+export type ModelSource =
+  | "openrouter"
+  | "nvidia"
+  | "copilot"
+  | "zen"
+  | "google"
+  | (string & {});
 
 export type ModelGroups = Record<string, string[]>;
 
