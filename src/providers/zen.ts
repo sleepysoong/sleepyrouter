@@ -1,10 +1,11 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { Provider } from "./base.js";
+import type { ProviderAdapter } from "./base.js";
 import { baseURLFrom } from "./base.js";
 
-export const zenProvider: Provider = {
+export const zenProvider: ProviderAdapter = {
   name: "Zen",
   source: "zen",
+  apiKeyEnvVar: "OPENCODE_API_KEY",
   messageProtocol: "openai",
   chatModel(modelId: string, apiKey: string, customFetch?: typeof fetch) {
     const provider = createOpenAICompatible({

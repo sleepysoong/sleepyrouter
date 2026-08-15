@@ -3,30 +3,15 @@ import type { SleepyRouterModel, ProviderAPIKeys } from "../types.js";
 import { sourceOf } from "../types.js";
 import type { SelectedModelsResult, HandlerDeps, ApiType } from "./types.js";
 import { apiKeyFor } from "../config/index.js";
-import { getProvider, copilotSessionToken } from "../providers/index.js";
+import { getProvider, type ProviderAdapter } from "../providers/index.js";
 import { defaultProtocolTransformerRegistry } from "../protocol/index.js";
 import { truncate } from "../utils.js";
 import { buildOpenAIResponse, buildAnthropicResponse } from "./response-builder.js";
 import { streamOpenAIAsAnthropic } from "./stream-converter.js";
 import type { RouteReason } from "../routing/index.js";
 
-function missingKeyMessage(model: SleepyRouterModel): string {
-  const source = sourceOf(model);
-  let keyName = "OPENROUTER_API_KEY";
-  switch (source) {
-    case "nvidia":
-      keyName = "NVIDIA_API_KEY";
-      break;
-    case "copilot":
-      keyName = "GITHUB_COPILOT_TOKEN";
-      break;
-    case "zen":
-      keyName = "OPENCODE_API_KEY";
-      break;
-    case "google":
-      keyName = "GOOGLE_API_KEY";
-      break;
-  }
+function missingKeyMessage(model: SleepyRouterModel, provider?: ProviderAdapter): string {
+  const keyName = provider?.apiKeyEnvVar ?? "OPENROUTER_API_KEY";
   return `${keyName}가 없어서 ${model.id}을(를) 사용할 수 없어요. 환경변수 또는 .env 파일에 키를 추가하세요.`;
 }
 
@@ -47,7 +32,7 @@ export async function tryModelCandidates(
 ): Promise<Response> {
   let upstreamError = "";
   let triedAny = false;
-  let triedCount = 0;
+  let _triedCount = 0;
 
   const transformer = defaultProtocolTransformerRegistry.get(apiType);
 
@@ -56,29 +41,29 @@ export async function tryModelCandidates(
     if (!model) continue;
 
     const source = sourceOf(model);
-    let apiKey = apiKeyFor(apiKeys, source);
-    if (!apiKey) {
-      upstreamError = missingKeyMessage(model);
-      continue;
-    }
-
-    if (source === "copilot") {
-      try {
-        apiKey = await copilotSessionToken(apiKey);
-      } catch (e) {
-        upstreamError = e instanceof Error ? e.message : String(e);
-        continue;
-      }
-    }
-
     const p = getProvider(source);
     if (!p) {
       upstreamError = `unsupported provider: ${source}`;
       continue;
     }
 
+    let apiKey = apiKeyFor(apiKeys, source);
+    if (!apiKey) {
+      upstreamError = missingKeyMessage(model, p);
+      continue;
+    }
+
+    if (p.prepareApiKey) {
+      try {
+        apiKey = await p.prepareApiKey(apiKey);
+      } catch (e) {
+        upstreamError = e instanceof Error ? e.message : String(e);
+        continue;
+      }
+    }
+
     triedAny = true;
-    triedCount++;
+    _triedCount++;
 
     const upstreamModelID = modelUpstreamID(model);
 

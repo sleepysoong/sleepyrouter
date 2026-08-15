@@ -6,7 +6,9 @@ export type MessageProtocol = "openai" | "anthropic";
 export interface ProviderAdapter {
   readonly name: string;
   readonly source: ModelSource;
+  readonly apiKeyEnvVar: string;
   readonly messageProtocol: MessageProtocol;
+  prepareApiKey?(apiKey: string): Promise<string> | string;
   chatModel(modelId: string, apiKey: string, customFetch?: typeof fetch): LanguageModel;
 }
 

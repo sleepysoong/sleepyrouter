@@ -1,10 +1,11 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { Provider } from "./base.js";
+import type { ProviderAdapter } from "./base.js";
 import { baseURLFrom } from "./base.js";
 
-export const openRouterProvider: Provider = {
+export const openRouterProvider: ProviderAdapter = {
   name: "OpenRouter",
   source: "openrouter",
+  apiKeyEnvVar: "OPENROUTER_API_KEY",
   messageProtocol: "anthropic",
   chatModel(modelId: string, apiKey: string, customFetch?: typeof fetch) {
     const provider = createOpenAICompatible({

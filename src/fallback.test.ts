@@ -35,6 +35,7 @@ describe("Candidate Failover & Retry Logic", () => {
     const failProvider: Provider = {
       name: "FailProvider",
       source: "openrouter",
+      apiKeyEnvVar: "OPENROUTER_API_KEY",
       messageProtocol: "openai",
       chatModel(_modelId: string, _apiKey: string) {
         const p = createOpenAICompatible({
@@ -106,6 +107,7 @@ describe("Candidate Failover & Retry Logic", () => {
     const failoverProvider: Provider = {
       name: "FailoverProvider",
       source: "openrouter",
+      apiKeyEnvVar: "OPENROUTER_API_KEY",
       messageProtocol: "openai",
       chatModel(modelId: string, _apiKey: string) {
         const p = createOpenAICompatible({

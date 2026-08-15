@@ -19,15 +19,7 @@ export interface SleepyRouterModel {
 }
 
 export function sourceOf(model: SleepyRouterModel): ModelSource {
-  switch (model.source) {
-    case "nvidia":
-    case "copilot":
-    case "zen":
-    case "google":
-      return model.source;
-    default:
-      return "openrouter";
-  }
+  return model.source || (model.provider as ModelSource) || "openrouter";
 }
 
 export interface UsageLogEntry {

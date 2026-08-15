@@ -1,14 +1,15 @@
 import type { ProviderAPIKeys, ModelSource } from "../types.js";
 import { getEnvPath, readLocalEnv } from "../utils.js";
+import { defaultProviderRegistry } from "../providers/index.js";
 
-function resolveAPIKey(
-  name: string,
+function resolveEnvValue(
+  envVar: string,
   env: Record<string, string | undefined>,
   localEnv: Record<string, string>,
 ): string {
-  const envVal = (env[name] ?? "").trim();
+  const envVal = (env[envVar] ?? "").trim();
   if (envVal) return envVal;
-  return (localEnv[name] ?? "").trim();
+  return (localEnv[envVar] ?? "").trim();
 }
 
 export function resolveProviderAPIKeys(
@@ -17,33 +18,39 @@ export function resolveProviderAPIKeys(
 ): ProviderAPIKeys {
   const localEnv = readLocalEnv(root);
   return {
-    openRouter: resolveAPIKey("OPENROUTER_API_KEY", env, localEnv),
-    nvidia: resolveAPIKey("NVIDIA_API_KEY", env, localEnv),
-    copilot: resolveAPIKey("GITHUB_COPILOT_TOKEN", env, localEnv),
-    zen: resolveAPIKey("OPENCODE_API_KEY", env, localEnv),
+    openRouter: resolveEnvValue("OPENROUTER_API_KEY", env, localEnv),
+    nvidia: resolveEnvValue("NVIDIA_API_KEY", env, localEnv),
+    copilot: resolveEnvValue("GITHUB_COPILOT_TOKEN", env, localEnv),
+    zen: resolveEnvValue("OPENCODE_API_KEY", env, localEnv),
     google:
-      resolveAPIKey("GOOGLE_API_KEY", env, localEnv) ||
-      resolveAPIKey("GEMINI_API_KEY", env, localEnv),
+      resolveEnvValue("GOOGLE_API_KEY", env, localEnv) ||
+      resolveEnvValue("GEMINI_API_KEY", env, localEnv),
   };
 }
 
 export function apiKeyFor(keys: ProviderAPIKeys, source: ModelSource): string {
-  switch (source) {
-    case "nvidia":
-      return keys.nvidia;
-    case "copilot":
-      return keys.copilot;
-    case "zen":
-      return keys.zen;
-    case "google":
-      return keys.google;
-    case "openrouter":
-      return keys.openRouter;
-    default: {
-      const customKeyName = `${source.toUpperCase().replace(/[^A-Z0-9_]/g, "_")}_API_KEY`;
-      return (process.env[customKeyName] ?? "").trim();
+  const adapter = defaultProviderRegistry.get(source);
+  if (adapter) {
+    const envVar = adapter.apiKeyEnvVar;
+    const processVal = (process.env[envVar] ?? "").trim();
+    if (processVal) return processVal;
+
+    switch (source) {
+      case "openrouter":
+        return keys.openRouter;
+      case "nvidia":
+        return keys.nvidia;
+      case "copilot":
+        return keys.copilot;
+      case "zen":
+        return keys.zen;
+      case "google":
+        return keys.google;
     }
   }
+
+  const customKeyName = `${source.toUpperCase().replace(/[^A-Z0-9_]/g, "_")}_API_KEY`;
+  return (process.env[customKeyName] ?? "").trim();
 }
 
 export function requireAnyProviderAPIKey(

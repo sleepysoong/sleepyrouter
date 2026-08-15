@@ -1,9 +1,10 @@
 import { createGoogle } from "@ai-sdk/google";
-import type { Provider } from "./base.js";
+import type { ProviderAdapter } from "./base.js";
 
-export const googleProvider: Provider = {
+export const googleProvider: ProviderAdapter = {
   name: "Google",
   source: "google",
+  apiKeyEnvVar: "GOOGLE_API_KEY",
   messageProtocol: "openai",
   chatModel(modelId: string, apiKey: string, customFetch?: typeof fetch) {
     const customBaseURL = process.env["SLEEPYROUTER_GOOGLE_BASE_URL"];

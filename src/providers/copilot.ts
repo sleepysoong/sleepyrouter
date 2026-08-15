@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { Provider } from "./base.js";
+import type { ProviderAdapter } from "./base.js";
 import { baseURLFrom } from "./base.js";
 
 const COPILOT_TOKEN_URL_DEFAULT =
@@ -52,10 +52,12 @@ export async function copilotSessionToken(apiKey: string): Promise<string> {
   return token.token;
 }
 
-export const copilotProvider: Provider = {
+export const copilotProvider: ProviderAdapter = {
   name: "Copilot",
   source: "copilot",
+  apiKeyEnvVar: "GITHUB_COPILOT_TOKEN",
   messageProtocol: "openai",
+  prepareApiKey: copilotSessionToken,
   chatModel(modelId: string, apiKey: string, customFetch?: typeof fetch) {
     const provider = createOpenAICompatible({
       name: "copilot",
