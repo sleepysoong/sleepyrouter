@@ -6,7 +6,7 @@ from sleepyrouter.protocol import (
 )
 
 
-def test_map_stop_reason():
+def test_map_stop_reason() -> None:
     assert map_stop_reason("length") == "max_tokens"
     assert map_stop_reason("tool_calls") == "tool_use"
     assert map_stop_reason("function_call") == "tool_use"
@@ -15,12 +15,12 @@ def test_map_stop_reason():
     assert map_stop_reason("unknown") == "end_turn"
 
 
-def test_estimate_input_tokens():
+def test_estimate_input_tokens() -> None:
     body = {"messages": [{"role": "user", "content": "Hello world"}]}
     assert estimate_input_tokens(body) > 0
 
 
-def test_anthropic_to_openai():
+def test_anthropic_to_openai() -> None:
     body = {
         "model": "claude-3-5-sonnet",
         "system": "You are a helpful assistant.",
@@ -40,7 +40,7 @@ def test_anthropic_to_openai():
     assert converted["max_tokens"] == 100
 
 
-def test_openai_to_anthropic():
+def test_openai_to_anthropic() -> None:
     response = {
         "id": "chatcmpl-999",
         "model": "gpt-4o",

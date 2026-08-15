@@ -12,7 +12,7 @@ from sleepyrouter.types import SleepyRouterConfig, UsageLogEntry
 from sleepyrouter.utils import parse_dotenv
 
 
-def test_parse_dotenv():
+def test_parse_dotenv() -> None:
     dotenv = """
     # Comment
     OPENROUTER_API_KEY="sk-or-test"
@@ -27,7 +27,7 @@ def test_parse_dotenv():
     }
 
 
-def test_config_store_read_write():
+def test_config_store_read_write() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         store = ConfigStore(root)
@@ -47,7 +47,7 @@ def test_config_store_read_write():
         assert reloaded.default_model_group == "fast"
 
 
-def test_config_store_usage_logging():
+def test_config_store_usage_logging() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         store = ConfigStore(root)
@@ -70,7 +70,7 @@ def test_config_store_usage_logging():
         store.close()
 
 
-def test_resolve_provider_api_keys():
+def test_resolve_provider_api_keys() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         env_file = root / ".env"
@@ -85,7 +85,7 @@ def test_resolve_provider_api_keys():
         assert keys.google == "google-local"
 
 
-def test_require_any_provider_api_key_raises():
+def test_require_any_provider_api_key_raises() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         with pytest.raises(ValueError, match="API 키가 설정되지 않았어요"):

@@ -1,4 +1,5 @@
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,7 @@ from sleepyrouter.types import ModelDefinition, SleepyRouterConfig
 
 
 @pytest.fixture
-def store_and_client():
+def store_and_client() -> Generator[tuple[ConfigStore, TestClient], None, None]:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         store = ConfigStore(root)
@@ -22,7 +23,7 @@ def store_and_client():
         store.close()
 
 
-def test_health_endpoint(store_and_client):
+def test_health_endpoint(store_and_client: tuple[ConfigStore, TestClient]) -> None:
     _, client = store_and_client
     res = client.get("/health")
     assert res.status_code == 200
@@ -31,7 +32,9 @@ def test_health_endpoint(store_and_client):
     assert data["service"] == "sleepyrouter"
 
 
-def test_models_endpoint_empty(store_and_client):
+def test_models_endpoint_empty(
+    store_and_client: tuple[ConfigStore, TestClient],
+) -> None:
     _, client = store_and_client
     res = client.get("/v1/models")
     assert res.status_code == 200
@@ -40,7 +43,9 @@ def test_models_endpoint_empty(store_and_client):
     assert data["data"] == []
 
 
-def test_models_endpoint_with_config(store_and_client):
+def test_models_endpoint_with_config(
+    store_and_client: tuple[ConfigStore, TestClient],
+) -> None:
     store, client = store_and_client
     store.write_config(
         SleepyRouterConfig(
@@ -62,7 +67,9 @@ def test_models_endpoint_with_config(store_and_client):
     assert data["data"][0]["owned_by"] == "openrouter"
 
 
-def test_count_tokens_endpoint(store_and_client):
+def test_count_tokens_endpoint(
+    store_and_client: tuple[ConfigStore, TestClient],
+) -> None:
     _, client = store_and_client
     res = client.post(
         "/anthropic/v1/messages/count_tokens",
@@ -74,7 +81,9 @@ def test_count_tokens_endpoint(store_and_client):
     assert data["input_tokens"] > 0
 
 
-def test_chat_completions_missing_models(store_and_client):
+def test_chat_completions_missing_models(
+    store_and_client: tuple[ConfigStore, TestClient],
+) -> None:
     _, client = store_and_client
     res = client.post(
         "/v1/chat/completions",

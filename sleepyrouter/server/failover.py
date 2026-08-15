@@ -3,6 +3,7 @@
 import datetime
 from typing import Any
 
+from fastapi import Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from litellm import acompletion
 
@@ -25,7 +26,7 @@ async def process_chat_candidates(
     body: dict[str, Any],
     is_stream: bool,
     api_type: str,
-) -> Any:
+) -> Response:
     upstream_error = ""
     tried_any = False
 

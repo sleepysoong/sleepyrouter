@@ -1,5 +1,6 @@
 import tempfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -9,7 +10,7 @@ from sleepyrouter.server import create_app
 from sleepyrouter.types import ModelDefinition, SleepyRouterConfig
 
 
-def test_candidate_failover_all_fail():
+def test_candidate_failover_all_fail() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         store = ConfigStore(root)
@@ -34,8 +35,7 @@ def test_candidate_failover_all_fail():
         app = create_app(store=store, env={"OPENROUTER_API_KEY": "sk-test"})
         client = TestClient(app)
 
-        # Mock acompletion to fail
-        async def mock_acompletion(*args, **kwargs):
+        async def mock_acompletion(*args: Any, **kwargs: Any) -> Any:
             raise RuntimeError("Upstream 500 connection error")
 
         with patch(
@@ -52,7 +52,7 @@ def test_candidate_failover_all_fail():
         store.close()
 
 
-def test_candidate_failover_success_on_second():
+def test_candidate_failover_success_on_second() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         store = ConfigStore(root)
@@ -73,10 +73,10 @@ def test_candidate_failover_success_on_second():
         app = create_app(store=store, env={"OPENROUTER_API_KEY": "sk-test"})
         client = TestClient(app)
 
-        attempted_models = []
+        attempted_models: list[str] = []
 
         class MockResponseObj:
-            def model_dump(self):
+            def model_dump(self) -> dict[str, Any]:
                 return {
                     "id": "chatcmpl-success",
                     "object": "chat.completion",
@@ -92,8 +92,8 @@ def test_candidate_failover_success_on_second():
                     "usage": {"prompt_tokens": 10, "completion_tokens": 5},
                 }
 
-        async def mock_acompletion(*args, **kwargs):
-            model_param = kwargs.get("model", "")
+        async def mock_acompletion(*args: Any, **kwargs: Any) -> Any:
+            model_param = str(kwargs.get("model", ""))
             attempted_models.append(model_param)
             if "m1" in model_param:
                 raise RuntimeError("Rate limit exceeded 429")

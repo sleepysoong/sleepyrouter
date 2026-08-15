@@ -32,13 +32,13 @@ def exchange_copilot_token(api_key: str) -> str:
     if not resp.ok:
         raise RuntimeError(f"copilot 토큰 교환 실패: {resp.status_code} {resp.reason}")
     data = resp.json()
-    token = data.get("token")
+    token_str = str(data.get("token", ""))
     expires_at = data.get("expires_at")
-    if not token or not expires_at:
+    if not token_str or not expires_at:
         raise RuntimeError("copilot 토큰 응답에 token 또는 expires_at 필드가 없어요")
 
-    _copilot_token_cache = (token, float(expires_at))
-    return token
+    _copilot_token_cache = (token_str, float(expires_at))
+    return token_str
 
 
 class CopilotProviderAdapter(BaseProviderAdapter):
