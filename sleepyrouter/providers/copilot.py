@@ -1,4 +1,3 @@
-import os
 import time
 from typing import Any
 
@@ -8,7 +7,9 @@ from sleepyrouter.types import SleepyRouterModel
 
 from .base import BaseProviderAdapter, inject_max_reasoning
 
-COPILOT_TOKEN_URL_DEFAULT = "https://api.github.com/copilot_internal/v2/token"
+COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token"
+COPILOT_BASE_URL = "https://api.githubcopilot.com"
+
 _copilot_token_cache: tuple[str, float] | None = None
 
 
@@ -18,11 +19,8 @@ def exchange_copilot_token(api_key: str) -> str:
     if _copilot_token_cache and now < _copilot_token_cache[1] - 300:
         return _copilot_token_cache[0]
 
-    token_url = os.environ.get(
-        "SLEEPYROUTER_COPILOT_TOKEN_URL", COPILOT_TOKEN_URL_DEFAULT
-    )
     resp = requests.get(
-        token_url,
+        COPILOT_TOKEN_URL,
         headers={
             "Authorization": f"token {api_key}",
             "User-Agent": "sleepyrouter/0.0.4",
@@ -59,11 +57,8 @@ class CopilotProviderAdapter(BaseProviderAdapter):
     ) -> dict[str, Any]:
         upstream_id = model.upstream_id or model.id
         res = inject_max_reasoning(kwargs, effort="high")
-        base_url = os.environ.get(
-            "SLEEPYROUTER_COPILOT_BASE_URL", "https://api.githubcopilot.com"
-        )
         res["model"] = f"openai/{upstream_id}"
-        res["api_base"] = base_url
+        res["api_base"] = COPILOT_BASE_URL
         res["api_key"] = api_key
         res["headers"] = {
             "Copilot-Integration-Id": "vscode-chat",

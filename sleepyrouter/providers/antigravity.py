@@ -1,4 +1,3 @@
-import os
 from typing import Any
 
 from sleepyrouter.types import SleepyRouterModel
@@ -8,7 +7,7 @@ from .base import (
     inject_max_reasoning,
 )
 
-ANTIGRAVITY_DEFAULT_BASE_URL = "https://cloudcode-pa.googleapis.com/v1"
+ANTIGRAVITY_BASE_URL = "https://cloudcode-pa.googleapis.com/v1"
 
 
 class AntigravityProviderAdapter(BaseProviderAdapter):
@@ -31,12 +30,8 @@ class AntigravityProviderAdapter(BaseProviderAdapter):
             effort="high",
             thinking_budget=32000,
         )
-        base_url = os.environ.get(
-            "SLEEPYROUTER_ANTIGRAVITY_BASE_URL",
-            os.environ.get("ANTIGRAVITY_BASE_URL", ANTIGRAVITY_DEFAULT_BASE_URL),
-        )
         res["model"] = f"openai/{upstream_id}"
-        res["api_base"] = base_url
+        res["api_base"] = ANTIGRAVITY_BASE_URL
         res["api_key"] = api_key
         res["headers"] = {
             "User-Agent": "antigravity/1.0.0",

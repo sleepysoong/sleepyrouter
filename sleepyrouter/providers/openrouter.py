@@ -1,4 +1,3 @@
-import os
 from typing import Any
 
 from sleepyrouter.types import SleepyRouterModel
@@ -31,9 +30,7 @@ class OpenRouterProviderAdapter(BaseProviderAdapter):
         )
         res["model"] = f"openrouter/{upstream_id}"
         res["api_key"] = api_key
-        base_url = os.environ.get("SLEEPYROUTER_OPENROUTER_BASE_URL")
-        if base_url:
-            res["api_base"] = base_url
+        res["api_base"] = "https://openrouter.ai/api/v1"
         res["headers"] = {
             "HTTP-Referer": "https://github.com/sleepysoong/sleepyrouter",
             "X-OpenRouter-Title": "sleepyrouter",

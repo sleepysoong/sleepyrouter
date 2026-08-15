@@ -1,4 +1,3 @@
-import os
 from typing import Any
 
 from sleepyrouter.types import SleepyRouterModel
@@ -21,10 +20,7 @@ class NVIDIAProviderAdapter(BaseProviderAdapter):
     ) -> dict[str, Any]:
         upstream_id = model.upstream_id or model.id
         res = inject_max_reasoning(kwargs, effort="high")
-        base_url = os.environ.get(
-            "SLEEPYROUTER_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"
-        )
         res["model"] = f"openai/{upstream_id}"
-        res["api_base"] = base_url
+        res["api_base"] = "https://integrate.api.nvidia.com/v1"
         res["api_key"] = api_key
         return res

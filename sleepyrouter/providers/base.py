@@ -1,15 +1,10 @@
 """Base ProviderAdapter and ProviderRegistry abstraction with reasoning & thinking budget injection."""
 
-import os
 from typing import Any, Protocol
 
 from sleepyrouter.types import ModelSource, SleepyRouterModel, source_of
 
 MessageProtocol = str  # "openai" | "anthropic"
-
-
-def base_url_from(env_var: str, def_url: str) -> str:
-    return os.environ.get(env_var, def_url)
 
 
 def inject_max_reasoning(
