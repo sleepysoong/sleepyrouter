@@ -1,21 +1,17 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createGoogle } from "@ai-sdk/google";
 import type { Provider } from "./base.js";
-import { baseURLFrom } from "./base.js";
 
 export const googleProvider: Provider = {
   name: "Google",
   source: "google",
   messageProtocol: "openai",
   chatModel(modelId: string, apiKey: string, customFetch?: typeof fetch) {
-    const provider = createOpenAICompatible({
-      name: "google",
-      baseURL: baseURLFrom(
-        "SLEEPYROUTER_GOOGLE_BASE_URL",
-        "https://generativelanguage.googleapis.com/v1beta/openai",
-      ),
+    const customBaseURL = process.env["SLEEPYROUTER_GOOGLE_BASE_URL"];
+    const google = createGoogle({
       apiKey,
+      baseURL: customBaseURL || undefined,
       fetch: customFetch,
     });
-    return provider.chatModel(modelId);
+    return google.languageModel(modelId);
   },
 };
