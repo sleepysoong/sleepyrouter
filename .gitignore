@@ -1,41 +1,6 @@
-# Dependencies
-node_modules/
-
-# Build output
-dist/
-*.tsbuildinfo
-
-# Test coverage
-coverage/
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Agent metadata
-.omo/
-
-# OS
-.DS_Store
-
-# Editors
-.idea/
-.vscode/
-
-# Workflow artifacts
-.omx/
-/superpowers/
-
-# Generated metadata (published to model-metadata branch, not main)
-data/model-metadata.json
-
-# Generated at build time from package.json version
-src/version.ts
-*.tgz
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
