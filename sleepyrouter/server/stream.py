@@ -95,8 +95,9 @@ async def create_sse_stream_generator(
     request_id: int = 0,
     index: int = 1,
     total: int = 1,
+    initial_input_tokens: int = 0,
 ) -> AsyncGenerator[bytes, None]:
-    input_tokens = 0
+    input_tokens = initial_input_tokens
     output_tokens = 0
     accumulated_output_chars = 0
     stream_start = time.time()

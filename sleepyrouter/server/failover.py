@@ -22,6 +22,7 @@ from sleepyrouter.events import (
 )
 from sleepyrouter.protocol import (
     default_protocol_transformer_registry,
+    estimate_input_tokens,
 )
 from sleepyrouter.providers import map_to_litellm_kwargs
 from sleepyrouter.providers.antigravity import (
@@ -50,6 +51,7 @@ async def _start_streaming_response(
     request_id: int,
     index: int,
     total: int,
+    initial_input_tokens: int = 0,
 ) -> StreamingResponse:
     first_chunk = None
     with contextlib.suppress(StopAsyncIteration):
@@ -65,6 +67,7 @@ async def _start_streaming_response(
         request_id=request_id,
         index=index,
         total=total,
+        initial_input_tokens=initial_input_tokens,
     )
     return StreamingResponse(generator, media_type=media_type)
 
@@ -99,6 +102,8 @@ async def _execute_candidate_attempt(
         )
     )
 
+    est_input_tokens = estimate_input_tokens(body)
+
     # Direct Antigravity gateway routing when no custom api_base is configured
     if model.source == "antigravity" and not model.api_base:
         if is_stream:
@@ -116,6 +121,7 @@ async def _execute_candidate_attempt(
                 request_id=request_id,
                 index=index,
                 total=total,
+                initial_input_tokens=est_input_tokens,
             )
 
         resp_dict = await call_antigravity_completion(
@@ -152,6 +158,7 @@ async def _execute_candidate_attempt(
             request_id=request_id,
             index=index,
             total=total,
+            initial_input_tokens=est_input_tokens,
         )
 
     response_obj = await acompletion(**litellm_kwargs)
