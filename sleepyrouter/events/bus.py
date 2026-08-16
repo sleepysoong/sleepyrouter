@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import inspect
 from typing import Any
 
@@ -18,13 +18,37 @@ class RequestReceivedEvent(ServerEvent):
     method: str
     path: str
     requested_model: str
+    is_stream: bool = False
+
+
+@dataclass
+class CandidatesResolvedEvent(ServerEvent):
+    request_id: int
+    requested_model: str
+    candidates: list[str] = field(default_factory=list)
+    route_reason: str = ""
 
 
 @dataclass
 class CandidateAttemptEvent(ServerEvent):
     request_id: int
+    index: int
+    total: int
     model_id: str
     provider: str
+    upstream_id: str = ""
+
+
+@dataclass
+class CandidateSucceededEvent(ServerEvent):
+    request_id: int
+    index: int
+    total: int
+    model_id: str
+    provider: str
+    duration_sec: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 @dataclass
@@ -33,6 +57,9 @@ class CandidateFailedEvent(ServerEvent):
     model_id: str
     provider: str
     error_message: str
+    index: int = 1
+    total: int = 1
+    duration_sec: float = 0.0
 
 
 @dataclass
@@ -51,6 +78,8 @@ class FailoverEvent(ServerEvent):
     next_model_id: str
     provider: str
     error_message: str
+    index: int = 1
+    total: int = 1
 
 
 @dataclass
@@ -60,6 +89,7 @@ class AllCandidatesFailedEvent(ServerEvent):
     request_id: int
     candidates_tried: list[str]
     last_error: str
+    total_duration_sec: float = 0.0
 
 
 EventHandler = Callable[[Any], None]

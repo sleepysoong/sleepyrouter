@@ -1,6 +1,7 @@
 """Candidate failover and retry processing via LiteLLM."""
 
 import datetime
+import os
 import time
 from typing import Any
 
@@ -11,7 +12,9 @@ from litellm import acompletion
 from sleepyrouter.config import ConfigStore, api_key_for
 from sleepyrouter.events import (
     AllCandidatesFailedEvent,
+    CandidateAttemptEvent,
     CandidateFailedEvent,
+    CandidateSucceededEvent,
     FailoverEvent,
     default_event_bus,
 )
@@ -25,6 +28,94 @@ from sleepyrouter.utils import truncate
 from .stream import create_sse_stream_generator
 
 
+async def _execute_candidate_attempt(
+    model: SleepyRouterModel,
+    api_key: str,
+    body: dict[str, Any],
+    api_type: str,
+    store: ConfigStore,
+    *,
+    request_id: int,
+    index: int,
+    total: int,
+    is_stream: bool,
+    default_timeout: float,
+) -> Response:
+    attempt_start = time.time()
+    upstream_model_id = model.upstream_id or model.id
+    transformer = default_protocol_transformer_registry.get(api_type)
+    request_kwargs = transformer.transform_request(body, upstream_model_id, model.provider)
+
+    default_event_bus.publish(
+        CandidateAttemptEvent(
+            ts=time.time(),
+            request_id=request_id,
+            index=index,
+            total=total,
+            model_id=model.id,
+            provider=model.provider,
+            upstream_id=upstream_model_id,
+        )
+    )
+
+    litellm_kwargs = map_to_litellm_kwargs(model, api_key, request_kwargs)
+    litellm_kwargs["num_retries"] = 0
+    litellm_kwargs.pop("stream", None)
+    if "timeout" not in litellm_kwargs:
+        litellm_kwargs["timeout"] = default_timeout
+
+    if is_stream:
+        response_gen = await acompletion(**litellm_kwargs, stream=True)
+        media_type = "text/event-stream" if api_type == "anthropic" else "text/plain"
+        generator = create_sse_stream_generator(
+            response_gen,
+            api_type,
+            model,
+            store,
+            request_id=request_id,
+            index=index,
+            total=total,
+        )
+        return StreamingResponse(generator, media_type=media_type)
+
+    response_obj = await acompletion(**litellm_kwargs)
+    duration_sec = time.time() - attempt_start
+    resp_dict = (
+        response_obj.model_dump() if hasattr(response_obj, "model_dump") else dict(response_obj)
+    )
+
+    usage_data = resp_dict.get("usage") or {}
+    in_tok = usage_data.get("prompt_tokens") or 0
+    out_tok = usage_data.get("completion_tokens") or 0
+
+    default_event_bus.publish(
+        CandidateSucceededEvent(
+            ts=time.time(),
+            request_id=request_id,
+            index=index,
+            total=total,
+            model_id=model.id,
+            provider=model.provider,
+            duration_sec=duration_sec,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+        )
+    )
+
+    store.append_usage(
+        UsageLogEntry(
+            ts=datetime.datetime.now(datetime.UTC).isoformat(),
+            model=model.usage_id or model.id,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            success=True,
+        )
+    )
+
+    transformed_resp = transformer.transform_response(resp_dict, upstream_model_id)
+    return JSONResponse(content=transformed_resp)
+
+
 async def process_chat_candidates(
     store: ConfigStore,
     api_keys: ProviderAPIKeys,
@@ -33,13 +124,15 @@ async def process_chat_candidates(
     body: dict[str, Any],
     api_type: str,
     *,
+    request_id: int = 0,
     is_stream: bool = False,
 ) -> Response:
+    overall_start = time.time()
     upstream_error = ""
     tried_any = False
     tried_models: list[str] = []
-
-    transformer = default_protocol_transformer_registry.get(api_type)
+    total_cands = len(candidates)
+    default_timeout = float(os.environ.get("UPSTREAM_TIMEOUT", "60.0"))
 
     for idx, model_id in enumerate(candidates):
         model = by_id.get(model_id)
@@ -48,84 +141,40 @@ async def process_chat_candidates(
 
         tried_any = True
         tried_models.append(model_id)
-        upstream_model_id = model.upstream_id or model.id
         api_key = api_key_for(api_keys, model.source)
+        attempt_start = time.time()
 
         if not api_key:
             upstream_error = f"[{model_id}] API key missing for provider {model.source}"
-            default_event_bus.publish(
-                CandidateFailedEvent(
-                    ts=time.time(),
-                    request_id=0,
-                    model_id=model_id,
-                    provider=model.provider,
-                    error_message=upstream_error,
-                )
+            _emit_failure_and_failover(
+                model,
+                upstream_error,
+                candidates,
+                idx,
+                by_id,
+                request_id=request_id,
+                total_cands=total_cands,
+                duration_sec=0.0,
             )
-            # Emit failover event if there's a next candidate
-            next_id = _next_valid_candidate(candidates, idx + 1, by_id)
-            if next_id:
-                default_event_bus.publish(
-                    FailoverEvent(
-                        ts=time.time(),
-                        request_id=0,
-                        failed_model_id=model_id,
-                        next_model_id=next_id,
-                        provider=model.provider,
-                        error_message=upstream_error,
-                    )
-                )
             continue
 
-        request_kwargs = transformer.transform_request(body, upstream_model_id, model.provider)
-
         try:
-            litellm_kwargs = map_to_litellm_kwargs(model, api_key, request_kwargs)
-            litellm_kwargs["num_retries"] = 0
-            litellm_kwargs.pop("stream", None)
-
-            if is_stream:
-                response_gen = await acompletion(**litellm_kwargs, stream=True)
-                media_type = "text/event-stream" if api_type == "anthropic" else "text/plain"
-                generator = create_sse_stream_generator(response_gen, api_type, model, store)
-                return StreamingResponse(generator, media_type=media_type)
-
-            response_obj = await acompletion(**litellm_kwargs)
-            resp_dict = (
-                response_obj.model_dump()
-                if hasattr(response_obj, "model_dump")
-                else dict(response_obj)
+            return await _execute_candidate_attempt(
+                model,
+                api_key,
+                body,
+                api_type,
+                store,
+                request_id=request_id,
+                index=idx + 1,
+                total=total_cands,
+                is_stream=is_stream,
+                default_timeout=default_timeout,
             )
-
-            usage_data = resp_dict.get("usage") or {}
-            in_tok = usage_data.get("prompt_tokens") or 0
-            out_tok = usage_data.get("completion_tokens") or 0
-
-            store.append_usage(
-                UsageLogEntry(
-                    ts=datetime.datetime.now(datetime.UTC).isoformat(),
-                    model=model.usage_id or model.id,
-                    input_tokens=in_tok,
-                    output_tokens=out_tok,
-                    success=True,
-                )
-            )
-
-            transformed_resp = transformer.transform_response(resp_dict, upstream_model_id)
-            return JSONResponse(content=transformed_resp)
-
         except Exception as e:  # noqa: BLE001
+            duration_sec = time.time() - attempt_start
             err_msg = str(e)
             upstream_error = f"[{model_id}] {truncate(err_msg, 300)}"
-            default_event_bus.publish(
-                CandidateFailedEvent(
-                    ts=time.time(),
-                    request_id=0,
-                    model_id=model_id,
-                    provider=model.provider,
-                    error_message=err_msg,
-                )
-            )
             store.append_usage(
                 UsageLogEntry(
                     ts=datetime.datetime.now(datetime.UTC).isoformat(),
@@ -135,28 +184,26 @@ async def process_chat_candidates(
                     success=False,
                 )
             )
-            # Emit failover event if there's a next candidate
-            next_id = _next_valid_candidate(candidates, idx + 1, by_id)
-            if next_id:
-                default_event_bus.publish(
-                    FailoverEvent(
-                        ts=time.time(),
-                        request_id=0,
-                        failed_model_id=model_id,
-                        next_model_id=next_id,
-                        provider=model.provider,
-                        error_message=err_msg,
-                    )
-                )
+            _emit_failure_and_failover(
+                model,
+                err_msg,
+                candidates,
+                idx,
+                by_id,
+                request_id=request_id,
+                total_cands=total_cands,
+                duration_sec=duration_sec,
+            )
             continue
 
-    # All candidates exhausted
+    total_dur = time.time() - overall_start
     default_event_bus.publish(
         AllCandidatesFailedEvent(
             ts=time.time(),
-            request_id=0,
+            request_id=request_id,
             candidates_tried=tried_models,
             last_error=upstream_error,
+            total_duration_sec=total_dur,
         )
     )
 
@@ -184,6 +231,45 @@ async def process_chat_candidates(
             }
         },
     )
+
+
+def _emit_failure_and_failover(
+    model: SleepyRouterModel,
+    error_message: str,
+    candidates: list[str],
+    idx: int,
+    by_id: dict[str, SleepyRouterModel],
+    *,
+    request_id: int,
+    total_cands: int,
+    duration_sec: float,
+) -> None:
+    default_event_bus.publish(
+        CandidateFailedEvent(
+            ts=time.time(),
+            request_id=request_id,
+            index=idx + 1,
+            total=total_cands,
+            model_id=model.id,
+            provider=model.provider,
+            duration_sec=duration_sec,
+            error_message=error_message,
+        )
+    )
+    next_id = _next_valid_candidate(candidates, idx + 1, by_id)
+    if next_id:
+        default_event_bus.publish(
+            FailoverEvent(
+                ts=time.time(),
+                request_id=request_id,
+                index=idx + 1,
+                total=total_cands,
+                failed_model_id=model.id,
+                next_model_id=next_id,
+                provider=model.provider,
+                error_message=error_message,
+            )
+        )
 
 
 def _next_valid_candidate(

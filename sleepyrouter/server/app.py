@@ -1,5 +1,6 @@
 """FastAPI application initialization and route definitions."""
 
+import itertools
 import time
 from typing import Any
 
@@ -8,6 +9,11 @@ from fastapi.responses import JSONResponse
 import litellm
 
 from sleepyrouter.config import ConfigStore, require_any_provider_api_key
+from sleepyrouter.events import (
+    CandidatesResolvedEvent,
+    RequestReceivedEvent,
+    default_event_bus,
+)
 from sleepyrouter.protocol import estimate_input_tokens
 from sleepyrouter.routing import all_group_model_ids, default_routing_engine
 from sleepyrouter.types import SleepyRouterConfig, SleepyRouterModel, source_of
@@ -19,6 +25,7 @@ litellm.drop_params = True
 litellm.suppress_debug_info = True
 
 VERSION = "0.0.4"
+_request_counter = itertools.count(1)
 
 
 def _build_selected_models(
@@ -81,7 +88,22 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
         body = await request.json()
         return {"input_tokens": estimate_input_tokens(body)}
 
-    async def handle_chat_completion(body: dict[str, Any], api_type: str) -> Response:
+    async def handle_chat_completion(body: dict[str, Any], api_type: str, path: str) -> Response:
+        req_id = next(_request_counter)
+        requested_model = str(body.get("model", ""))
+        is_stream = bool(body.get("stream"))
+
+        default_event_bus.publish(
+            RequestReceivedEvent(
+                ts=time.time(),
+                request_id=req_id,
+                method="POST",
+                path=path,
+                requested_model=requested_model,
+                is_stream=is_stream,
+            )
+        )
+
         api_keys = require_any_provider_api_key(env, active_store.root)
         models_list, by_id, config = _build_selected_models(active_store)
 
@@ -92,15 +114,22 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
             )
             return JSONResponse(status_code=400, content={"error": {"message": err_msg}})
 
-        requested_model = str(body.get("model", ""))
-        is_stream = bool(body.get("stream"))
-
-        candidates, _candidate_reason = default_routing_engine.resolve(
+        candidates, candidate_reason = default_routing_engine.resolve(
             config.model_groups,
             requested_model,
             config.default_model_group,
             config.group_order,
             known_models=by_id,
+        )
+
+        default_event_bus.publish(
+            CandidatesResolvedEvent(
+                ts=time.time(),
+                request_id=req_id,
+                requested_model=requested_model,
+                candidates=candidates,
+                route_reason=candidate_reason,
+            )
         )
 
         return await process_chat_candidates(
@@ -110,18 +139,19 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
             candidates,
             body,
             api_type,
+            request_id=req_id,
             is_stream=is_stream,
         )
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request) -> Response:
         body = await request.json()
-        return await handle_chat_completion(body, "openai")
+        return await handle_chat_completion(body, "openai", "/v1/chat/completions")
 
     @app.post("/anthropic/v1/messages")
     @app.post("/anthropic/messages")
     async def anthropic_messages(request: Request) -> Response:
         body = await request.json()
-        return await handle_chat_completion(body, "anthropic")
+        return await handle_chat_completion(body, "anthropic", "/anthropic/v1/messages")
 
     return app
