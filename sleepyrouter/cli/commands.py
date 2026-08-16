@@ -85,11 +85,17 @@ def run_start_command(port: int = 0, store: ConfigStore | None = None) -> None:
     print(f"sleepyrouter 서빙 시작: http://127.0.0.1:{effective_port}")
     print("종료하려면 Ctrl+C를 누르세요.\n")
 
+    log_config = uvicorn.config.LOGGING_CONFIG.copy()
+    if "loggers" in log_config and "uvicorn.access" in log_config["loggers"]:
+        log_config["loggers"]["uvicorn.access"]["handlers"] = []
+        log_config["loggers"]["uvicorn.access"]["propagate"] = False
+
     uvicorn.run(
         app,
         host="127.0.0.1",
         port=effective_port,
         log_level="warning",
+        log_config=log_config,
         access_log=False,
         timeout_keep_alive=30,
     )

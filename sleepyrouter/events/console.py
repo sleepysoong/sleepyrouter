@@ -25,6 +25,11 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
+# Silence uvicorn.access logger so tree output remains unbroken
+logging.getLogger("uvicorn.access").disabled = True
+logging.getLogger("uvicorn.access").propagate = False
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
 
 def log_request_received(event: RequestReceivedEvent) -> None:
     stream_str = " (stream=True)" if event.is_stream else ""
