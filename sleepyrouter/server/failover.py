@@ -9,7 +9,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from litellm import acompletion
 
 from sleepyrouter.config import ConfigStore, api_key_for
-from sleepyrouter.events import CandidateFailedEvent, default_event_bus
+from sleepyrouter.events import (
+    AllCandidatesFailedEvent,
+    CandidateFailedEvent,
+    FailoverEvent,
+    default_event_bus,
+)
 from sleepyrouter.protocol import (
     default_protocol_transformer_registry,
 )
@@ -31,15 +36,17 @@ async def process_chat_candidates(
 ) -> Response:
     upstream_error = ""
     tried_any = False
+    tried_models: list[str] = []
 
     transformer = default_protocol_transformer_registry.get(api_type)
 
-    for model_id in candidates:
+    for idx, model_id in enumerate(candidates):
         model = by_id.get(model_id)
         if not model:
             continue
 
         tried_any = True
+        tried_models.append(model_id)
         upstream_model_id = model.upstream_id or model.id
         api_key = api_key_for(api_keys, model.source)
 
@@ -54,6 +61,19 @@ async def process_chat_candidates(
                     error_message=upstream_error,
                 )
             )
+            # Emit failover event if there's a next candidate
+            next_id = _next_valid_candidate(candidates, idx + 1, by_id)
+            if next_id:
+                default_event_bus.publish(
+                    FailoverEvent(
+                        ts=time.time(),
+                        request_id=0,
+                        failed_model_id=model_id,
+                        next_model_id=next_id,
+                        provider=model.provider,
+                        error_message=upstream_error,
+                    )
+                )
             continue
 
         request_kwargs = transformer.transform_request(
@@ -63,6 +83,7 @@ async def process_chat_candidates(
         try:
             litellm_kwargs = map_to_litellm_kwargs(model, api_key, request_kwargs)
             litellm_kwargs["num_retries"] = 0
+            litellm_kwargs.pop("stream", None)
 
             if is_stream:
                 response_gen = await acompletion(**litellm_kwargs, stream=True)
@@ -100,7 +121,7 @@ async def process_chat_candidates(
             )
             return JSONResponse(content=transformed_resp)
 
-        except (RuntimeError, ValueError, KeyError, OSError) as e:
+        except Exception as e:
             err_msg = str(e)
             upstream_error = f"[{model_id}] {truncate(err_msg, 300)}"
             default_event_bus.publish(
@@ -121,7 +142,30 @@ async def process_chat_candidates(
                     success=False,
                 )
             )
+            # Emit failover event if there's a next candidate
+            next_id = _next_valid_candidate(candidates, idx + 1, by_id)
+            if next_id:
+                default_event_bus.publish(
+                    FailoverEvent(
+                        ts=time.time(),
+                        request_id=0,
+                        failed_model_id=model_id,
+                        next_model_id=next_id,
+                        provider=model.provider,
+                        error_message=err_msg,
+                    )
+                )
             continue
+
+    # All candidates exhausted
+    default_event_bus.publish(
+        AllCandidatesFailedEvent(
+            ts=time.time(),
+            request_id=0,
+            candidates_tried=tried_models,
+            last_error=upstream_error,
+        )
+    )
 
     if not tried_any:
         return JSONResponse(
@@ -147,3 +191,13 @@ async def process_chat_candidates(
             }
         },
     )
+
+
+def _next_valid_candidate(
+    candidates: list[str], start_idx: int, by_id: dict[str, SleepyRouterModel]
+) -> str | None:
+    """Return the next candidate model_id that exists in by_id, or None."""
+    for i in range(start_idx, len(candidates)):
+        if candidates[i] in by_id:
+            return candidates[i]
+    return None

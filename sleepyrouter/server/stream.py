@@ -2,10 +2,12 @@
 
 import datetime
 import json
+import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
 from sleepyrouter.config import ConfigStore
+from sleepyrouter.events import CandidateFailedEvent, default_event_bus
 from sleepyrouter.types import SleepyRouterModel, UsageLogEntry
 
 
@@ -51,7 +53,16 @@ async def create_sse_stream_generator(
                 success=True,
             )
         )
-    except (RuntimeError, OSError, ValueError):
+    except Exception as e:
+        default_event_bus.publish(
+            CandidateFailedEvent(
+                ts=time.time(),
+                request_id=0,
+                model_id=model.usage_id or model.id,
+                provider=model.provider,
+                error_message=f"Stream error: {e}",
+            )
+        )
         store.append_usage(
             UsageLogEntry(
                 ts=datetime.datetime.now(datetime.timezone.utc).isoformat(),

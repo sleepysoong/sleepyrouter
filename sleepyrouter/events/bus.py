@@ -42,6 +42,24 @@ class ResponseSentEvent(ServerEvent):
     duration_ms: float
 
 
+@dataclass
+class FailoverEvent(ServerEvent):
+    """Fired when a candidate fails and the router moves to the next model."""
+    request_id: int
+    failed_model_id: str
+    next_model_id: str
+    provider: str
+    error_message: str
+
+
+@dataclass
+class AllCandidatesFailedEvent(ServerEvent):
+    """Fired when every candidate has been exhausted with no success."""
+    request_id: int
+    candidates_tried: list[str]
+    last_error: str
+
+
 EventHandler = Callable[[Any], None]
 
 

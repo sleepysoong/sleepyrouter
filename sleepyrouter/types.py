@@ -48,6 +48,7 @@ class ProviderAPIKeys(BaseModel):
     copilot: str = ""
     zen: str = ""
     google: str = ""
+    antigravity: str = ""
 
 
 def complete_group_order(

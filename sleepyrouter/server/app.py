@@ -3,8 +3,12 @@
 import time
 from typing import Any
 
+import litellm
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+
+# Drop unsupported params (e.g. reasoning_effort) instead of raising
+litellm.drop_params = True
 
 from sleepyrouter.config import ConfigStore, require_any_provider_api_key
 from sleepyrouter.protocol import estimate_input_tokens

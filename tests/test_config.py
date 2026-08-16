@@ -75,7 +75,7 @@ def test_resolve_provider_api_keys() -> None:
         root = Path(tmp)
         env_file = root / ".env"
         env_file.write_text(
-            "OPENROUTER_API_KEY=sk-local\nGOOGLE_API_KEY=google-local\n"
+            "OPENROUTER_API_KEY=sk-local\nGOOGLE_API_KEY=google-local\nANTIGRAVITY_API_KEY=anti-local\n"
         )
 
         env = {"NVIDIA_API_KEY": "nv-env"}
@@ -83,6 +83,7 @@ def test_resolve_provider_api_keys() -> None:
         assert keys.open_router == "sk-local"
         assert keys.nvidia == "nv-env"
         assert keys.google == "google-local"
+        assert keys.antigravity == "anti-local"
 
 
 def test_require_any_provider_api_key_raises() -> None:

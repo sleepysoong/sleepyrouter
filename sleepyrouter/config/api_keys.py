@@ -30,6 +30,8 @@ def resolve_provider_api_keys(
         zen=_resolve_api_key("OPENCODE_API_KEY", env, local_env),
         google=_resolve_api_key("GOOGLE_API_KEY", env, local_env)
         or _resolve_api_key("GEMINI_API_KEY", env, local_env),
+        antigravity=_resolve_api_key("ANTIGRAVITY_API_KEY", env, local_env)
+        or _resolve_api_key("GOOGLE_ANTIGRAVITY_TOKEN", env, local_env),
     )
 
 
@@ -40,7 +42,8 @@ def api_key_for(keys: ProviderAPIKeys, source: ModelSource) -> str:
         "copilot": keys.copilot,
         "zen": keys.zen,
         "google": keys.google,
-        "antigravity": _resolve_api_key("ANTIGRAVITY_API_KEY", dict(os.environ), {})
+        "antigravity": keys.antigravity
+        or _resolve_api_key("ANTIGRAVITY_API_KEY", dict(os.environ), {})
         or _resolve_api_key("GOOGLE_ANTIGRAVITY_TOKEN", dict(os.environ), {}),
     }
     if source in switch_map:
@@ -53,17 +56,13 @@ def require_any_provider_api_key(
     env: dict[str, str] | None = None, root: Path | None = None
 ) -> ProviderAPIKeys:
     keys = resolve_provider_api_keys(env, root)
-    has_antigravity = bool(
-        os.environ.get("ANTIGRAVITY_API_KEY")
-        or os.environ.get("GOOGLE_ANTIGRAVITY_TOKEN")
-    )
     if (
         not keys.open_router
         and not keys.nvidia
         and not keys.copilot
         and not keys.zen
         and not keys.google
-        and not has_antigravity
+        and not keys.antigravity
     ):
         if root is None:
             root = get_config_root(env)
