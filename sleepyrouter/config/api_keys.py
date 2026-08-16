@@ -1,8 +1,11 @@
 """API Key resolution and validation."""
 
+import datetime
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 
 from sleepyrouter.types import ModelSource, ProviderAPIKeys
 from sleepyrouter.utils import get_config_root, get_env_path, read_local_env
@@ -13,6 +16,65 @@ def _resolve_api_key(name: str, env: dict[str, str], local_env: dict[str, str]) 
     if env_val:
         return env_val
     return (local_env.get(name) or "").strip()
+
+
+def _refresh_antigravity_token_if_needed(
+    token_path: Path, expiry_str: str, current_token: str
+) -> str:
+    if not expiry_str:
+        return current_token
+    try:
+        exp_dt = datetime.datetime.fromisoformat(expiry_str)
+        now_dt = datetime.datetime.now(datetime.UTC)
+        if now_dt >= exp_dt:
+            agy_bin = shutil.which("agy") or "/root/.local/bin/agy"
+            if Path(agy_bin).exists():
+                subprocess.run(
+                    [agy_bin, "-p", "ping"],
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
+                fresh_data = json.loads(token_path.read_text(encoding="utf-8"))
+                return str(fresh_data.get("token", {}).get("access_token") or current_token)
+    except (ValueError, OSError):
+        pass
+    return current_token
+
+
+def _resolve_antigravity_key(
+    env: dict[str, str], local_env: dict[str, str], root: Path | None = None
+) -> str:
+    key = _resolve_api_key("ANTIGRAVITY_API_KEY", env, local_env) or _resolve_api_key(
+        "GOOGLE_ANTIGRAVITY_TOKEN", env, local_env
+    )
+    if key:
+        return key
+
+    token_candidates: list[Path] = []
+    if root is not None:
+        token_candidates.append(root / "antigravity-oauth-token")
+    else:
+        token_candidates.extend(
+            [
+                Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token",
+                Path.home() / ".gemini" / "antigravity" / "antigravity-oauth-token",
+            ]
+        )
+
+    for p in token_candidates:
+        if p.exists():
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                tok_info = data.get("token", {})
+                access_token = str(tok_info.get("access_token") or "")
+                if access_token:
+                    expiry_str = str(tok_info.get("expiry") or "")
+                    access_token = _refresh_antigravity_token_if_needed(p, expiry_str, access_token)
+                    return access_token.strip()
+            except (OSError, json.JSONDecodeError):
+                pass
+    return ""
 
 
 def _resolve_freebuff_key(
@@ -62,8 +124,7 @@ def resolve_provider_api_keys(
         zen=_resolve_api_key("OPENCODE_API_KEY", env, local_env),
         google=_resolve_api_key("GOOGLE_API_KEY", env, local_env)
         or _resolve_api_key("GEMINI_API_KEY", env, local_env),
-        antigravity=_resolve_api_key("ANTIGRAVITY_API_KEY", env, local_env)
-        or _resolve_api_key("GOOGLE_ANTIGRAVITY_TOKEN", env, local_env),
+        antigravity=_resolve_antigravity_key(env, local_env, root),
         freebuff=_resolve_freebuff_key(env, local_env, root),
     )
 
@@ -75,9 +136,7 @@ def api_key_for(keys: ProviderAPIKeys, source: ModelSource) -> str:
         "copilot": keys.copilot,
         "zen": keys.zen,
         "google": keys.google,
-        "antigravity": keys.antigravity
-        or _resolve_api_key("ANTIGRAVITY_API_KEY", dict(os.environ), {})
-        or _resolve_api_key("GOOGLE_ANTIGRAVITY_TOKEN", dict(os.environ), {}),
+        "antigravity": keys.antigravity or _resolve_antigravity_key(dict(os.environ), {}, None),
         "freebuff": keys.freebuff or _resolve_freebuff_key(dict(os.environ), {}, None),
     }
     if source in switch_map:
