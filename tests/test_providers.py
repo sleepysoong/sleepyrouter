@@ -210,6 +210,45 @@ def test_antigravity_tool_calling_payload_and_parse() -> None:
     assert parsed["choices"][0]["finish_reason"] == "tool_calls"
 
 
+def test_antigravity_schema_normalization_strips_disallowed_fields() -> None:
+    req_kwargs = {
+        "messages": [{"role": "user", "content": "Run tool"}],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "bash_output",
+                    "description": "Peek at session output",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "bash_id": {
+                                "type": "string",
+                                "description": "Session id",
+                                "optional": True,
+                            },
+                            "view": {
+                                "anyOf": [{"const": "log"}, {"const": "screen"}],
+                                "description": "View mode",
+                            },
+                        },
+                        "required": ["bash_id"],
+                        "additionalProperties": False,
+                        "$schema": "http://json-schema.org/draft-07/schema#",
+                    },
+                },
+            }
+        ],
+    }
+    payload = build_antigravity_payload("claude-opus-4-6", req_kwargs)
+    params = payload["request"]["tools"][0]["functionDeclarations"][0]["parameters"]
+    assert "additionalProperties" not in params
+    assert "$schema" not in params
+    assert "optional" not in params["properties"]["bash_id"]
+    assert "anyOf" not in params["properties"]["view"]
+    assert params["properties"]["bash_id"]["type"] == "string"
+
+
 def test_antigravity_api_error() -> None:
     err = AntigravityAPIError(401, "UNAUTHENTICATED")
     assert err.status_code == 401

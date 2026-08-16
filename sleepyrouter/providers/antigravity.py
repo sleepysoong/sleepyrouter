@@ -269,6 +269,62 @@ def _convert_messages_to_contents_and_system(
     return contents, system_parts
 
 
+_CUSTOM_TOOL_SCHEMA_ALLOW = frozenset(
+    {"type", "description", "properties", "required", "items", "enum"}
+)
+
+
+def _normalize_custom_tool_type(value: Any) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        for entry in value:
+            if isinstance(entry, str) and entry != "null":
+                return entry
+    return None
+
+
+def _clean_schema_field(key: str, value: Any) -> Any:
+    res: Any = None
+    if key == "type":
+        res = _normalize_custom_tool_type(value)
+    elif key == "properties" and isinstance(value, dict):
+        res = {
+            prop_name: _normalize_custom_tool_schema(prop_schema)
+            for prop_name, prop_schema in value.items()
+        }
+    elif key in ("items", "description"):
+        res = (
+            _normalize_custom_tool_schema(value)
+            if key == "items"
+            else (value if isinstance(value, str) else None)
+        )
+    elif key in ("enum", "required") and isinstance(value, list):
+        if key == "enum" and all(isinstance(x, str) for x in value):
+            res = value
+        elif key == "required":
+            res = [str(x) for x in value if isinstance(x, (str, int))]
+    return res
+
+
+def _normalize_custom_tool_schema(schema: Any) -> Any:
+    if not isinstance(schema, dict):
+        return (
+            [_normalize_custom_tool_schema(item) for item in schema]
+            if isinstance(schema, list)
+            else schema
+        )
+
+    out: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key in _CUSTOM_TOOL_SCHEMA_ALLOW:
+            cleaned = _clean_schema_field(key, value)
+            if cleaned is not None:
+                out[key] = cleaned
+
+    return out
+
+
 def _convert_tools_to_gemini_format(tools: list[Any]) -> list[dict[str, Any]]:
     declarations: list[dict[str, Any]] = []
     for t in tools:
@@ -281,7 +337,7 @@ def _convert_tools_to_gemini_format(tools: list[Any]) -> list[dict[str, Any]]:
                 "description": fn.get("description", ""),
             }
             if "parameters" in fn:
-                decl["parameters"] = fn["parameters"]
+                decl["parameters"] = _normalize_custom_tool_schema(fn["parameters"])
             declarations.append(decl)
     if declarations:
         return [{"functionDeclarations": declarations}]
