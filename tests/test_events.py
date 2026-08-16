@@ -58,9 +58,7 @@ def test_event_bus_publish_and_subscribe() -> None:
 
 @patch("requests.post")
 def test_discord_notify_on_failover(mock_post: object) -> None:
-    with patch.dict(
-        "os.environ", {"DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/test"}
-    ):
+    with patch.dict("os.environ", {"DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/test"}):
         evt = FailoverEvent(
             ts=123456.0,
             request_id=1,
@@ -103,9 +101,7 @@ def test_discord_notify_on_all_failed(mock_post: object) -> None:
 
 @patch("requests.post")
 def test_discord_notify_on_failure(mock_post: object) -> None:
-    with patch.dict(
-        "os.environ", {"DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/test"}
-    ):
+    with patch.dict("os.environ", {"DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/test"}):
         evt = CandidateFailedEvent(
             ts=123456.0,
             request_id=1,
@@ -124,9 +120,7 @@ def test_discord_notify_on_failure(mock_post: object) -> None:
 
 def test_get_webhook_url_fallback(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
-    env_file.write_text(
-        "DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/file_test\n"
-    )
+    env_file.write_text("DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/file_test\n")
     with (
         patch.dict("os.environ", {}, clear=True),
         patch("sleepyrouter.events.discord.get_config_root", return_value=tmp_path),

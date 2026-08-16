@@ -1,7 +1,7 @@
 """Usage logging to SQLite database."""
 
-import sqlite3
 from pathlib import Path
+import sqlite3
 
 from sleepyrouter.types import UsageLogEntry
 
@@ -31,7 +31,9 @@ class UsageLogger:
             conn = self._init_db()
             with conn:
                 conn.execute(
-                    "INSERT INTO usage_log (ts, model, input_tokens, output_tokens, success) VALUES (?, ?, ?, ?, ?)",
+                    """INSERT INTO usage_log
+                       (ts, model, input_tokens, output_tokens, success)
+                       VALUES (?, ?, ?, ?, ?)""",
                     (
                         entry.ts,
                         entry.model,

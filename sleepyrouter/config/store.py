@@ -80,16 +80,8 @@ class ConfigStore:
                 k: {
                     "provider": v.provider,
                     "name": v.name,
-                    **(
-                        {"inputPrice": v.input_price}
-                        if v.input_price is not None
-                        else {}
-                    ),
-                    **(
-                        {"outputPrice": v.output_price}
-                        if v.output_price is not None
-                        else {}
-                    ),
+                    **({"inputPrice": v.input_price} if v.input_price is not None else {}),
+                    **({"outputPrice": v.output_price} if v.output_price is not None else {}),
                     **({"apiBase": v.api_base} if v.api_base is not None else {}),
                 }
                 for k, v in config.models.items()

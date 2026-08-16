@@ -1,13 +1,17 @@
 """Webhook Observer for model failure and failover alerts (Discord, Slack, generic webhooks)."""
 
 import asyncio
+import contextlib
 import os
+from typing import Any
 
 import requests
 
 from sleepyrouter.utils import get_config_root, read_local_env, truncate
 
 from .bus import AllCandidatesFailedEvent, CandidateFailedEvent, FailoverEvent
+
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 
 def get_webhook_url() -> str:
@@ -16,9 +20,7 @@ def get_webhook_url() -> str:
         return url.strip()
     try:
         local_env = read_local_env(get_config_root())
-        return (
-            local_env.get("DISCORD_WEBHOOK_URL") or local_env.get("WEBHOOK_URL") or ""
-        ).strip()
+        return (local_env.get("DISCORD_WEBHOOK_URL") or local_env.get("WEBHOOK_URL") or "").strip()
     except (OSError, RuntimeError):
         return ""
 
@@ -34,19 +36,19 @@ def _send_webhook(content: str) -> None:
     }
 
     def _post() -> None:
-        try:
+        with contextlib.suppress(requests.RequestException, OSError):
             requests.post(
                 url,
                 json=payload,
                 headers={"Content-Type": "application/json"},
                 timeout=5,
             )
-        except (requests.RequestException, OSError):
-            pass
 
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(asyncio.to_thread(_post))
+        task = loop.create_task(asyncio.to_thread(_post))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
     except RuntimeError:
         _post()
 
@@ -74,9 +76,7 @@ def notify_discord_on_failover(event: FailoverEvent) -> None:
 
 def notify_discord_on_all_failed(event: AllCandidatesFailedEvent) -> None:
     tried = (
-        ", ".join(f"`{m}`" for m in event.candidates_tried)
-        if event.candidates_tried
-        else "(없음)"
+        ", ".join(f"`{m}`" for m in event.candidates_tried) if event.candidates_tried else "(없음)"
     )
     err_text = truncate(event.last_error, 1600)
     content = (

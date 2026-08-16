@@ -1,0 +1,143 @@
+[project]
+name = "sleepyrouter"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+indent-width = 4
+src = ["sleepyrouter", "tests", "main.py"]
+extend-exclude = [".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache"]
+
+[tool.ruff.lint]
+select = [
+    "A",       # flake8-builtins: shadowing builtins
+    "ARG",     # flake8-unused-arguments: unused function args
+    "B",       # flake8-bugbear: likely bugs
+    "BLE",     # blind except
+    "C4",      # flake8-comprehensions: unnecessary comprehensions
+    "C90",     # mccabe complexity
+    "COM",     # flake8-commas: trailing commas
+    "DJ",      # flake8-django
+    "DTZ",     # flake8-datetimez: naive datetime
+    "E",       # pycodestyle errors
+    "EM",      # flake8-errmsg: error message formatting
+    "EXE",     # flake8-executable
+    "F",       # pyflakes (undefined names, unused imports)
+    "FA",      # flake8-future-annotations
+    "FBT",     # flake8-boolean-trap: boolean positional args
+    "FLY",     # flynt: f-string conversion
+    "FURB",    # refurb: modernizing rewrites
+    "G",       # flake8-logging-format
+    "I",       # isort: import sorting
+    "ICN",     # flake8-import-conventions
+    "INT",     # flake8-gettext
+    "ISC",     # flake8-implicit-str-concat
+    "LOG",     # flake8-logging
+    "N",       # pep8-naming
+    "PERF",    # perflint: performance anti-patterns
+    "PGH",     # pygrep-hooks
+    "PIE",     # flake8-pie
+    "PL",      # pylint rules
+    "PT",      # flake8-pytest-style
+    "PTH",     # flake8-use-pathlib: os.path -> pathlib
+    "PYI",     # flake8-pyi: stub files
+    "Q",       # flake8-quotes
+    "RET",     # flake8-return
+    "RSE",     # flake8-raise
+    "RUF",     # ruff-specific rules
+    "S",       # bandit: security
+    "SIM",     # flake8-simplify
+    "SLF",     # flake8-self: private member access
+    "SLOT",    # flake8-slots: __slots__
+    "T10",     # flake8-debugger: pdb traces
+    "T20",     # flake8-print: print statements
+    "TCH",     # flake8-type-checking
+    "TID",     # flake8-tidy-imports: banned imports
+    "TRY",     # tryceratops: exception handling
+    "UP",      # pyupgrade: modernize syntax
+    "W",       # pycodestyle warnings
+    "YTT",     # flake8-2020: sys.version checks
+]
+ignore = [
+    "COM812",   # trailing comma in formatter (conflicts with format)
+    "ISC001",   # implicit str concat (conflicts with format)
+    "S101",     # assert usage (needed in tests)
+    "S104",     # hardcoded bind address (0.0.0.0 / 127.0.0.1)
+    "S603",     # subprocess call
+    "PLR0913",  # too many arguments
+    "PLC0415",  # imports not at top of file
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",     # assert allowed in tests
+    "ARG001",   # unused args ok in test stubs
+    "ARG002",   # unused method args in mocks
+    "PLR2004",  # magic numbers ok in tests
+    "SLF001",   # private access ok in tests
+    "S106",     # hardcoded passwords ok in tests
+    "EM101",    # raw strings in mock exception ok
+    "TRY003",   # inline exception strings ok in tests
+]
+"sleepyrouter/cli/**/*.py" = [
+    "T201",     # print is standard for CLI output
+]
+"sleepyrouter/types.py" = [
+    "A005",     # types.py is conventional module name
+]
+"sleepyrouter/events/bus.py" = [
+    "SLF001",   # bus needs internal access
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 7
+max-returns = 5
+max-branches = 12
+max-statements = 50
+allow-magic-value-types = ["int", "float", "str"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sleepyrouter"]
+force-sort-within-sections = true
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "double"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[tool.ruff.lint.pep8-naming]
+extend-ignore-names = ["ProcessChatCandidates", "ModelSource"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_return_any = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]

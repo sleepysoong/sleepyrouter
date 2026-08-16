@@ -1,4 +1,4 @@
-"""Base ProviderAdapter and ProviderRegistry abstraction with reasoning & thinking budget injection."""
+"""Base ProviderAdapter and ProviderRegistry abstraction with reasoning & thinking injection."""
 
 from typing import Any, Protocol
 

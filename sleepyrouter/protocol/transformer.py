@@ -18,26 +18,24 @@ class ProtocolTransformer(Protocol):
 
 class AnthropicToOpenAITransformer(ProtocolTransformer):
     def transform_request(
-        self, body: dict[str, Any], model_id: str, provider_name: str
+        self, body: dict[str, Any], model_id: str, _provider_name: str = ""
     ) -> dict[str, Any]:
         return anthropic_to_openai(body, model_id)
 
-    def transform_response(
-        self, response: dict[str, Any], fallback_model: str
-    ) -> dict[str, Any]:
+    def transform_response(self, response: dict[str, Any], fallback_model: str) -> dict[str, Any]:
         return openai_to_anthropic(response, fallback_model)
 
 
 class OpenAIIdentityTransformer(ProtocolTransformer):
     def transform_request(
-        self, body: dict[str, Any], model_id: str, provider_name: str
+        self, body: dict[str, Any], model_id: str, _provider_name: str = ""
     ) -> dict[str, Any]:
         res = dict(body)
         res["model"] = model_id
         return res
 
     def transform_response(
-        self, response: dict[str, Any], fallback_model: str
+        self, response: dict[str, Any], _fallback_model: str = ""
     ) -> dict[str, Any]:
         return response
 

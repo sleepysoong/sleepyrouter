@@ -29,8 +29,8 @@ def get_env_path(root: Path) -> Path:
 
 def parse_dotenv(content: str) -> dict[str, str]:
     values: dict[str, str] = {}
-    for line in content.replace("\r\n", "\n").split("\n"):
-        line = line.strip()
+    for raw_line in content.replace("\r\n", "\n").split("\n"):
+        line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
         if "=" not in line:
@@ -41,8 +41,7 @@ def parse_dotenv(content: str) -> dict[str, str]:
         if not key:
             continue
         if len(value) >= 2 and (
-            (value[0] == '"' and value[-1] == '"')
-            or (value[0] == "'" and value[-1] == "'")
+            (value[0] == '"' and value[-1] == '"') or (value[0] == "'" and value[-1] == "'")
         ):
             value = value[1:-1]
         values[key] = value
@@ -64,7 +63,5 @@ def truncate(s: str, max_len: int) -> str:
 
 
 def safe_log_value(value: str) -> str:
-    sanitized = "".join(
-        ch if ord(ch) >= 0x20 and ord(ch) != 0x7F else "?" for ch in value
-    )
+    sanitized = "".join(ch if ord(ch) >= 0x20 and ord(ch) != 0x7F else "?" for ch in value)
     return (sanitized[:197] + "...") if len(sanitized) > 200 else sanitized

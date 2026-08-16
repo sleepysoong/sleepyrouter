@@ -7,36 +7,48 @@ from sleepyrouter.types import SleepyRouterModel
 
 from .base import BaseProviderAdapter, inject_max_reasoning
 
-COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token"
+COPILOT_TOKEN_ENDPOINT = "https://api.github.com/copilot_internal/v2/token"  # noqa: S105
 COPILOT_BASE_URL = "https://api.githubcopilot.com"
 
-_copilot_token_cache: tuple[str, float] | None = None
+
+class CopilotTokenCache:
+    def __init__(self) -> None:
+        self.token: str | None = None
+        self.expires_at: float = 0.0
+
+    def get_token(self, api_key: str) -> str:
+        now = time.time()
+        if self.token and now < self.expires_at - 300:
+            return self.token
+
+        resp = requests.get(
+            COPILOT_TOKEN_ENDPOINT,
+            headers={
+                "Authorization": f"token {api_key}",
+                "User-Agent": "sleepyrouter/0.0.4",
+            },
+            timeout=10,
+        )
+        if not resp.ok:
+            err_msg = f"copilot 토큰 교환 실패: {resp.status_code} {resp.reason}"
+            raise RuntimeError(err_msg)
+        data = resp.json()
+        token_str = str(data.get("token", ""))
+        expires_at = data.get("expires_at")
+        if not token_str or not expires_at:
+            err_empty = "copilot 토큰 응답에 token 또는 expires_at 필드가 없어요"
+            raise RuntimeError(err_empty)
+
+        self.token = token_str
+        self.expires_at = float(expires_at)
+        return token_str
+
+
+_default_token_cache = CopilotTokenCache()
 
 
 def exchange_copilot_token(api_key: str) -> str:
-    global _copilot_token_cache
-    now = time.time()
-    if _copilot_token_cache and now < _copilot_token_cache[1] - 300:
-        return _copilot_token_cache[0]
-
-    resp = requests.get(
-        COPILOT_TOKEN_URL,
-        headers={
-            "Authorization": f"token {api_key}",
-            "User-Agent": "sleepyrouter/0.0.4",
-        },
-        timeout=10,
-    )
-    if not resp.ok:
-        raise RuntimeError(f"copilot 토큰 교환 실패: {resp.status_code} {resp.reason}")
-    data = resp.json()
-    token_str = str(data.get("token", ""))
-    expires_at = data.get("expires_at")
-    if not token_str or not expires_at:
-        raise RuntimeError("copilot 토큰 응답에 token 또는 expires_at 필드가 없어요")
-
-    _copilot_token_cache = (token_str, float(expires_at))
-    return token_str
+    return _default_token_cache.get_token(api_key)
 
 
 class CopilotProviderAdapter(BaseProviderAdapter):

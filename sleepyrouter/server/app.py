@@ -3,13 +3,9 @@
 import time
 from typing import Any
 
-import litellm
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
-
-# Drop unsupported params (e.g. reasoning_effort) instead of raising
-litellm.drop_params = True
-litellm.suppress_debug_info = True
+import litellm
 
 from sleepyrouter.config import ConfigStore, require_any_provider_api_key
 from sleepyrouter.protocol import estimate_input_tokens
@@ -18,40 +14,41 @@ from sleepyrouter.types import SleepyRouterConfig, SleepyRouterModel, source_of
 
 from .failover import process_chat_candidates
 
+# Configure LiteLLM globally
+litellm.drop_params = True
+litellm.suppress_debug_info = True
+
 VERSION = "0.0.4"
 
 
-def create_app(
-    store: ConfigStore | None = None, env: dict[str, str] | None = None
-) -> FastAPI:
-    app = FastAPI(title="sleepyrouter", version=VERSION)
-    store = store or ConfigStore()
-    start_time = time.time()
+def _build_selected_models(
+    store: ConfigStore,
+) -> tuple[list[SleepyRouterModel], dict[str, SleepyRouterModel], SleepyRouterConfig]:
+    config = store.read_config()
+    all_ids = all_group_model_ids(config.model_groups, *config.group_order)
+    models: list[SleepyRouterModel] = []
+    by_id: dict[str, SleepyRouterModel] = {}
+    for mid in all_ids:
+        def_obj = (config.models or {}).get(mid)
+        if not def_obj:
+            continue
+        m = SleepyRouterModel(
+            id=mid,
+            upstream_id=def_obj.name,
+            provider=def_obj.provider,
+            source=def_obj.provider,
+            usage_id=mid,
+            api_base=def_obj.api_base,
+        )
+        models.append(m)
+        by_id[mid] = m
+    return models, by_id, config
 
-    def get_selected_models(
-        api_keys: Any,
-    ) -> tuple[
-        list[SleepyRouterModel], dict[str, SleepyRouterModel], SleepyRouterConfig
-    ]:
-        config = store.read_config()
-        all_ids = all_group_model_ids(config.model_groups, *config.group_order)
-        models: list[SleepyRouterModel] = []
-        by_id: dict[str, SleepyRouterModel] = {}
-        for mid in all_ids:
-            def_obj = (config.models or {}).get(mid)
-            if not def_obj:
-                continue
-            m = SleepyRouterModel(
-                id=mid,
-                upstream_id=def_obj.name,
-                provider=def_obj.provider,
-                source=def_obj.provider,
-                usage_id=mid,
-                api_base=def_obj.api_base,
-            )
-            models.append(m)
-            by_id[mid] = m
-        return models, by_id, config
+
+def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = None) -> FastAPI:
+    app = FastAPI(title="sleepyrouter", version=VERSION)
+    active_store = store or ConfigStore()
+    start_time = time.time()
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
@@ -64,8 +61,8 @@ def create_app(
 
     @app.get("/v1/models")
     async def models() -> dict[str, Any]:
-        api_keys = require_any_provider_api_key(env, store.root)
-        models_list, _, _ = get_selected_models(api_keys)
+        require_any_provider_api_key(env, active_store.root)
+        models_list, _, _ = _build_selected_models(active_store)
         data = [
             {
                 "id": m.id,
@@ -85,18 +82,15 @@ def create_app(
         return {"input_tokens": estimate_input_tokens(body)}
 
     async def handle_chat_completion(body: dict[str, Any], api_type: str) -> Response:
-        api_keys = require_any_provider_api_key(env, store.root)
-        models_list, by_id, config = get_selected_models(api_keys)
+        api_keys = require_any_provider_api_key(env, active_store.root)
+        models_list, by_id, config = _build_selected_models(active_store)
 
         if not models_list:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": {
-                        "message": "선택된 무료 모델이 없어요. config.json의 modelGroups에 사용할 모델을 하나 이상 추가하세요."
-                    }
-                },
+            err_msg = (
+                "선택된 무료 모델이 없어요. config.json의 modelGroups에 "
+                "사용할 모델을 하나 이상 추가하세요."
             )
+            return JSONResponse(status_code=400, content={"error": {"message": err_msg}})
 
         requested_model = str(body.get("model", ""))
         is_stream = bool(body.get("stream"))
@@ -110,7 +104,13 @@ def create_app(
         )
 
         return await process_chat_candidates(
-            store, api_keys, by_id, candidates, body, is_stream, api_type
+            active_store,
+            api_keys,
+            by_id,
+            candidates,
+            body,
+            api_type,
+            is_stream=is_stream,
         )
 
     @app.post("/v1/chat/completions")

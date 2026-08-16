@@ -1,5 +1,5 @@
-import tempfile
 from pathlib import Path
+import tempfile
 from typing import Any
 from unittest.mock import patch
 
@@ -22,12 +22,8 @@ def test_candidate_failover_all_fail() -> None:
                 model_groups={"high": ["fail-model-1", "fail-model-2"]},
                 default_model_group="high",
                 models={
-                    "fail-model-1": ModelDefinition(
-                        provider="openrouter", name="fail-1"
-                    ),
-                    "fail-model-2": ModelDefinition(
-                        provider="openrouter", name="fail-2"
-                    ),
+                    "fail-model-1": ModelDefinition(provider="openrouter", name="fail-1"),
+                    "fail-model-2": ModelDefinition(provider="openrouter", name="fail-2"),
                 },
             )
         )
@@ -38,9 +34,7 @@ def test_candidate_failover_all_fail() -> None:
         async def mock_acompletion(*args: Any, **kwargs: Any) -> Any:
             raise RuntimeError("Upstream 500 connection error")
 
-        with patch(
-            "sleepyrouter.server.failover.acompletion", side_effect=mock_acompletion
-        ):
+        with patch("sleepyrouter.server.failover.acompletion", side_effect=mock_acompletion):
             res = client.post(
                 "/v1/chat/completions",
                 json={"model": "high", "messages": [{"role": "user", "content": "hi"}]},
@@ -99,9 +93,7 @@ def test_candidate_failover_success_on_second() -> None:
                 raise RuntimeError("Rate limit exceeded 429")
             return MockResponseObj()
 
-        with patch(
-            "sleepyrouter.server.failover.acompletion", side_effect=mock_acompletion
-        ):
+        with patch("sleepyrouter.server.failover.acompletion", side_effect=mock_acompletion):
             res = client.post(
                 "/v1/chat/completions",
                 json={"model": "high", "messages": [{"role": "user", "content": "hi"}]},

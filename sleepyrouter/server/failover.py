@@ -31,8 +31,9 @@ async def process_chat_candidates(
     by_id: dict[str, SleepyRouterModel],
     candidates: list[str],
     body: dict[str, Any],
-    is_stream: bool,
     api_type: str,
+    *,
+    is_stream: bool = False,
 ) -> Response:
     upstream_error = ""
     tried_any = False
@@ -76,9 +77,7 @@ async def process_chat_candidates(
                 )
             continue
 
-        request_kwargs = transformer.transform_request(
-            body, upstream_model_id, model.provider
-        )
+        request_kwargs = transformer.transform_request(body, upstream_model_id, model.provider)
 
         try:
             litellm_kwargs = map_to_litellm_kwargs(model, api_key, request_kwargs)
@@ -87,12 +86,8 @@ async def process_chat_candidates(
 
             if is_stream:
                 response_gen = await acompletion(**litellm_kwargs, stream=True)
-                media_type = (
-                    "text/event-stream" if api_type == "anthropic" else "text/plain"
-                )
-                generator = create_sse_stream_generator(
-                    response_gen, api_type, model, store
-                )
+                media_type = "text/event-stream" if api_type == "anthropic" else "text/plain"
+                generator = create_sse_stream_generator(response_gen, api_type, model, store)
                 return StreamingResponse(generator, media_type=media_type)
 
             response_obj = await acompletion(**litellm_kwargs)
@@ -108,7 +103,7 @@ async def process_chat_candidates(
 
             store.append_usage(
                 UsageLogEntry(
-                    ts=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    ts=datetime.datetime.now(datetime.UTC).isoformat(),
                     model=model.usage_id or model.id,
                     input_tokens=in_tok,
                     output_tokens=out_tok,
@@ -116,9 +111,7 @@ async def process_chat_candidates(
                 )
             )
 
-            transformed_resp = transformer.transform_response(
-                resp_dict, upstream_model_id
-            )
+            transformed_resp = transformer.transform_response(resp_dict, upstream_model_id)
             return JSONResponse(content=transformed_resp)
 
         except Exception as e:  # noqa: BLE001
@@ -135,7 +128,7 @@ async def process_chat_candidates(
             )
             store.append_usage(
                 UsageLogEntry(
-                    ts=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    ts=datetime.datetime.now(datetime.UTC).isoformat(),
                     model=model.usage_id or model.id,
                     input_tokens=0,
                     output_tokens=0,

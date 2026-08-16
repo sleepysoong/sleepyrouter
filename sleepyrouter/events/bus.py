@@ -1,9 +1,9 @@
 """Observer Event Bus pattern for sleepyrouter lifecycle events."""
 
 import asyncio
-import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
+import inspect
 from typing import Any
 
 
@@ -68,6 +68,7 @@ EventHandler = Callable[[Any], None]
 class EventBus:
     def __init__(self) -> None:
         self._handlers: dict[type[ServerEvent], list[EventHandler]] = {}
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
     def subscribe(self, event_type: type[ServerEvent], handler: EventHandler) -> None:
         if event_type not in self._handlers:
@@ -79,7 +80,9 @@ class EventBus:
         for handler in handlers:
             try:
                 if inspect.iscoroutinefunction(handler):
-                    asyncio.create_task(handler(event))
+                    task = asyncio.create_task(handler(event))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
                 else:
                     handler(event)
             except (RuntimeError, ValueError, TypeError, OSError):

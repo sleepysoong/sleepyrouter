@@ -1,9 +1,9 @@
-import tempfile
 from collections.abc import Generator
 from pathlib import Path
+import tempfile
 
-import pytest
 from fastapi.testclient import TestClient
+import pytest
 
 from sleepyrouter.config import ConfigStore
 from sleepyrouter.server import create_app
@@ -52,9 +52,7 @@ def test_models_endpoint_with_config(
             port=4567,
             model_groups={"fast": ["fast-model"]},
             models={
-                "fast-model": ModelDefinition(
-                    provider="openrouter", name="openai/gpt-4o-mini"
-                )
+                "fast-model": ModelDefinition(provider="openrouter", name="openai/gpt-4o-mini")
             },
         )
     )

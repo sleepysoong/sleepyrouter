@@ -51,9 +51,7 @@ class ProviderAPIKeys(BaseModel):
     antigravity: str = ""
 
 
-def complete_group_order(
-    groups: dict[str, list[str]], preferred: list[str]
-) -> list[str]:
+def complete_group_order(groups: dict[str, list[str]], preferred: list[str]) -> list[str]:
     seen = set()
     order: list[str] = []
     for name in preferred:

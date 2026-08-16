@@ -66,11 +66,14 @@ def require_any_provider_api_key(
     ):
         if root is None:
             root = get_config_root(env)
-        raise ValueError(
+        env_file_path = get_env_path(root)
+        err_msg = (
             "API 키가 설정되지 않았어요.\n"
-            "  NVIDIA_API_KEY, OPENROUTER_API_KEY, GITHUB_COPILOT_TOKEN, OPENCODE_API_KEY, GOOGLE_API_KEY, 또는 ANTIGRAVITY_API_KEY 중 하나 이상이 필요해요.\n"
+            "  NVIDIA_API_KEY, OPENROUTER_API_KEY, GITHUB_COPILOT_TOKEN, "
+            "OPENCODE_API_KEY, GOOGLE_API_KEY, 또는 ANTIGRAVITY_API_KEY 중 하나 이상이 필요해요.\n"
             "  설정 방법:\n"
             "    1. 환경변수: export GOOGLE_API_KEY=AIza...\n"
-            f'    2. .env 파일: echo "GOOGLE_API_KEY=AIza..." > {get_env_path(root)}'
+            f'    2. .env 파일: echo "GOOGLE_API_KEY=AIza..." > {env_file_path}'
         )
+        raise ValueError(err_msg)
     return keys

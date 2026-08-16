@@ -7,6 +7,26 @@ from .groups import normalize_model_group_name, resolve_default_group
 RouteReason = str  # "model-group" | "direct-model" | "fallback-order"
 
 
+def _find_direct_match(
+    normalized: str,
+    requested_model: str,
+    groups: dict[str, list[str]],
+    known_models: dict[str, Any] | None,
+) -> list[str] | None:
+    if known_models:
+        if requested_model in known_models:
+            return [requested_model]
+        for m_id in known_models:
+            if normalize_model_group_name(m_id) == normalized:
+                return [m_id]
+
+    for g_vals in groups.values():
+        for val in g_vals:
+            if normalize_model_group_name(val) == normalized:
+                return [val]
+    return None
+
+
 def candidate_ids(
     groups: dict[str, list[str]],
     requested_model: str,
@@ -22,17 +42,9 @@ def candidate_ids(
             return g_v, "model-group"
 
     # 2. Match direct model ID
-    if known_models:
-        if requested_model in known_models:
-            return [requested_model], "direct-model"
-        for m_id in known_models:
-            if normalize_model_group_name(m_id) == normalized:
-                return [m_id], "direct-model"
-
-    for g_vals in groups.values():
-        for val in g_vals:
-            if normalize_model_group_name(val) == normalized:
-                return [val], "direct-model"
+    direct = _find_direct_match(normalized, requested_model, groups, known_models)
+    if direct is not None:
+        return direct, "direct-model"
 
     # 3. Fallback to default group
     resolved = resolve_default_group(groups, default_group, *group_order)

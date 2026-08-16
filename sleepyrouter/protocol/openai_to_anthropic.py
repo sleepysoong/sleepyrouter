@@ -11,26 +11,22 @@ def map_stop_reason(reason: Any) -> str:
     s = str(reason or "")
     if s == "length":
         return "max_tokens"
-    elif s in ("tool_calls", "function_call"):
+    if s in ("tool_calls", "function_call"):
         return "tool_use"
-    elif s == "content_filter":
+    if s == "content_filter":
         return "refusal"
-    elif s in ("pause_turn", "model_context_window_exceeded"):
+    if s in ("pause_turn", "model_context_window_exceeded"):
         return s
     return "end_turn"
 
 
-def openai_to_anthropic(
-    response: dict[str, Any], fallback_model: str
-) -> dict[str, Any]:
+def openai_to_anthropic(response: dict[str, Any], fallback_model: str) -> dict[str, Any]:
     choices = response.get("choices") or []
     choice = choices[0] if choices and isinstance(choices[0], dict) else {}
     msg_obj = choice.get("message") if isinstance(choice, dict) else {}
     message = msg_obj if isinstance(msg_obj, dict) else {}
 
-    content = (
-        message.get("content") or choice.get("text") or message.get("refusal") or ""
-    )
+    content = message.get("content") or choice.get("text") or message.get("refusal") or ""
     reasoning_text = (
         message.get("reasoning_content")
         or message.get("reasoning")
