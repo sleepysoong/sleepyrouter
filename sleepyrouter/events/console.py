@@ -39,25 +39,28 @@ def log_request_received(event: RequestReceivedEvent) -> None:
 
 
 def log_candidates_resolved(event: CandidatesResolvedEvent) -> None:
-    c_list = ", ".join(f"'{c}'" for c in event.candidates)
+    c_chain = " -> ".join(event.candidates)
     logger.info(
-        "[REQ #%d] ├── candidates (%d) [%s]: [%s]",
+        "[REQ #%d] ├── candidates (%d) [%s]: %s",
         event.request_id,
         len(event.candidates),
         event.route_reason,
-        c_list,
+        c_chain,
     )
 
 
 def log_candidate_attempt(event: CandidateAttemptEvent) -> None:
-    upstream_info = f" -> upstream '{event.upstream_id}'" if event.upstream_id else ""
+    upstream_info = (
+        f" (upstream: {event.upstream_id})"
+        if event.upstream_id and event.upstream_id != event.model_id
+        else ""
+    )
     logger.info(
-        "[REQ #%d] ├── [%d/%d] %s (provider: %s%s) -> calling...",
+        "[REQ #%d] ├── [%d/%d] %s%s -> calling...",
         event.request_id,
         event.index,
         event.total,
         event.model_id,
-        event.provider,
         upstream_info,
     )
 

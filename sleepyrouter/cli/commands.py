@@ -56,6 +56,7 @@ def run_start_command(port: int = 0, store: ConfigStore | None = None) -> None:
     print(f"  OPENCODE_API_KEY: {_format_status(active=bool(keys.zen))}")
     print(f"  GOOGLE_API_KEY: {_format_status(active=bool(keys.google))}")
     print(f"  FREEBUFF_API_KEY: {_format_status(active=bool(keys.freebuff))}")
+    print(f"  ANTIGRAVITY_API_KEY: {_format_status(active=bool(keys.antigravity))}")
 
     require_any_provider_api_key(env, store.root)
 
@@ -88,7 +89,8 @@ def run_start_command(port: int = 0, store: ConfigStore | None = None) -> None:
         app,
         host="127.0.0.1",
         port=effective_port,
-        log_level="info",
+        log_level="warning",
+        access_log=False,
         timeout_keep_alive=30,
     )
 
