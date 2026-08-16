@@ -14,6 +14,14 @@ from sleepyrouter.events import (
 )
 from sleepyrouter.types import SleepyRouterModel, UsageLogEntry
 
+ANTHROPIC_STOP_EVENT = (
+    b"event: message_delta\n"
+    b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},'
+    b'"usage":{"output_tokens":0}}\n\n'
+    b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+)
+OPENAI_DONE_EVENT = b"data: [DONE]\n\n"
+
 
 async def create_sse_stream_generator(
     response_gen: Any,
@@ -44,21 +52,25 @@ async def create_sse_stream_generator(
                         "index": 0,
                         "delta": {"type": "text_delta", "text": delta_text},
                     }
-                    yield f"event: content_block_delta\ndata: {json.dumps(payload)}\n\n".encode()
+                    dumped = json.dumps(
+                        payload,
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                    )
+                    yield f"event: content_block_delta\ndata: {dumped}\n\n".encode()
             else:
                 chunk_dict = chunk.model_dump() if hasattr(chunk, "model_dump") else dict(chunk)
-                yield f"data: {json.dumps(chunk_dict)}\n\n".encode()
+                dumped = json.dumps(
+                    chunk_dict,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                )
+                yield f"data: {dumped}\n\n".encode()
 
         if api_type == "anthropic":
-            delta_payload = {
-                "type": "message_delta",
-                "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-                "usage": {"output_tokens": 0},
-            }
-            yield f"event: message_delta\ndata: {json.dumps(delta_payload)}\n\n".encode()
-            yield b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+            yield ANTHROPIC_STOP_EVENT
         else:
-            yield b"data: [DONE]\n\n"
+            yield OPENAI_DONE_EVENT
 
         duration_sec = time.time() - stream_start
         default_event_bus.publish(

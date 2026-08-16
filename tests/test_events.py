@@ -56,7 +56,7 @@ def test_event_bus_publish_and_subscribe() -> None:
     assert received_events[0].error_message == "Test error"
 
 
-@patch("requests.post")
+@patch("httpx.Client.post")
 def test_discord_notify_on_failover(mock_post: object) -> None:
     with patch.dict("os.environ", {"DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/test"}):
         evt = FailoverEvent(
@@ -79,7 +79,7 @@ def test_discord_notify_on_failover(mock_post: object) -> None:
         assert "Rate limit 429" in payload["content"]
 
 
-@patch("requests.post")
+@patch("httpx.Client.post")
 def test_discord_notify_on_all_failed(mock_post: object) -> None:
     with patch.dict("os.environ", {"WEBHOOK_URL": "https://custom-webhook.com/alert"}):
         evt = AllCandidatesFailedEvent(
@@ -99,7 +99,7 @@ def test_discord_notify_on_all_failed(mock_post: object) -> None:
         assert "model-2" in payload["content"]
 
 
-@patch("requests.post")
+@patch("httpx.Client.post")
 def test_discord_notify_on_failure(mock_post: object) -> None:
     with patch.dict("os.environ", {"DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/test"}):
         evt = CandidateFailedEvent(

@@ -22,6 +22,8 @@ class ConfigStore:
         self.config_path = get_config_path(self.root)
         self.usage_path = get_usage_path(self.root)
         self.logger = UsageLogger(self.root)
+        self._cached_mtime: float = -1.0
+        self._cached_config: SleepyRouterConfig | None = None
 
     def ensure_root(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -30,9 +32,13 @@ class ConfigStore:
         if not self.config_path.exists():
             return SleepyRouterConfig(port=DEFAULT_PORT, model_groups={})
         try:
+            mtime = self.config_path.stat().st_mtime
+            if self._cached_config is not None and mtime == self._cached_mtime:
+                return self._cached_config
+
             data = json.loads(self.config_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            return SleepyRouterConfig(port=DEFAULT_PORT, model_groups={})
+            return self._cached_config or SleepyRouterConfig(port=DEFAULT_PORT, model_groups={})
 
         config = SleepyRouterConfig(port=DEFAULT_PORT, model_groups={})
 
@@ -65,6 +71,8 @@ class ConfigStore:
                     )
             config.models = models_map
 
+        self._cached_mtime = mtime
+        self._cached_config = config
         return config
 
     def write_config(self, config: SleepyRouterConfig) -> None:
@@ -89,6 +97,12 @@ class ConfigStore:
         tmp = self.config_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         tmp.replace(self.config_path)
+        try:
+            self._cached_mtime = self.config_path.stat().st_mtime
+            self._cached_config = config
+        except OSError:
+            self._cached_mtime = -1.0
+            self._cached_config = None
 
     def append_usage(self, entry: UsageLogEntry) -> None:
         self.logger.append_usage(entry)

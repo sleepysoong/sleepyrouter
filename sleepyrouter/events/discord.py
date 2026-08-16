@@ -1,17 +1,36 @@
 """Webhook Observer for model failure and failover alerts (Discord, Slack, generic webhooks)."""
 
 import asyncio
-import contextlib
 import os
 from typing import Any
 
-import requests
+import httpx
 
 from sleepyrouter.utils import get_config_root, read_local_env, truncate
 
 from .bus import AllCandidatesFailedEvent, CandidateFailedEvent, FailoverEvent
 
 _background_tasks: set[asyncio.Task[Any]] = set()
+
+
+class WebhookClientManager:
+    def __init__(self) -> None:
+        self._client: httpx.AsyncClient | None = None
+
+    def get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=5.0,
+                limits=httpx.Limits(max_keepalive_connections=10, max_connections=50),
+            )
+        return self._client
+
+
+_webhook_manager = WebhookClientManager()
+
+
+def get_webhook_client() -> httpx.AsyncClient:
+    return _webhook_manager.get_client()
 
 
 def get_webhook_url() -> str:
@@ -25,6 +44,14 @@ def get_webhook_url() -> str:
         return ""
 
 
+async def _async_post_webhook(url: str, payload: dict[str, Any]) -> None:
+    try:
+        client = get_webhook_client()
+        await client.post(url, json=payload)
+    except (httpx.HTTPError, OSError):
+        pass
+
+
 def _send_webhook(content: str) -> None:
     url = get_webhook_url()
     if not url:
@@ -35,22 +62,17 @@ def _send_webhook(content: str) -> None:
         "text": content,
     }
 
-    def _post() -> None:
-        with contextlib.suppress(requests.RequestException, OSError):
-            requests.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=5,
-            )
-
     try:
         loop = asyncio.get_running_loop()
-        task = loop.create_task(asyncio.to_thread(_post))
+        task = loop.create_task(_async_post_webhook(url, payload))
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
     except RuntimeError:
-        _post()
+        try:
+            with httpx.Client(timeout=3.0) as sync_client:
+                sync_client.post(url, json=payload)
+        except (httpx.HTTPError, OSError):
+            pass
 
 
 def notify_discord_on_failure(event: CandidateFailedEvent) -> None:
