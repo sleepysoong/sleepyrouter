@@ -32,7 +32,7 @@ class GroupFallbackRoutingStrategy(RoutingStrategy):
 
 
 class RoutingEngine:
-    def __init__(self, strategy: RoutingStrategy | None = None):
+    def __init__(self, strategy: RoutingStrategy | None = None) -> None:
         self.strategy = strategy or GroupFallbackRoutingStrategy()
 
     def set_strategy(self, strategy: RoutingStrategy) -> None:

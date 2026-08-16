@@ -7,7 +7,7 @@ from sleepyrouter.types import UsageLogEntry
 
 
 class UsageLogger:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path) -> None:
         self.db_path = root / "usage.db"
         self._conn: sqlite3.Connection | None = None
 

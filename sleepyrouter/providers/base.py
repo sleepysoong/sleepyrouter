@@ -49,7 +49,7 @@ class BaseProviderAdapter:
         message_protocol: MessageProtocol = "openai",
         default_reasoning_effort: str = "high",
         default_thinking_budget: int | None = None,
-    ):
+    ) -> None:
         self._name = name
         self._source = source
         self._api_key_env_var = api_key_env_var

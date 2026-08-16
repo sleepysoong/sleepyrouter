@@ -17,7 +17,7 @@ DEFAULT_PORT = 4567
 
 
 class ConfigStore:
-    def __init__(self, root: Path | None = None):
+    def __init__(self, root: Path | None = None) -> None:
         self.root = root or get_config_root()
         self.config_path = get_config_path(self.root)
         self.usage_path = get_usage_path(self.root)
