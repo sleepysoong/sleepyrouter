@@ -5,6 +5,7 @@ from sleepyrouter.providers import (
 from sleepyrouter.providers.antigravity import (
     AntigravityAPIError,
     build_antigravity_payload,
+    get_runtime_model_and_thinking_config,
     parse_antigravity_response,
 )
 from sleepyrouter.types import SleepyRouterModel
@@ -42,19 +43,55 @@ def test_freebuff_litellm_kwargs_mapping() -> None:
 
 def test_antigravity_litellm_kwargs_mapping() -> None:
     model = SleepyRouterModel(
-        id="antigravity/gemini-2.0-flash",
-        upstream_id="gemini-2.0-flash",
+        id="antigravity/gemini-3.7-flash",
+        upstream_id="gemini-3.7-flash",
         provider="antigravity",
         source="antigravity",
     )
     mapped = map_to_litellm_kwargs(model, "test-token", {"temperature": 0.5})
-    assert mapped["model"] == "openai/gemini-2.0-flash"
+    assert mapped["model"] == "openai/gemini-3.7-flash-tiered"
     assert mapped["api_key"] == "test-token"
     assert mapped["api_base"] == "https://cloudcode-pa.googleapis.com"
     assert "headers" in mapped
     assert "antigravity" in mapped["headers"]["User-Agent"]
     assert mapped["reasoning_effort"] == "high"
     assert mapped["thinking"] == {"type": "enabled", "budget_tokens": 32000}
+
+
+def test_antigravity_runtime_model_and_thinking_config() -> None:
+    rt, th = get_runtime_model_and_thinking_config("gemini-3.7-flash")
+    assert rt == "gemini-3.7-flash-tiered"
+    assert th == {"thinkingLevel": "HIGH"}
+
+    rt2, th2 = get_runtime_model_and_thinking_config("claude-opus-4-6")
+    assert rt2 == "claude-opus-4-6-thinking"
+    assert th2["thinkingBudget"] == 32000
+
+    rt3, th3 = get_runtime_model_and_thinking_config("gemini-3.6-flash")
+    assert rt3 == "gemini-3.6-flash-high"
+    assert th3["thinkingBudget"] == 32000
+
+
+def test_antigravity_build_payload_gemini_37_flash_tiered() -> None:
+    req_kwargs = {
+        "messages": [
+            {"role": "system", "content": "You are a senior developer."},
+            {"role": "user", "content": "Write quicksort in python."},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 4096,
+    }
+    payload = build_antigravity_payload("gemini-3.7-flash-tiered", req_kwargs)
+    assert payload["model"] == "gemini-3.7-flash-tiered"
+    assert payload["requestType"] == "AGENT"
+    assert payload["userAgent"] == "antigravity"
+    assert "contents" in payload["request"]
+    assert payload["request"]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "HIGH"}
+    assert payload["request"]["generationConfig"]["temperature"] == 0.2
+    assert payload["request"]["generationConfig"]["maxOutputTokens"] == 4096
+    system_parts = [p["text"] for p in payload["request"]["systemInstruction"]["parts"]]
+    assert any("You are Antigravity" in p for p in system_parts)
+    assert any("You are a senior developer." in p for p in system_parts)
 
 
 def test_antigravity_build_payload_and_parse_response() -> None:
@@ -67,11 +104,13 @@ def test_antigravity_build_payload_and_parse_response() -> None:
         "max_tokens": 1000,
     }
     payload = build_antigravity_payload("claude-opus-4-6", req_kwargs)
-    assert payload["model"] == "claude-opus-4-6"
+    assert payload["model"] == "claude-opus-4-6-thinking"
     assert "contents" in payload["request"]
     assert payload["request"]["contents"][0]["role"] == "user"
     assert payload["request"]["contents"][0]["parts"][0]["text"] == "Hello!"
-    assert payload["request"]["systemInstruction"]["parts"][0]["text"] == "You are an expert."
+    assert any(
+        "You are an expert." in p["text"] for p in payload["request"]["systemInstruction"]["parts"]
+    )
     assert payload["request"]["generationConfig"]["temperature"] == 0.3
     assert payload["request"]["generationConfig"]["maxOutputTokens"] == 1000
 
@@ -82,7 +121,10 @@ def test_antigravity_build_payload_and_parse_response() -> None:
                 {
                     "content": {
                         "role": "model",
-                        "parts": [{"text": "Hello world from Antigravity!"}],
+                        "parts": [
+                            {"text": "Thinking process...", "thought": True},
+                            {"text": "Hello world from Antigravity!"},
+                        ],
                     }
                 }
             ],

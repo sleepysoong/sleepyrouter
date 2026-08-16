@@ -54,9 +54,11 @@ def _resolve_antigravity_key(
     token_candidates: list[Path] = []
     if root is not None:
         token_candidates.append(root / "antigravity-oauth-token")
+        token_candidates.append(root / "auth.json")
     else:
         token_candidates.extend(
             [
+                Path.home() / ".senpi" / "agent" / "auth.json",
                 Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token",
                 Path.home() / ".gemini" / "antigravity" / "antigravity-oauth-token",
             ]
@@ -66,6 +68,13 @@ def _resolve_antigravity_key(
         if p.exists():
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))
+                # Check .senpi auth.json format
+                ag_block = data.get("antigravity")
+                if isinstance(ag_block, dict):
+                    access = str(ag_block.get("access") or "").strip()
+                    if access:
+                        return access
+                # Check .gemini antigravity-oauth-token format
                 tok_info = data.get("token", {})
                 access_token = str(tok_info.get("access_token") or "")
                 if access_token:

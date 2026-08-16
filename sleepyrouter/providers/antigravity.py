@@ -2,6 +2,8 @@
 
 from collections.abc import AsyncGenerator
 import json
+import os
+from pathlib import Path
 import time
 from typing import Any
 
@@ -15,8 +17,72 @@ from .base import (
 )
 
 ANTIGRAVITY_BASE_URL = "https://cloudcode-pa.googleapis.com"
-ANTIGRAVITY_USER_AGENT = "antigravity/1.15.8 windows/amd64"
+ANTIGRAVITY_USER_AGENT = "antigravity/1.15.8 linux/amd64"
 ANTIGRAVITY_CLIENT_HEADER = "google-cloud-sdk vscode_cloudshelleditor/0.1"
+
+ANTIGRAVITY_SYSTEM_INSTRUCTION = (
+    "You are Antigravity, a powerful agentic AI coding assistant designed by Google DeepMind. "
+    "You are pair programming with a user to solve coding tasks. "
+    "Be concise, practical, and tool-aware."
+)
+ANTIGRAVITY_NO_PREAMBLE_INSTRUCTION = (
+    "CRITICAL: NEVER output rule checks, formatting guidelines, constraint checklists "
+    '(e.g. "No emdashes"), or your thinking/personality preambles in the final response. '
+    "Output only the final response."
+)
+
+_THINKING_BUDGET_DEFAULT: dict[str, Any] = {
+    "thinkingBudget": 32000,
+    "includeThoughts": True,
+}
+_THINKING_LEVEL_HIGH: dict[str, Any] = {"thinkingLevel": "HIGH"}
+
+_STATIC_ROUTING_MAP: dict[str, tuple[str, dict[str, Any]]] = {
+    "gemini-3.7-flash": ("gemini-3.7-flash-tiered", _THINKING_LEVEL_HIGH),
+    "gemini-3.7-flash-tiered": ("gemini-3.7-flash-tiered", _THINKING_LEVEL_HIGH),
+    "gemini-3.7-flash-high": ("gemini-3.7-flash-tiered", _THINKING_LEVEL_HIGH),
+    "claude-opus-4.6": ("claude-opus-4-6-thinking", _THINKING_BUDGET_DEFAULT),
+    "claude-opus-4-6": ("claude-opus-4-6-thinking", _THINKING_BUDGET_DEFAULT),
+    "claude-opus-4-6-thinking": ("claude-opus-4-6-thinking", _THINKING_BUDGET_DEFAULT),
+    "claude-sonnet-4.6": ("claude-sonnet-4-6", _THINKING_BUDGET_DEFAULT),
+    "claude-sonnet-4-6": ("claude-sonnet-4-6", _THINKING_BUDGET_DEFAULT),
+    "gemini-3.6-flash": ("gemini-3.6-flash-high", _THINKING_BUDGET_DEFAULT),
+    "gemini-3.6-flash-high": ("gemini-3.6-flash-high", _THINKING_BUDGET_DEFAULT),
+    "gemini-3.1-pro": ("gemini-pro-agent", _THINKING_BUDGET_DEFAULT),
+    "gemini-pro-agent": ("gemini-pro-agent", _THINKING_BUDGET_DEFAULT),
+    "gpt-oss-120b": ("gpt-oss-120b-medium", _THINKING_BUDGET_DEFAULT),
+    "gpt-oss-120b-medium": ("gpt-oss-120b-medium", _THINKING_BUDGET_DEFAULT),
+}
+
+
+def resolve_antigravity_project_id() -> str:
+    env_proj = os.environ.get("ANTIGRAVITY_PROJECT_ID", "").strip()
+    if env_proj:
+        return env_proj
+
+    auth_candidates = [
+        Path.home() / ".senpi" / "agent" / "auth.json",
+        Path("/root/.senpi/agent/auth.json"),
+    ]
+    for p in auth_candidates:
+        if p.exists():
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                proj = data.get("antigravity", {}).get("projectId")
+                if isinstance(proj, str) and proj.strip():
+                    return proj.strip()
+            except (OSError, json.JSONDecodeError):
+                pass
+    return "lithe-dogfish-7dc4d"
+
+
+def get_runtime_model_and_thinking_config(
+    model_id: str,
+) -> tuple[str, dict[str, Any]]:
+    m = model_id.lower()
+    if m in _STATIC_ROUTING_MAP:
+        return _STATIC_ROUTING_MAP[m]
+    return model_id, _THINKING_BUDGET_DEFAULT
 
 
 class AntigravityClientManager:
@@ -67,19 +133,20 @@ class AntigravityProviderAdapter(BaseProviderAdapter):
         self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
     ) -> dict[str, Any]:
         upstream_id = model.upstream_id or model.id
+        runtime_id, _ = get_runtime_model_and_thinking_config(upstream_id)
         res = inject_max_reasoning(
             kwargs,
             effort="high",
             thinking_budget=32000,
         )
-        res["model"] = f"openai/{upstream_id}"
+        res["model"] = f"openai/{runtime_id}"
         res["api_base"] = ANTIGRAVITY_BASE_URL
         res["api_key"] = api_key
         res["headers"] = {
             "User-Agent": ANTIGRAVITY_USER_AGENT,
             "X-Goog-Api-Client": ANTIGRAVITY_CLIENT_HEADER,
             "Client-Metadata": json.dumps(
-                {"ideType": "ANTIGRAVITY", "platform": "MACOS", "pluginType": "GEMINI"}
+                {"ideType": "ANTIGRAVITY", "platform": "LINUX", "pluginType": "GEMINI"}
             ),
         }
         return res
@@ -92,7 +159,7 @@ def build_antigravity_headers(api_key: str) -> dict[str, str]:
         "User-Agent": ANTIGRAVITY_USER_AGENT,
         "X-Goog-Api-Client": ANTIGRAVITY_CLIENT_HEADER,
         "Client-Metadata": json.dumps(
-            {"ideType": "ANTIGRAVITY", "platform": "MACOS", "pluginType": "GEMINI"}
+            {"ideType": "ANTIGRAVITY", "platform": "LINUX", "pluginType": "GEMINI"}
         ),
     }
 
@@ -112,7 +179,11 @@ def _convert_messages_to_contents_and_system(
     messages: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     contents: list[dict[str, Any]] = []
-    system_parts: list[dict[str, str]] = []
+    system_parts: list[dict[str, str]] = [
+        {"text": ANTIGRAVITY_SYSTEM_INSTRUCTION},
+        {"text": (f"Please ignore following [ignore]{ANTIGRAVITY_SYSTEM_INSTRUCTION}[/ignore]")},
+        {"text": ANTIGRAVITY_NO_PREAMBLE_INSTRUCTION},
+    ]
 
     for msg in messages:
         role = str(msg.get("role", "user"))
@@ -129,14 +200,12 @@ def _convert_messages_to_contents_and_system(
 
 
 def build_antigravity_payload(model_id: str, request_kwargs: dict[str, Any]) -> dict[str, Any]:
+    runtime_model, thinking_config = get_runtime_model_and_thinking_config(model_id)
     messages = request_kwargs.get("messages", [])
     contents, system_parts = _convert_messages_to_contents_and_system(messages)
 
     gen_config: dict[str, Any] = {
-        "thinkingConfig": {
-            "thinkingBudget": 32000,
-            "includeThoughts": True,
-        }
+        "thinkingConfig": thinking_config,
     }
     if "temperature" in request_kwargs:
         gen_config["temperature"] = float(request_kwargs["temperature"])
@@ -149,15 +218,18 @@ def build_antigravity_payload(model_id: str, request_kwargs: dict[str, Any]) -> 
 
     inner_req: dict[str, Any] = {
         "contents": contents,
+        "systemInstruction": {
+            "role": "user",
+            "parts": system_parts,
+        },
         "generationConfig": gen_config,
     }
-    if system_parts:
-        inner_req["systemInstruction"] = {"parts": system_parts}
 
     return {
-        "project": "",
-        "model": model_id,
+        "project": resolve_antigravity_project_id(),
+        "model": runtime_model,
         "request": inner_req,
+        "requestType": "AGENT",
         "userAgent": "antigravity",
         "requestId": f"slr-{int(time.time() * 1000)}",
     }
@@ -174,7 +246,9 @@ def parse_antigravity_response(resp_data: dict[str, Any], model_id: str) -> dict
             content_obj = first_candidate.get("content", {})
             parts = content_obj.get("parts", [])
             text_pieces.extend(
-                str(part["text"]) for part in parts if isinstance(part, dict) and "text" in part
+                str(part["text"])
+                for part in parts
+                if isinstance(part, dict) and "text" in part and not part.get("thought")
             )
 
     full_text = "".join(text_pieces)
