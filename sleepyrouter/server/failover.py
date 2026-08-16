@@ -121,7 +121,7 @@ async def process_chat_candidates(
             )
             return JSONResponse(content=transformed_resp)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             err_msg = str(e)
             upstream_error = f"[{model_id}] {truncate(err_msg, 300)}"
             default_event_bus.publish(

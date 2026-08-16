@@ -1,9 +1,9 @@
 """Observer Event Bus pattern for sleepyrouter lifecycle events."""
 
 import asyncio
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
-import inspect
 from typing import Any
 
 
@@ -45,6 +45,7 @@ class ResponseSentEvent(ServerEvent):
 @dataclass
 class FailoverEvent(ServerEvent):
     """Fired when a candidate fails and the router moves to the next model."""
+
     request_id: int
     failed_model_id: str
     next_model_id: str
@@ -55,6 +56,7 @@ class FailoverEvent(ServerEvent):
 @dataclass
 class AllCandidatesFailedEvent(ServerEvent):
     """Fired when every candidate has been exhausted with no success."""
+
     request_id: int
     candidates_tried: list[str]
     last_error: str

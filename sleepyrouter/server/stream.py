@@ -53,7 +53,7 @@ async def create_sse_stream_generator(
                 success=True,
             )
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         default_event_bus.publish(
             CandidateFailedEvent(
                 ts=time.time(),

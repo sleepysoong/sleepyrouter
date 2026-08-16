@@ -106,6 +106,7 @@ def create_app(
             requested_model,
             config.default_model_group,
             config.group_order,
+            known_models=by_id,
         )
 
         return await process_chat_candidates(

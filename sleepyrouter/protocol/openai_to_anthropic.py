@@ -69,6 +69,9 @@ def openai_to_anthropic(
             }
         )
 
+    if not blocks:
+        blocks.append({"type": "text", "text": ""})
+
     usage = response.get("usage") or {}
     input_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
     output_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0

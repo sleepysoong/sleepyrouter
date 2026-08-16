@@ -44,3 +44,10 @@ def test_candidate_ids() -> None:
     ids2, reason2 = candidate_ids(groups, "unknown", "balanced")
     assert ids2 == ["bal-1"]
     assert reason2 == "fallback-order"
+
+
+def test_candidate_ids_direct_model() -> None:
+    groups = {"fast": ["fast-1", "fast-2"], "balanced": ["bal-1"]}
+    ids, reason = candidate_ids(groups, "fast-2", "balanced")
+    assert ids == ["fast-2"]
+    assert reason == "direct-model"

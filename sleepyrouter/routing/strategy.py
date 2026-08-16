@@ -1,6 +1,6 @@
 """Pluggable RoutingStrategy pattern."""
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from .resolver import RouteReason, candidate_ids
 
@@ -12,6 +12,7 @@ class RoutingStrategy(Protocol):
         requested_model: str,
         default_group: str | None = None,
         group_order: list[str] | None = None,
+        known_models: dict[str, Any] | None = None,
     ) -> tuple[list[str], RouteReason]: ...
 
 
@@ -22,9 +23,12 @@ class GroupFallbackRoutingStrategy(RoutingStrategy):
         requested_model: str,
         default_group: str | None = None,
         group_order: list[str] | None = None,
+        known_models: dict[str, Any] | None = None,
     ) -> tuple[list[str], RouteReason]:
         order = group_order or []
-        return candidate_ids(groups, requested_model, default_group, *order)
+        return candidate_ids(
+            groups, requested_model, default_group, *order, known_models=known_models
+        )
 
 
 class RoutingEngine:
@@ -40,9 +44,14 @@ class RoutingEngine:
         requested_model: str,
         default_group: str | None = None,
         group_order: list[str] | None = None,
+        known_models: dict[str, Any] | None = None,
     ) -> tuple[list[str], RouteReason]:
         return self.strategy.resolve_candidates(
-            groups, requested_model, default_group, group_order
+            groups,
+            requested_model,
+            default_group,
+            group_order,
+            known_models=known_models,
         )
 
 
