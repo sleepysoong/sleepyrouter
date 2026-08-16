@@ -21,6 +21,6 @@ class ZenProviderAdapter(BaseProviderAdapter):
         upstream_id = model.upstream_id or model.id
         res = inject_max_reasoning(kwargs, effort="high")
         res["model"] = f"openai/{upstream_id}"
-        res["api_base"] = "https://api.zen.dev/v1"
+        res["api_base"] = "https://opencode.ai/zen/v1"
         res["api_key"] = api_key
         return res
