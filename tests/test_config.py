@@ -10,7 +10,7 @@ from sleepyrouter.config import (
     resolve_provider_api_keys,
 )
 from sleepyrouter.types import SleepyRouterConfig, UsageLogEntry
-from sleepyrouter.utils import parse_dotenv
+from sleepyrouter.utils import parse_dotenv, safe_log_value, strip_html_tags, truncate
 
 
 def test_parse_dotenv() -> None:
@@ -26,6 +26,21 @@ def test_parse_dotenv() -> None:
         "NVIDIA_API_KEY": "nvapi-test",
         "PLAIN_KEY": "plain_val",
     }
+
+
+def test_strip_html_tags() -> None:
+    html = "<html lang=en><p>The requested URL <code>/test</code> was not found.</p></html>"
+    cleaned = strip_html_tags(html)
+    assert "<" not in cleaned
+    assert ">" not in cleaned
+    assert cleaned == "The requested URL /test was not found."
+
+    trunc = truncate(html, 25)
+    assert len(trunc) <= 25
+    assert "<" not in trunc
+
+    safe = safe_log_value(html)
+    assert "<" not in safe
 
 
 def test_config_store_read_write() -> None:

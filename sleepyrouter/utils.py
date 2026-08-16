@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import re
 
 CONFIG_FILE_NAME = "config.json"
 USAGE_FILE_NAME = "usage.jsonl"
@@ -58,10 +59,21 @@ def read_local_env(root: Path) -> dict[str, str]:
         return {}
 
 
+def strip_html_tags(text: str) -> str:
+    """Strip HTML tags and normalize whitespace if text contains HTML markup."""
+    if "<" in text and ">" in text:
+        clean = re.sub(r"<[^>]+>", " ", text)
+        clean = re.sub(r"\s+", " ", clean).strip()
+        return clean or text
+    return text
+
+
 def truncate(s: str, max_len: int) -> str:
-    return s[:max_len] if len(s) > max_len else s
+    cleaned = strip_html_tags(s)
+    return cleaned[:max_len] if len(cleaned) > max_len else cleaned
 
 
 def safe_log_value(value: str) -> str:
-    sanitized = "".join(ch if ord(ch) >= 0x20 and ord(ch) != 0x7F else "?" for ch in value)
+    cleaned = strip_html_tags(value)
+    sanitized = "".join(ch if ord(ch) >= 0x20 and ord(ch) != 0x7F else "?" for ch in cleaned)
     return (sanitized[:197] + "...") if len(sanitized) > 200 else sanitized
