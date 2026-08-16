@@ -54,9 +54,9 @@ def _send_webhook(content: str) -> None:
 def notify_discord_on_failure(event: CandidateFailedEvent) -> None:
     err_text = truncate(event.error_message, 1700)
     content = (
-        f"⚠️ **[SleepyRouter] Model Call Failed**\n"
-        f"• **Model**: `{event.model_id}` ({event.provider})\n"
-        f"• **Error**: ```\n{err_text}\n```"
+        f"⚠️ **[SleepyRouter] 모델 호출 실패**\n"
+        f"• **대상 모델**: `{event.model_id}` (제공자: `{event.provider}`)\n"
+        f"• **오류 내용**: ```\n{err_text}\n```"
     )
     _send_webhook(content)
 
@@ -64,10 +64,10 @@ def notify_discord_on_failure(event: CandidateFailedEvent) -> None:
 def notify_discord_on_failover(event: FailoverEvent) -> None:
     err_text = truncate(event.error_message, 1600)
     content = (
-        f"🔄 **[SleepyRouter] Failover to Next Model**\n"
-        f"• **Failed**: `{event.failed_model_id}` ({event.provider})\n"
-        f"• **Next Candidate**: `{event.next_model_id}`\n"
-        f"• **Failure Detail**: ```\n{err_text}\n```"
+        f"🔄 **[SleepyRouter] 모델 호출 실패 → 다음 후보 모델 전환**\n"
+        f"• **실패 모델**: `{event.failed_model_id}` (제공자: `{event.provider}`)\n"
+        f"• **다음 시도 모델**: `{event.next_model_id}`\n"
+        f"• **실패 상세 내용**: ```\n{err_text}\n```"
     )
     _send_webhook(content)
 
@@ -76,12 +76,12 @@ def notify_discord_on_all_failed(event: AllCandidatesFailedEvent) -> None:
     tried = (
         ", ".join(f"`{m}`" for m in event.candidates_tried)
         if event.candidates_tried
-        else "(none)"
+        else "(없음)"
     )
     err_text = truncate(event.last_error, 1600)
     content = (
-        f"🚨 **[SleepyRouter] All Candidates Failed**\n"
-        f"• **Tried Models**: {tried}\n"
-        f"• **Last Error**: ```\n{err_text}\n```"
+        f"🚨 **[SleepyRouter] 모든 후보 모델 호출 실패**\n"
+        f"• **시도한 모델 목록**: {tried}\n"
+        f"• **최종 오류 내용**: ```\n{err_text}\n```"
     )
     _send_webhook(content)

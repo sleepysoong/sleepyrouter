@@ -75,7 +75,7 @@ def test_discord_notify_on_failover(mock_post: object) -> None:
         args, kwargs = mock_post.call_args  # type: ignore[attr-defined]
         assert args[0] == "https://discord.com/api/webhooks/test"
         payload = kwargs["json"]
-        assert "Failover to Next Model" in payload["content"]
+        assert "다음 후보 모델 전환" in payload["content"]
         assert "openrouter/free-1" in payload["content"]
         assert "nvidia/free-2" in payload["content"]
         assert "Rate limit 429" in payload["content"]
@@ -96,7 +96,7 @@ def test_discord_notify_on_all_failed(mock_post: object) -> None:
         args, kwargs = mock_post.call_args  # type: ignore[attr-defined]
         assert args[0] == "https://custom-webhook.com/alert"
         payload = kwargs["json"]
-        assert "All Candidates Failed" in payload["content"]
+        assert "모든 후보 모델 호출 실패" in payload["content"]
         assert "model-1" in payload["content"]
         assert "model-2" in payload["content"]
 
@@ -117,7 +117,7 @@ def test_discord_notify_on_failure(mock_post: object) -> None:
 
         assert mock_post.called  # type: ignore[attr-defined]
         payload = mock_post.call_args[1]["json"]  # type: ignore[attr-defined]
-        assert "Model Call Failed" in payload["content"]
+        assert "모델 호출 실패" in payload["content"]
         assert "google/gemini-2.0" in payload["content"]
         assert "ResourceExhausted" in payload["content"]
 
