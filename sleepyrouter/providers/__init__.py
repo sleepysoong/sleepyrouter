@@ -9,6 +9,7 @@ from .base import (
     map_to_litellm_kwargs,
 )
 from .copilot import CopilotProviderAdapter, exchange_copilot_token
+from .freebuff import FreebuffProviderAdapter
 from .google import GoogleProviderAdapter
 from .nvidia import NVIDIAProviderAdapter
 from .openrouter import OpenRouterProviderAdapter
@@ -21,11 +22,13 @@ default_provider_registry.register(CopilotProviderAdapter())
 default_provider_registry.register(GoogleProviderAdapter())
 default_provider_registry.register(ZenProviderAdapter())
 default_provider_registry.register(AntigravityProviderAdapter())
+default_provider_registry.register(FreebuffProviderAdapter())
 
 __all__ = [
     "AntigravityProviderAdapter",
     "BaseProviderAdapter",
     "CopilotProviderAdapter",
+    "FreebuffProviderAdapter",
     "GoogleProviderAdapter",
     "MessageProtocol",
     "NVIDIAProviderAdapter",

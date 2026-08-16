@@ -55,6 +55,7 @@ def run_start_command(port: int = 0, store: ConfigStore | None = None) -> None:
     print(f"  OPENROUTER_API_KEY: {_format_status(active=bool(keys.open_router))}")
     print(f"  OPENCODE_API_KEY: {_format_status(active=bool(keys.zen))}")
     print(f"  GOOGLE_API_KEY: {_format_status(active=bool(keys.google))}")
+    print(f"  FREEBUFF_API_KEY: {_format_status(active=bool(keys.freebuff))}")
 
     require_any_provider_api_key(env, store.root)
 

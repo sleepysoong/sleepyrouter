@@ -5,6 +5,7 @@ import pytest
 
 from sleepyrouter.config import (
     ConfigStore,
+    api_key_for,
     require_any_provider_api_key,
     resolve_provider_api_keys,
 )
@@ -75,7 +76,10 @@ def test_resolve_provider_api_keys() -> None:
         root = Path(tmp)
         env_file = root / ".env"
         env_file.write_text(
-            "OPENROUTER_API_KEY=sk-local\nGOOGLE_API_KEY=google-local\nANTIGRAVITY_API_KEY=anti-local\n"
+            "OPENROUTER_API_KEY=sk-local\n"
+            "GOOGLE_API_KEY=google-local\n"
+            "ANTIGRAVITY_API_KEY=anti-local\n"
+            "FREEBUFF_API_KEY=freebuff-local\n"
         )
 
         env = {"NVIDIA_API_KEY": "nv-env"}
@@ -84,6 +88,8 @@ def test_resolve_provider_api_keys() -> None:
         assert keys.nvidia == "nv-env"
         assert keys.google == "google-local"
         assert keys.antigravity == "anti-local"
+        assert keys.freebuff == "freebuff-local"
+        assert api_key_for(keys, "freebuff") == "freebuff-local"
 
 
 def test_require_any_provider_api_key_raises() -> None:

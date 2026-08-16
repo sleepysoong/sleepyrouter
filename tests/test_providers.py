@@ -12,6 +12,29 @@ def test_provider_registry_contains_antigravity() -> None:
     assert adapter.api_key_env_var == "ANTIGRAVITY_API_KEY"
 
 
+def test_provider_registry_contains_freebuff() -> None:
+    adapter = default_provider_registry.get("freebuff")
+    assert adapter is not None
+    assert adapter.name == "Freebuff"
+    assert adapter.api_key_env_var == "FREEBUFF_API_KEY"
+
+
+def test_freebuff_litellm_kwargs_mapping() -> None:
+    model = SleepyRouterModel(
+        id="freebuff/deepseek-v4-pro",
+        upstream_id="deepseek-v4-pro",
+        provider="freebuff",
+        source="freebuff",
+    )
+    mapped = map_to_litellm_kwargs(model, "test-freebuff-token", {"temperature": 0.7})
+    assert mapped["model"] == "openai/deepseek-v4-pro"
+    assert mapped["api_key"] == "test-freebuff-token"
+    assert mapped["api_base"] == "https://codebuff.com/api/v1"
+    assert "headers" in mapped
+    assert mapped["headers"]["User-Agent"] == "freebuff/1.0.0"
+    assert mapped["reasoning_effort"] == "high"
+
+
 def test_antigravity_litellm_kwargs_mapping() -> None:
     model = SleepyRouterModel(
         id="antigravity/gemini-2.0-flash",

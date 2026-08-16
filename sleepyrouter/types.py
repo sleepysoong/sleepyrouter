@@ -2,7 +2,9 @@
 
 from pydantic import BaseModel, Field
 
-ModelSource = str  # "openrouter", "nvidia", "copilot", "zen", "google", or any custom source string
+ModelSource = (
+    str  # "openrouter", "nvidia", "copilot", "zen", "google", "antigravity", "freebuff", or custom
+)
 
 
 class SleepyRouterModel(BaseModel):
@@ -49,6 +51,7 @@ class ProviderAPIKeys(BaseModel):
     zen: str = ""
     google: str = ""
     antigravity: str = ""
+    freebuff: str = ""
 
 
 def complete_group_order(groups: dict[str, list[str]], preferred: list[str]) -> list[str]:
