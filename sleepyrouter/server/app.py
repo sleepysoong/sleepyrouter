@@ -24,7 +24,7 @@ from .failover import process_chat_candidates
 litellm.drop_params = True
 litellm.suppress_debug_info = True
 
-VERSION = "0.0.4"
+VERSION = "1.0.0"
 _request_counter = itertools.count(1)
 
 

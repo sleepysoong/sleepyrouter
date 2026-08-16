@@ -1,5 +1,7 @@
 from .api_keys import (
     api_key_for,
+    force_refresh_antigravity_token,
+    refresh_antigravity_token,
     require_any_provider_api_key,
     resolve_provider_api_keys,
 )
@@ -11,6 +13,8 @@ __all__ = [
     "ConfigStore",
     "UsageLogger",
     "api_key_for",
+    "force_refresh_antigravity_token",
+    "refresh_antigravity_token",
     "require_any_provider_api_key",
     "resolve_provider_api_keys",
 ]

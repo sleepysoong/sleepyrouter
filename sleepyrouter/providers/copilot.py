@@ -25,7 +25,7 @@ class CopilotTokenCache:
             COPILOT_TOKEN_ENDPOINT,
             headers={
                 "Authorization": f"token {api_key}",
-                "User-Agent": "sleepyrouter/0.0.4",
+                "User-Agent": "sleepyrouter/1.0.0",
             },
             timeout=10,
         )

@@ -1,11 +1,13 @@
 from pathlib import Path
 import tempfile
+from unittest.mock import patch
 
 import pytest
 
 from sleepyrouter.config import (
     ConfigStore,
     api_key_for,
+    force_refresh_antigravity_token,
     require_any_provider_api_key,
     resolve_provider_api_keys,
 )
@@ -105,6 +107,24 @@ def test_resolve_provider_api_keys() -> None:
         assert keys.antigravity == "anti-local"
         assert keys.freebuff == "freebuff-local"
         assert api_key_for(keys, "freebuff") == "freebuff-local"
+
+
+def test_resolve_antigravity_auto_refresh_auth_json() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        auth_json_path = root / "auth.json"
+        auth_json_path.write_text(
+            '{"antigravity": {"refresh": "mock-refresh-token", "access": "", "expires": 0}}'
+        )
+
+        with patch(
+            "sleepyrouter.config.api_keys.refresh_antigravity_token",
+            return_value=("new-refreshed-access-token", 3600),
+        ):
+            keys = resolve_provider_api_keys({}, root)
+            assert keys.antigravity == "new-refreshed-access-token"
+            refreshed = force_refresh_antigravity_token(root)
+            assert refreshed == "new-refreshed-access-token"
 
 
 def test_require_any_provider_api_key_raises() -> None:

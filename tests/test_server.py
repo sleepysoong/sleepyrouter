@@ -30,6 +30,7 @@ def test_health_endpoint(store_and_client: tuple[ConfigStore, TestClient]) -> No
     data = res.json()
     assert data["ok"] is True
     assert data["service"] == "sleepyrouter"
+    assert data["version"] == "1.0.0"
 
 
 def test_models_endpoint_empty(

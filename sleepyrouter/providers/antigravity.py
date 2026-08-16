@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from sleepyrouter.config.api_keys import force_refresh_antigravity_token
 from sleepyrouter.types import SleepyRouterModel
 
 from .base import (
@@ -292,6 +293,12 @@ async def call_antigravity_completion(
     client = get_antigravity_client(timeout)
 
     resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
+    if resp.status_code == 401:
+        fresh_token = force_refresh_antigravity_token()
+        if fresh_token:
+            headers = build_antigravity_headers(fresh_token)
+            resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
+
     if resp.status_code != 200:
         try:
             err_json = resp.json()
@@ -319,7 +326,19 @@ async def call_antigravity_stream(
     url = f"{ANTIGRAVITY_BASE_URL}/v1internal:streamGenerateContent?alt=sse"
     client = get_antigravity_client(timeout)
 
-    async with client.stream("POST", url, headers=headers, json=payload, timeout=timeout) as resp:
+    resp_stream = client.stream("POST", url, headers=headers, json=payload, timeout=timeout)
+    resp = await resp_stream.__aenter__()
+
+    if resp.status_code == 401:
+        await resp_stream.__aexit__(None, None, None)
+        fresh_token = force_refresh_antigravity_token()
+        if fresh_token:
+            headers = build_antigravity_headers(fresh_token)
+            headers["Accept"] = "text/event-stream"
+            resp_stream = client.stream("POST", url, headers=headers, json=payload, timeout=timeout)
+            resp = await resp_stream.__aenter__()
+
+    try:
         if resp.status_code != 200:
             body_bytes = await resp.aread()
             body_str = body_bytes.decode("utf-8", errors="replace")
@@ -360,3 +379,5 @@ async def call_antigravity_stream(
                 }
             except (json.JSONDecodeError, KeyError):
                 continue
+    finally:
+        await resp_stream.__aexit__(None, None, None)
