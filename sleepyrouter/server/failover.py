@@ -22,6 +22,10 @@ from sleepyrouter.protocol import (
     default_protocol_transformer_registry,
 )
 from sleepyrouter.providers import map_to_litellm_kwargs
+from sleepyrouter.providers.antigravity import (
+    call_antigravity_completion,
+    call_antigravity_stream,
+)
 from sleepyrouter.types import ProviderAPIKeys, SleepyRouterModel, UsageLogEntry
 from sleepyrouter.utils import truncate
 
@@ -58,6 +62,45 @@ async def _execute_candidate_attempt(
         )
     )
 
+    # Direct Antigravity gateway routing when no custom api_base is configured
+    if model.source == "antigravity" and not model.api_base:
+        if is_stream:
+            antigravity_gen = call_antigravity_stream(
+                upstream_model_id,
+                api_key,
+                request_kwargs,
+                timeout=default_timeout,
+            )
+            media_type = "text/event-stream" if api_type == "anthropic" else "text/plain"
+            generator = create_sse_stream_generator(
+                antigravity_gen,
+                api_type,
+                model,
+                store,
+                request_id=request_id,
+                index=index,
+                total=total,
+            )
+            return StreamingResponse(generator, media_type=media_type)
+
+        resp_dict = await call_antigravity_completion(
+            upstream_model_id,
+            api_key,
+            request_kwargs,
+            timeout=default_timeout,
+        )
+        return _record_success_and_respond(
+            resp_dict,
+            transformer,
+            upstream_model_id,
+            model,
+            store,
+            request_id=request_id,
+            index=index,
+            total=total,
+            duration_sec=time.time() - attempt_start,
+        )
+
     litellm_kwargs = map_to_litellm_kwargs(model, api_key, request_kwargs)
     litellm_kwargs["num_retries"] = 0
     litellm_kwargs.pop("stream", None)
@@ -79,11 +122,35 @@ async def _execute_candidate_attempt(
         return StreamingResponse(generator, media_type=media_type)
 
     response_obj = await acompletion(**litellm_kwargs)
-    duration_sec = time.time() - attempt_start
     resp_dict = (
         response_obj.model_dump() if hasattr(response_obj, "model_dump") else dict(response_obj)
     )
 
+    return _record_success_and_respond(
+        resp_dict,
+        transformer,
+        upstream_model_id,
+        model,
+        store,
+        request_id=request_id,
+        index=index,
+        total=total,
+        duration_sec=time.time() - attempt_start,
+    )
+
+
+def _record_success_and_respond(
+    resp_dict: dict[str, Any],
+    transformer: Any,
+    upstream_model_id: str,
+    model: SleepyRouterModel,
+    store: ConfigStore,
+    *,
+    request_id: int,
+    index: int,
+    total: int,
+    duration_sec: float,
+) -> Response:
     usage_data = resp_dict.get("usage") or {}
     in_tok = usage_data.get("prompt_tokens") or 0
     out_tok = usage_data.get("completion_tokens") or 0

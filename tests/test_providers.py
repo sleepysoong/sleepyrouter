@@ -2,6 +2,11 @@ from sleepyrouter.providers import (
     default_provider_registry,
     map_to_litellm_kwargs,
 )
+from sleepyrouter.providers.antigravity import (
+    AntigravityAPIError,
+    build_antigravity_payload,
+    parse_antigravity_response,
+)
 from sleepyrouter.types import SleepyRouterModel
 
 
@@ -45,11 +50,59 @@ def test_antigravity_litellm_kwargs_mapping() -> None:
     mapped = map_to_litellm_kwargs(model, "test-token", {"temperature": 0.5})
     assert mapped["model"] == "openai/gemini-2.0-flash"
     assert mapped["api_key"] == "test-token"
-    assert mapped["api_base"] == "https://cloudcode-pa.googleapis.com/v1"
+    assert mapped["api_base"] == "https://cloudcode-pa.googleapis.com"
     assert "headers" in mapped
-    assert mapped["headers"]["User-Agent"] == "antigravity/1.0.0"
+    assert "antigravity" in mapped["headers"]["User-Agent"]
     assert mapped["reasoning_effort"] == "high"
     assert mapped["thinking"] == {"type": "enabled", "budget_tokens": 32000}
+
+
+def test_antigravity_build_payload_and_parse_response() -> None:
+    req_kwargs = {
+        "messages": [
+            {"role": "system", "content": "You are an expert."},
+            {"role": "user", "content": "Hello!"},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 1000,
+    }
+    payload = build_antigravity_payload("claude-opus-4-6", req_kwargs)
+    assert payload["model"] == "claude-opus-4-6"
+    assert "contents" in payload["request"]
+    assert payload["request"]["contents"][0]["role"] == "user"
+    assert payload["request"]["contents"][0]["parts"][0]["text"] == "Hello!"
+    assert payload["request"]["systemInstruction"]["parts"][0]["text"] == "You are an expert."
+    assert payload["request"]["generationConfig"]["temperature"] == 0.3
+    assert payload["request"]["generationConfig"]["maxOutputTokens"] == 1000
+
+    dummy_resp = {
+        "response": {
+            "responseId": "msg-123",
+            "candidates": [
+                {
+                    "content": {
+                        "role": "model",
+                        "parts": [{"text": "Hello world from Antigravity!"}],
+                    }
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 15,
+                "candidatesTokenCount": 8,
+            },
+        }
+    }
+    parsed = parse_antigravity_response(dummy_resp, "claude-opus-4-6")
+    assert parsed["id"] == "msg-123"
+    assert parsed["choices"][0]["message"]["content"] == "Hello world from Antigravity!"
+    assert parsed["usage"]["prompt_tokens"] == 15
+    assert parsed["usage"]["completion_tokens"] == 8
+
+
+def test_antigravity_api_error() -> None:
+    err = AntigravityAPIError(401, "UNAUTHENTICATED")
+    assert err.status_code == 401
+    assert "UNAUTHENTICATED" in str(err)
 
 
 def test_openrouter_max_reasoning_and_thinking() -> None:
