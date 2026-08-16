@@ -1,7 +1,8 @@
+from collections.abc import AsyncGenerator
 from pathlib import Path
 import tempfile
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -102,5 +103,57 @@ def test_candidate_failover_success_on_second() -> None:
             data = res.json()
             assert data["choices"][0]["message"]["content"] == "Success response!"
             assert attempted_models == ["openrouter/m1", "openrouter/m2"]
+
+        store.close()
+
+
+def test_candidate_stream_failover_success_on_second() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = ConfigStore(root)
+        store.ensure_root()
+
+        store.write_config(
+            SleepyRouterConfig(
+                port=4567,
+                model_groups={"high": ["model-1", "model-2"]},
+                default_model_group="high",
+                models={
+                    "model-1": ModelDefinition(provider="openrouter", name="m1"),
+                    "model-2": ModelDefinition(provider="openrouter", name="m2"),
+                },
+            )
+        )
+
+        app = create_app(store=store, env={"OPENROUTER_API_KEY": "sk-test"})
+        client = TestClient(app)
+
+        async def mock_stream_acompletion(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+            model_param = str(kwargs.get("model", ""))
+            if "m1" in model_param:
+                raise RuntimeError("Rate limit exceeded 429 on stream start")
+            chunk = MagicMock()
+            chunk.choices = [MagicMock()]
+            chunk.choices[0].delta = MagicMock(content="Stream chunk from m2")
+            chunk.model_dump.return_value = {
+                "choices": [{"delta": {"content": "Stream chunk from m2"}}]
+            }
+            chunk.usage = None
+            yield chunk
+
+        with patch(
+            "sleepyrouter.server.failover.acompletion",
+            side_effect=mock_stream_acompletion,
+        ):
+            res = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "high",
+                    "stream": True,
+                    "messages": [{"role": "user", "content": "hi"}],
+                },
+            )
+            assert res.status_code == 200
+            assert "Stream chunk from m2" in res.text
 
         store.close()

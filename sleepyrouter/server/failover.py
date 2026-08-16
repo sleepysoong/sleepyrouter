@@ -1,5 +1,7 @@
 """Candidate failover and retry processing via LiteLLM."""
 
+from collections.abc import AsyncGenerator
+import contextlib
 import datetime
 import os
 import time
@@ -30,6 +32,41 @@ from sleepyrouter.types import ProviderAPIKeys, SleepyRouterModel, UsageLogEntry
 from sleepyrouter.utils import truncate
 
 from .stream import create_sse_stream_generator
+
+
+async def _chain_first_chunk(first_chunk: Any, gen: Any) -> AsyncGenerator[Any, None]:
+    if first_chunk is not None:
+        yield first_chunk
+    async for item in gen:
+        yield item
+
+
+async def _start_streaming_response(
+    raw_gen: Any,
+    api_type: str,
+    model: SleepyRouterModel,
+    store: ConfigStore,
+    *,
+    request_id: int,
+    index: int,
+    total: int,
+) -> StreamingResponse:
+    first_chunk = None
+    with contextlib.suppress(StopAsyncIteration):
+        first_chunk = await anext(raw_gen)
+
+    chained = _chain_first_chunk(first_chunk, raw_gen)
+    media_type = "text/event-stream" if api_type == "anthropic" else "text/plain"
+    generator = create_sse_stream_generator(
+        chained,
+        api_type,
+        model,
+        store,
+        request_id=request_id,
+        index=index,
+        total=total,
+    )
+    return StreamingResponse(generator, media_type=media_type)
 
 
 async def _execute_candidate_attempt(
@@ -71,8 +108,7 @@ async def _execute_candidate_attempt(
                 request_kwargs,
                 timeout=default_timeout,
             )
-            media_type = "text/event-stream" if api_type == "anthropic" else "text/plain"
-            generator = create_sse_stream_generator(
+            return await _start_streaming_response(
                 antigravity_gen,
                 api_type,
                 model,
@@ -81,7 +117,6 @@ async def _execute_candidate_attempt(
                 index=index,
                 total=total,
             )
-            return StreamingResponse(generator, media_type=media_type)
 
         resp_dict = await call_antigravity_completion(
             upstream_model_id,
@@ -109,8 +144,7 @@ async def _execute_candidate_attempt(
 
     if is_stream:
         response_gen = await acompletion(**litellm_kwargs, stream=True)
-        media_type = "text/event-stream" if api_type == "anthropic" else "text/plain"
-        generator = create_sse_stream_generator(
+        return await _start_streaming_response(
             response_gen,
             api_type,
             model,
@@ -119,7 +153,6 @@ async def _execute_candidate_attempt(
             index=index,
             total=total,
         )
-        return StreamingResponse(generator, media_type=media_type)
 
     response_obj = await acompletion(**litellm_kwargs)
     resp_dict = (
