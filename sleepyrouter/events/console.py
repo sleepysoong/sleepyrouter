@@ -1,4 +1,4 @@
-"""Console logging observer for rich request and failover lifecycle output."""
+"""Console logging observer for tree-structured lifecycle output without emojis."""
 
 import logging
 import sys
@@ -29,7 +29,7 @@ if not logger.handlers:
 def log_request_received(event: RequestReceivedEvent) -> None:
     stream_str = " (stream=True)" if event.is_stream else ""
     logger.info(
-        "[REQ #%d] 📥 %s %s | model='%s'%s",
+        "[REQ #%d] %s %s | model='%s'%s",
         event.request_id,
         event.method,
         event.path,
@@ -41,7 +41,7 @@ def log_request_received(event: RequestReceivedEvent) -> None:
 def log_candidates_resolved(event: CandidatesResolvedEvent) -> None:
     c_list = ", ".join(f"'{c}'" for c in event.candidates)
     logger.info(
-        "[REQ #%d] 🎯 Resolved %d candidate(s) [%s]: [%s]",
+        "[REQ #%d] ├── candidates (%d) [%s]: [%s]",
         event.request_id,
         len(event.candidates),
         event.route_reason,
@@ -52,7 +52,7 @@ def log_candidates_resolved(event: CandidatesResolvedEvent) -> None:
 def log_candidate_attempt(event: CandidateAttemptEvent) -> None:
     upstream_info = f" -> upstream '{event.upstream_id}'" if event.upstream_id else ""
     logger.info(
-        "[REQ #%d] ⏳ [%d/%d] Calling '%s' (provider: %s%s)...",
+        "[REQ #%d] ├── [%d/%d] %s (provider: %s%s) -> calling...",
         event.request_id,
         event.index,
         event.total,
@@ -64,11 +64,8 @@ def log_candidate_attempt(event: CandidateAttemptEvent) -> None:
 
 def log_candidate_succeeded(event: CandidateSucceededEvent) -> None:
     logger.info(
-        "[REQ #%d] ✅ [%d/%d] '%s' succeeded in %.2fs (prompt: %d tok, completion: %d tok)",
+        "[REQ #%d] │   └── [OK] succeeded in %.2fs (in: %d tok, out: %d tok)",
         event.request_id,
-        event.index,
-        event.total,
-        event.model_id,
         event.duration_sec,
         event.input_tokens,
         event.output_tokens,
@@ -77,12 +74,8 @@ def log_candidate_succeeded(event: CandidateSucceededEvent) -> None:
 
 def log_candidate_failed(event: CandidateFailedEvent) -> None:
     logger.error(
-        "[REQ #%d] ❌ [%d/%d] '%s' (provider: %s) failed after %.2fs: %s",
+        "[REQ #%d] │   └── [FAIL] failed in %.2fs: %s",
         event.request_id,
-        event.index,
-        event.total,
-        event.model_id,
-        event.provider,
         event.duration_sec,
         event.error_message,
     )
@@ -90,11 +83,8 @@ def log_candidate_failed(event: CandidateFailedEvent) -> None:
 
 def log_failover(event: FailoverEvent) -> None:
     logger.warning(
-        "[REQ #%d] 🔄 [%d/%d] Failover: '%s' -> next candidate '%s'",
+        "[REQ #%d] │   └── [FAILOVER] -> next candidate '%s'",
         event.request_id,
-        event.index,
-        event.total,
-        event.failed_model_id,
         event.next_model_id,
     )
 
@@ -102,7 +92,7 @@ def log_failover(event: FailoverEvent) -> None:
 def log_all_candidates_failed(event: AllCandidatesFailedEvent) -> None:
     c_list = ", ".join(f"'{c}'" for c in event.candidates_tried)
     logger.critical(
-        "[REQ #%d] 🚨 All %d candidate(s) failed in %.2fs: [%s] | Last error: %s",
+        "[REQ #%d] └── [EXHAUSTED] all %d candidates failed in %.2fs: [%s] | last error: %s",
         event.request_id,
         len(event.candidates_tried),
         event.total_duration_sec,
