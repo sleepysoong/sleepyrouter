@@ -232,7 +232,7 @@ async def process_chat_candidates(
     tried_any = False
     tried_models: list[str] = []
     total_cands = len(candidates)
-    default_timeout = float(os.environ.get("UPSTREAM_TIMEOUT", "60.0"))
+    default_timeout = float(os.environ.get("UPSTREAM_TIMEOUT", "20.0"))
 
     for idx, model_id in enumerate(candidates):
         model = by_id.get(model_id)

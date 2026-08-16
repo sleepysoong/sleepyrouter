@@ -19,6 +19,30 @@ ANTIGRAVITY_USER_AGENT = "antigravity/1.15.8 windows/amd64"
 ANTIGRAVITY_CLIENT_HEADER = "google-cloud-sdk vscode_cloudshelleditor/0.1"
 
 
+class AntigravityClientManager:
+    def __init__(self) -> None:
+        self._client: httpx.AsyncClient | None = None
+
+    def get_client(self, timeout: float = 60.0) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=timeout,
+                limits=httpx.Limits(
+                    max_keepalive_connections=50,
+                    max_connections=200,
+                    keepalive_expiry=30.0,
+                ),
+            )
+        return self._client
+
+
+_client_manager = AntigravityClientManager()
+
+
+def get_antigravity_client(timeout: float = 60.0) -> httpx.AsyncClient:
+    return _client_manager.get_client(timeout)
+
+
 class AntigravityAPIError(Exception):
     """Exception raised for errors returned by the Antigravity API."""
 
@@ -191,21 +215,21 @@ async def call_antigravity_completion(
     headers = build_antigravity_headers(api_key)
     payload = build_antigravity_payload(model_id, request_kwargs)
     url = f"{ANTIGRAVITY_BASE_URL}/v1internal:generateContent"
+    client = get_antigravity_client(timeout)
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-        if resp.status_code != 200:
-            try:
-                err_json = resp.json()
-                err_message = (
-                    err_json.get("error", {}).get("message") or err_json.get("message") or resp.text
-                )
-            except Exception:  # noqa: BLE001
-                err_message = resp.text
-            raise AntigravityAPIError(resp.status_code, err_message)
+    resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
+    if resp.status_code != 200:
+        try:
+            err_json = resp.json()
+            err_message = (
+                err_json.get("error", {}).get("message") or err_json.get("message") or resp.text
+            )
+        except Exception:  # noqa: BLE001
+            err_message = resp.text
+        raise AntigravityAPIError(resp.status_code, err_message)
 
-        resp_data = resp.json()
-        return parse_antigravity_response(resp_data, model_id)
+    resp_data = resp.json()
+    return parse_antigravity_response(resp_data, model_id)
 
 
 async def call_antigravity_stream(
@@ -219,11 +243,9 @@ async def call_antigravity_stream(
     headers["Accept"] = "text/event-stream"
     payload = build_antigravity_payload(model_id, request_kwargs)
     url = f"{ANTIGRAVITY_BASE_URL}/v1internal:streamGenerateContent?alt=sse"
+    client = get_antigravity_client(timeout)
 
-    async with (
-        httpx.AsyncClient(timeout=timeout) as client,
-        client.stream("POST", url, headers=headers, json=payload) as resp,
-    ):
+    async with client.stream("POST", url, headers=headers, json=payload, timeout=timeout) as resp:
         if resp.status_code != 200:
             body_bytes = await resp.aread()
             body_str = body_bytes.decode("utf-8", errors="replace")

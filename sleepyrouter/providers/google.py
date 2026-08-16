@@ -16,7 +16,6 @@ class GoogleProviderAdapter(BaseProviderAdapter):
             api_key_env_var="GOOGLE_API_KEY",
             message_protocol="openai",
             default_reasoning_effort="high",
-            default_thinking_budget=32000,
         )
 
     def map_litellm_kwargs(
@@ -26,8 +25,9 @@ class GoogleProviderAdapter(BaseProviderAdapter):
         res = inject_max_reasoning(
             kwargs,
             effort="high",
-            thinking_budget=32000,
         )
+        # Prevent LiteLLM conflict on Gemini models when reasoning_effort is set
+        res.pop("thinking", None)
         res["model"] = f"gemini/{upstream_id}"
         res["api_key"] = api_key
         return res
