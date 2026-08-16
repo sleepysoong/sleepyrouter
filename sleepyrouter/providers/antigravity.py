@@ -185,7 +185,72 @@ def _extract_text_content(raw_content: Any) -> str:
             if isinstance(p, dict) and p.get("type") == "text"
         ]
         return "\n".join(text_parts)
-    return str(raw_content)
+    return str(raw_content or "")
+
+
+def _convert_tool_call_part(tc: dict[str, Any]) -> dict[str, Any]:
+    fn = tc.get("function", {})
+    args = fn.get("arguments", {})
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+    return {
+        "functionCall": {
+            "name": str(fn.get("name") or ""),
+            "args": args,
+            "id": str(tc.get("id") or ""),
+        }
+    }
+
+
+def _append_tool_response(contents: list[dict[str, Any]], msg: dict[str, Any], text: str) -> None:
+    part = {
+        "functionResponse": {
+            "name": str(msg.get("name") or "tool"),
+            "response": {"output": text},
+            "id": str(msg.get("tool_call_id") or ""),
+        }
+    }
+    if (
+        contents
+        and contents[-1].get("role") == "user"
+        and any("functionResponse" in p for p in contents[-1].get("parts", []))
+    ):
+        contents[-1]["parts"].append(part)
+    else:
+        contents.append({"role": "user", "parts": [part]})
+
+
+def _convert_assistant_parts(text: str, tool_calls: Any) -> list[dict[str, Any]]:
+    parts: list[dict[str, Any]] = []
+    if text:
+        parts.append({"text": text})
+    if isinstance(tool_calls, list):
+        parts.extend(_convert_tool_call_part(tc) for tc in tool_calls if isinstance(tc, dict))
+    return parts
+
+
+def _convert_single_message(
+    msg: dict[str, Any],
+    contents: list[dict[str, Any]],
+    system_parts: list[dict[str, str]],
+) -> None:
+    role = str(msg.get("role", "user"))
+    text = _extract_text_content(msg.get("content", ""))
+
+    if role == "system":
+        if text:
+            system_parts.append({"text": text})
+    elif role in ("tool", "toolResult"):
+        _append_tool_response(contents, msg, text)
+    elif role == "assistant":
+        parts = _convert_assistant_parts(text, msg.get("tool_calls"))
+        if parts:
+            contents.append({"role": "model", "parts": parts})
+    else:
+        contents.append({"role": "user", "parts": [{"text": text}]})
 
 
 def _convert_messages_to_contents_and_system(
@@ -199,17 +264,28 @@ def _convert_messages_to_contents_and_system(
     ]
 
     for msg in messages:
-        role = str(msg.get("role", "user"))
-        text = _extract_text_content(msg.get("content", ""))
-
-        if role == "system":
-            system_parts.append({"text": text})
-        elif role == "assistant":
-            contents.append({"role": "model", "parts": [{"text": text}]})
-        else:
-            contents.append({"role": "user", "parts": [{"text": text}]})
+        _convert_single_message(msg, contents, system_parts)
 
     return contents, system_parts
+
+
+def _convert_tools_to_gemini_format(tools: list[Any]) -> list[dict[str, Any]]:
+    declarations: list[dict[str, Any]] = []
+    for t in tools:
+        if not isinstance(t, dict):
+            continue
+        fn = t.get("function")
+        if isinstance(fn, dict) and fn.get("name"):
+            decl: dict[str, Any] = {
+                "name": fn["name"],
+                "description": fn.get("description", ""),
+            }
+            if "parameters" in fn:
+                decl["parameters"] = fn["parameters"]
+            declarations.append(decl)
+    if declarations:
+        return [{"functionDeclarations": declarations}]
+    return []
 
 
 def build_antigravity_payload(model_id: str, request_kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -244,6 +320,12 @@ def build_antigravity_payload(model_id: str, request_kwargs: dict[str, Any]) -> 
         "generationConfig": gen_config,
     }
 
+    tools = request_kwargs.get("tools", [])
+    if isinstance(tools, list) and tools:
+        gemini_tools = _convert_tools_to_gemini_format(tools)
+        if gemini_tools:
+            inner_req["tools"] = gemini_tools
+
     return {
         "project": resolve_antigravity_project_id(),
         "model": runtime_model,
@@ -258,22 +340,48 @@ def parse_antigravity_response(resp_data: dict[str, Any], model_id: str) -> dict
     response_obj = resp_data.get("response", {})
     candidates = response_obj.get("candidates", [])
     text_pieces: list[str] = []
+    reasoning_pieces: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
 
     if candidates and isinstance(candidates, list):
         first_candidate = candidates[0]
         if isinstance(first_candidate, dict):
             content_obj = first_candidate.get("content", {})
             parts = content_obj.get("parts", [])
-            text_pieces.extend(
-                str(part["text"])
-                for part in parts
-                if isinstance(part, dict) and "text" in part and not part.get("thought")
-            )
+            for part in parts:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("thought"):
+                    reasoning_pieces.append(str(part.get("text") or ""))
+                elif "text" in part:
+                    text_pieces.append(str(part["text"]))
+                elif "functionCall" in part:
+                    fc = part["functionCall"]
+                    tool_calls.append(
+                        {
+                            "id": str(fc.get("id") or f"call_{int(time.time() * 1000)}"),
+                            "type": "function",
+                            "function": {
+                                "name": str(fc.get("name") or ""),
+                                "arguments": json.dumps(fc.get("args", {}), ensure_ascii=False),
+                            },
+                        }
+                    )
 
     full_text = "".join(text_pieces)
+    full_reasoning = "".join(reasoning_pieces)
     usage_meta = response_obj.get("usageMetadata", {})
     prompt_tokens = usage_meta.get("promptTokenCount", 0)
     completion_tokens = usage_meta.get("candidatesTokenCount", 0)
+
+    message: dict[str, Any] = {
+        "role": "assistant",
+        "content": full_text,
+    }
+    if full_reasoning:
+        message["reasoning_content"] = full_reasoning
+    if tool_calls:
+        message["tool_calls"] = tool_calls
 
     return {
         "id": response_obj.get("responseId", f"chatcmpl-ag-{int(time.time())}"),
@@ -283,11 +391,8 @@ def parse_antigravity_response(resp_data: dict[str, Any], model_id: str) -> dict
         "choices": [
             {
                 "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": full_text,
-                },
-                "finish_reason": "stop",
+                "message": message,
+                "finish_reason": "tool_calls" if tool_calls else "stop",
             }
         ],
         "usage": {
@@ -361,9 +466,15 @@ def _parse_sse_chunk(raw_data: str, model_id: str) -> dict[str, Any] | None:
         chunk_json = json.loads(raw_data)
         openai_chunk = parse_antigravity_response(chunk_json, model_id)
         choices = openai_chunk.get("choices", [])
-        delta_text = ""
+        delta: dict[str, Any] = {}
         if choices:
-            delta_text = choices[0].get("message", {}).get("content", "")
+            msg = choices[0].get("message", {})
+            if msg.get("content"):
+                delta["content"] = msg["content"]
+            if msg.get("reasoning_content"):
+                delta["reasoning_content"] = msg["reasoning_content"]
+            if msg.get("tool_calls"):
+                delta["tool_calls"] = msg["tool_calls"]
         return {
             "id": openai_chunk.get("id"),
             "object": "chat.completion.chunk",
@@ -372,8 +483,8 @@ def _parse_sse_chunk(raw_data: str, model_id: str) -> dict[str, Any] | None:
             "choices": [
                 {
                     "index": 0,
-                    "delta": {"content": delta_text},
-                    "finish_reason": None,
+                    "delta": delta,
+                    "finish_reason": choices[0].get("finish_reason") if choices else None,
                 }
             ],
             "usage": openai_chunk.get("usage"),

@@ -138,8 +138,76 @@ def test_antigravity_build_payload_and_parse_response() -> None:
     parsed = parse_antigravity_response(dummy_resp, "claude-opus-4-6")
     assert parsed["id"] == "msg-123"
     assert parsed["choices"][0]["message"]["content"] == "Hello world from Antigravity!"
+    assert parsed["choices"][0]["message"]["reasoning_content"] == "Thinking process..."
     assert parsed["usage"]["prompt_tokens"] == 15
     assert parsed["usage"]["completion_tokens"] == 8
+
+
+def test_antigravity_tool_calling_payload_and_parse() -> None:
+    req_kwargs = {
+        "messages": [
+            {"role": "user", "content": "What is the weather?"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {"name": "get_weather", "arguments": '{"city": "Seoul"}'},
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "name": "get_weather",
+                "tool_call_id": "call_123",
+                "content": "Sunny 22C",
+            },
+        ],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get weather for city",
+                    "parameters": {"type": "object", "properties": {"city": {"type": "string"}}},
+                },
+            }
+        ],
+    }
+    payload = build_antigravity_payload("claude-opus-4-6", req_kwargs)
+    assert "tools" in payload["request"]
+    assert payload["request"]["tools"][0]["functionDeclarations"][0]["name"] == "get_weather"
+
+    dummy_tool_resp = {
+        "response": {
+            "responseId": "msg-tool-1",
+            "candidates": [
+                {
+                    "content": {
+                        "role": "model",
+                        "parts": [
+                            {"text": "Let me look up the weather."},
+                            {
+                                "functionCall": {
+                                    "name": "get_weather",
+                                    "args": {"city": "Seoul"},
+                                    "id": "call_123",
+                                }
+                            },
+                        ],
+                    }
+                }
+            ],
+            "usageMetadata": {"promptTokenCount": 20, "candidatesTokenCount": 10},
+        }
+    }
+    parsed = parse_antigravity_response(dummy_tool_resp, "claude-opus-4-6")
+    assert parsed["choices"][0]["message"]["content"] == "Let me look up the weather."
+    assert "tool_calls" in parsed["choices"][0]["message"]
+    assert parsed["choices"][0]["message"]["tool_calls"][0]["function"]["name"] == "get_weather"
+    assert parsed["choices"][0]["finish_reason"] == "tool_calls"
 
 
 def test_antigravity_api_error() -> None:
