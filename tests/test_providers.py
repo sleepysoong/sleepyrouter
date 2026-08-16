@@ -112,7 +112,8 @@ def test_antigravity_build_payload_and_parse_response() -> None:
         "You are an expert." in p["text"] for p in payload["request"]["systemInstruction"]["parts"]
     )
     assert payload["request"]["generationConfig"]["temperature"] == 0.3
-    assert payload["request"]["generationConfig"]["maxOutputTokens"] == 1000
+    # claude-opus-4-6 has thinkingBudget=32000, so maxOutputTokens is bumped to budget + 8192
+    assert payload["request"]["generationConfig"]["maxOutputTokens"] == 40192
 
     dummy_resp = {
         "response": {
