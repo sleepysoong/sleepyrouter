@@ -1,8 +1,6 @@
-from typing import Any
+"""Zen (OpenCode) provider adapter."""
 
-from sleepyrouter.types import SleepyRouterModel
-
-from .base import BaseProviderAdapter, inject_max_reasoning
+from .base import BaseProviderAdapter
 
 
 class ZenProviderAdapter(BaseProviderAdapter):
@@ -11,16 +9,6 @@ class ZenProviderAdapter(BaseProviderAdapter):
             name="Zen",
             source="zen",
             api_key_env_var="OPENCODE_API_KEY",
-            message_protocol="openai",
+            api_base="https://opencode.ai/zen/v1",
             default_reasoning_effort="high",
         )
-
-    def map_litellm_kwargs(
-        self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
-    ) -> dict[str, Any]:
-        upstream_id = model.upstream_id or model.id
-        res = inject_max_reasoning(kwargs, effort="high")
-        res["model"] = f"openai/{upstream_id}"
-        res["api_base"] = "https://opencode.ai/zen/v1"
-        res["api_key"] = api_key
-        return res

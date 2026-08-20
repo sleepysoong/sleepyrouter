@@ -1,8 +1,6 @@
-from typing import Any
+"""NVIDIA provider adapter."""
 
-from sleepyrouter.types import SleepyRouterModel
-
-from .base import BaseProviderAdapter, inject_max_reasoning
+from .base import BaseProviderAdapter
 
 
 class NVIDIAProviderAdapter(BaseProviderAdapter):
@@ -11,16 +9,6 @@ class NVIDIAProviderAdapter(BaseProviderAdapter):
             name="NVIDIA",
             source="nvidia",
             api_key_env_var="NVIDIA_API_KEY",
-            message_protocol="openai",
+            api_base="https://integrate.api.nvidia.com/v1",
             default_reasoning_effort="high",
         )
-
-    def map_litellm_kwargs(
-        self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
-    ) -> dict[str, Any]:
-        upstream_id = model.upstream_id or model.id
-        res = inject_max_reasoning(kwargs, effort="high")
-        res["model"] = f"openai/{upstream_id}"
-        res["api_base"] = "https://integrate.api.nvidia.com/v1"
-        res["api_key"] = api_key
-        return res

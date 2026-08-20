@@ -46,9 +46,13 @@ class BaseProviderAdapter:
         name: str,
         source: ModelSource,
         api_key_env_var: str,
+        *,
         message_protocol: MessageProtocol = "openai",
         default_reasoning_effort: str = "high",
         default_thinking_budget: int | None = None,
+        api_base: str | None = None,
+        model_prefix: str = "openai",
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         self._name = name
         self._source = source
@@ -56,6 +60,9 @@ class BaseProviderAdapter:
         self._message_protocol = message_protocol
         self._default_reasoning_effort = default_reasoning_effort
         self._default_thinking_budget = default_thinking_budget
+        self._api_base = api_base
+        self._model_prefix = model_prefix
+        self._extra_headers = extra_headers or {}
 
     @property
     def name(self) -> str:
@@ -85,8 +92,12 @@ class BaseProviderAdapter:
             effort=self._default_reasoning_effort,
             thinking_budget=self._default_thinking_budget,
         )
-        litellm_kwargs["model"] = f"openai/{upstream_id}"
+        litellm_kwargs["model"] = f"{self._model_prefix}/{upstream_id}"
         litellm_kwargs["api_key"] = api_key
+        if self._api_base:
+            litellm_kwargs["api_base"] = self._api_base
+        if self._extra_headers:
+            litellm_kwargs["headers"] = dict(self._extra_headers)
         return litellm_kwargs
 
 
