@@ -17,7 +17,7 @@ from sleepyrouter.providers.antigravity import (
     call_antigravity_stream,
 )
 from sleepyrouter.types import ProviderAPIKeys, SleepyRouterModel, UsageLogEntry
-from sleepyrouter.utils import truncate
+from sleepyrouter.utils import format_error_message, truncate
 
 from .failover_events import (
     emit_all_failed_event,
@@ -189,7 +189,7 @@ async def process_chat_candidates(
             )
         except Exception as e:  # noqa: BLE001
             duration_sec = time.time() - attempt_start
-            err_msg = str(e)
+            err_msg = format_error_message(e)
             upstream_error = f"[{model_id}] {truncate(err_msg, 300)}"
             store.append_usage(
                 UsageLogEntry(

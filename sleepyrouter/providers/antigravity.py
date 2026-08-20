@@ -520,9 +520,15 @@ async def call_antigravity_completion(
 def _parse_sse_chunk(raw_data: str, model_id: str) -> dict[str, Any] | None:
     try:
         chunk_json = json.loads(raw_data)
+        if isinstance(chunk_json, dict) and "error" in chunk_json:
+            err_message = _extract_error_message(raw_data)
+            err_code = int(chunk_json.get("error", {}).get("code") or 500)
+            raise AntigravityAPIError(err_code, err_message)
+
         openai_chunk = parse_antigravity_response(chunk_json, model_id)
         choices = openai_chunk.get("choices", [])
         delta: dict[str, Any] = {}
+        finish_reason = None
         if choices:
             msg = choices[0].get("message", {})
             if msg.get("content"):
@@ -531,6 +537,11 @@ def _parse_sse_chunk(raw_data: str, model_id: str) -> dict[str, Any] | None:
                 delta["reasoning_content"] = msg["reasoning_content"]
             if msg.get("tool_calls"):
                 delta["tool_calls"] = msg["tool_calls"]
+            finish_reason = choices[0].get("finish_reason")
+
+        if not delta and not finish_reason and not openai_chunk.get("usage"):
+            return None
+
         return {
             "id": openai_chunk.get("id"),
             "object": "chat.completion.chunk",
@@ -540,12 +551,12 @@ def _parse_sse_chunk(raw_data: str, model_id: str) -> dict[str, Any] | None:
                 {
                     "index": 0,
                     "delta": delta,
-                    "finish_reason": choices[0].get("finish_reason") if choices else None,
+                    "finish_reason": finish_reason,
                 }
             ],
             "usage": openai_chunk.get("usage"),
         }
-    except (json.JSONDecodeError, KeyError):
+    except json.JSONDecodeError:
         return None
 
 
@@ -571,6 +582,38 @@ async def _open_antigravity_stream(
     return resp, resp_stream
 
 
+async def _stream_from_single_endpoint(
+    client: httpx.AsyncClient,
+    endpoint: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    timeout: float,
+    model_id: str,
+) -> AsyncGenerator[dict[str, Any], None]:
+    resp, resp_stream = await _open_antigravity_stream(client, endpoint, headers, payload, timeout)
+
+    if resp.status_code != 200:
+        body_bytes = await resp.aread()
+        body_str = body_bytes.decode("utf-8", errors="replace")
+        await resp_stream.__aexit__(None, None, None)
+        err_message = _extract_error_message(body_str)
+        raise AntigravityAPIError(resp.status_code, err_message)
+
+    try:
+        async for raw_line in resp.aiter_lines():
+            cleaned_line = raw_line.strip()
+            if not cleaned_line.startswith("data:"):
+                continue
+            raw_data = cleaned_line[len("data:") :].strip()
+            if not raw_data or raw_data == "[DONE]":
+                continue
+            chunk = _parse_sse_chunk(raw_data, model_id)
+            if chunk is not None:
+                yield chunk
+    finally:
+        await resp_stream.__aexit__(None, None, None)
+
+
 async def call_antigravity_stream(
     model_id: str,
     api_key: str,
@@ -582,35 +625,26 @@ async def call_antigravity_stream(
     headers["Accept"] = "text/event-stream"
     payload = build_antigravity_payload(model_id, request_kwargs)
     client = get_antigravity_client(timeout)
+    yielded_any = False
+    last_error: Exception | None = None
 
     for endpoint in ANTIGRAVITY_ENDPOINTS:
-        resp, resp_stream = await _open_antigravity_stream(
-            client, endpoint, headers, payload, timeout
-        )
-
-        if resp.status_code != 200:
-            body_bytes = await resp.aread()
-            body_str = body_bytes.decode("utf-8", errors="replace")
-            await resp_stream.__aexit__(None, None, None)
-            err_message = _extract_error_message(body_str)
-            if (
-                resp.status_code in (429, 500, 502, 503, 504)
-                and endpoint != ANTIGRAVITY_ENDPOINTS[-1]
-            ):
-                continue
-            raise AntigravityAPIError(resp.status_code, err_message)
-
         try:
-            async for raw_line in resp.aiter_lines():
-                cleaned_line = raw_line.strip()
-                if not cleaned_line.startswith("data:"):
-                    continue
-                raw_data = cleaned_line[len("data:") :].strip()
-                if not raw_data or raw_data == "[DONE]":
-                    continue
-                chunk = _parse_sse_chunk(raw_data, model_id)
-                if chunk is not None:
-                    yield chunk
-            return
-        finally:
-            await resp_stream.__aexit__(None, None, None)
+            async for chunk in _stream_from_single_endpoint(
+                client, endpoint, headers, payload, timeout, model_id
+            ):
+                yielded_any = True
+                yield chunk
+            if yielded_any:
+                return
+        except Exception as exc:
+            last_error = exc
+            if not yielded_any and endpoint != ANTIGRAVITY_ENDPOINTS[-1]:
+                continue
+            raise
+
+    if last_error:
+        raise last_error
+    if not yielded_any:
+        err_no_out = f"Antigravity stream for {model_id} produced no output"
+        raise RuntimeError(err_no_out)

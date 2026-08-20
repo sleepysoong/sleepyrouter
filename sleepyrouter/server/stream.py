@@ -1,7 +1,6 @@
 """Streaming SSE response generator for OpenAI format."""
 
 from collections.abc import AsyncGenerator
-import contextlib
 import datetime
 import json
 import time
@@ -16,6 +15,7 @@ from sleepyrouter.events import (
     default_event_bus,
 )
 from sleepyrouter.types import SleepyRouterModel, UsageLogEntry
+from sleepyrouter.utils import format_error_message
 
 OPENAI_DONE_EVENT = b"data: [DONE]\n\n"
 
@@ -115,6 +115,7 @@ async def create_sse_stream_generator(
         )
     except Exception as e:  # noqa: BLE001
         duration_sec = time.time() - stream_start
+        err_msg = format_error_message(e)
         default_event_bus.publish(
             CandidateFailedEvent(
                 ts=time.time(),
@@ -124,7 +125,7 @@ async def create_sse_stream_generator(
                 model_id=model.usage_id or model.id,
                 provider=model.provider,
                 duration_sec=duration_sec,
-                error_message=f"Stream error: {e}",
+                error_message=f"Stream error: {err_msg}",
             )
         )
         store.append_usage(
@@ -155,9 +156,15 @@ async def start_streaming_response(
     total: int,
     initial_input_tokens: int = 0,
 ) -> StreamingResponse:
-    first_chunk = None
-    with contextlib.suppress(StopAsyncIteration):
+    try:
         first_chunk = await anext(raw_gen)
+    except StopAsyncIteration:
+        err_ended = f"Stream from {model.id} ended before receiving first chunk"
+        raise RuntimeError(err_ended) from None
+
+    if first_chunk is None:
+        err_empty = f"Stream from {model.id} returned empty first chunk"
+        raise RuntimeError(err_empty)
 
     chained = _chain_first_chunk(first_chunk, raw_gen)
     generator = create_sse_stream_generator(

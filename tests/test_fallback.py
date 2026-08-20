@@ -157,3 +157,109 @@ def test_candidate_stream_failover_success_on_second() -> None:
             assert "Stream chunk from m2" in res.text
 
         store.close()
+
+
+def test_antigravity_stream_failover_to_second_candidate() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = ConfigStore(root)
+        store.ensure_root()
+
+        store.write_config(
+            SleepyRouterConfig(
+                port=4567,
+                model_groups={"max": ["ag-opus", "ag-gemini"]},
+                default_model_group="max",
+                models={
+                    "ag-opus": ModelDefinition(provider="antigravity", name="claude-opus-4.6"),
+                    "ag-gemini": ModelDefinition(provider="antigravity", name="gemini-3.7-flash"),
+                },
+            )
+        )
+
+        app = create_app(store=store, env={"ANTIGRAVITY_API_KEY": "ag-test"})
+        client = TestClient(app)
+
+        attempted_models: list[str] = []
+
+        async def mock_call_antigravity_stream(
+            model_id: str, *args: Any, **kwargs: Any
+        ) -> AsyncGenerator[dict[str, Any], None]:
+            attempted_models.append(model_id)
+            if "claude" in model_id:
+                raise RuntimeError("ReadTimeout on Opus")
+            yield {
+                "id": "chatcmpl-gemini",
+                "object": "chat.completion.chunk",
+                "choices": [{"index": 0, "delta": {"content": "Chunk from gemini"}}],
+            }
+
+        with patch(
+            "sleepyrouter.server.failover.call_antigravity_stream",
+            side_effect=mock_call_antigravity_stream,
+        ):
+            res = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "max",
+                    "stream": True,
+                    "messages": [{"role": "user", "content": "hi"}],
+                },
+            )
+            assert res.status_code == 200
+            assert "Chunk from gemini" in res.text
+            assert attempted_models == ["claude-opus-4.6", "gemini-3.7-flash"]
+
+        store.close()
+
+
+def test_stream_failover_when_first_candidate_yields_empty_stream() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = ConfigStore(root)
+        store.ensure_root()
+
+        store.write_config(
+            SleepyRouterConfig(
+                port=4567,
+                model_groups={"high": ["empty-model", "working-model"]},
+                default_model_group="high",
+                models={
+                    "empty-model": ModelDefinition(provider="openrouter", name="m1"),
+                    "working-model": ModelDefinition(provider="openrouter", name="m2"),
+                },
+            )
+        )
+
+        app = create_app(store=store, env={"OPENROUTER_API_KEY": "sk-test"})
+        client = TestClient(app)
+
+        async def mock_stream_acompletion(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+            model_param = str(kwargs.get("model", ""))
+            if "m1" in model_param:
+                return
+            chunk = MagicMock()
+            chunk.choices = [MagicMock()]
+            chunk.choices[0].delta = MagicMock(content="Working chunk from m2")
+            chunk.model_dump.return_value = {
+                "choices": [{"delta": {"content": "Working chunk from m2"}}]
+            }
+            chunk.usage = None
+            yield chunk
+
+        with patch(
+            "sleepyrouter.server.failover.acompletion",
+            side_effect=mock_stream_acompletion,
+        ):
+            res = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "high",
+                    "stream": True,
+                    "messages": [{"role": "user", "content": "hi"}],
+                },
+            )
+            assert res.status_code == 200
+            assert "Working chunk from m2" in res.text
+
+        store.close()

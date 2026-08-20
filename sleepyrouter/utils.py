@@ -77,3 +77,13 @@ def safe_log_value(value: str) -> str:
     cleaned = strip_html_tags(value)
     sanitized = "".join(ch if ord(ch) >= 0x20 and ord(ch) != 0x7F else "?" for ch in cleaned)
     return (sanitized[:197] + "...") if len(sanitized) > 200 else sanitized
+
+
+def format_error_message(exc: Exception) -> str:
+    """Format exception with type name and message even when str(exc) is empty."""
+    msg = str(exc).strip()
+    exc_type = type(exc).__name__
+    if msg:
+        return f"{exc_type}: {msg}" if not msg.startswith(exc_type) else msg
+    return exc_type
+
