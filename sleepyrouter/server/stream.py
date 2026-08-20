@@ -1,4 +1,4 @@
-"""Streaming SSE response generators for Anthropic and OpenAI formats."""
+"""Streaming SSE response generator for OpenAI format."""
 
 from collections.abc import AsyncGenerator
 import datetime
@@ -14,12 +14,6 @@ from sleepyrouter.events import (
 )
 from sleepyrouter.types import SleepyRouterModel, UsageLogEntry
 
-ANTHROPIC_STOP_EVENT = (
-    b"event: message_delta\n"
-    b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},'
-    b'"usage":{"output_tokens":0}}\n\n'
-    b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
-)
 OPENAI_DONE_EVENT = b"data: [DONE]\n\n"
 
 
@@ -53,33 +47,6 @@ def _extract_chunk_content_and_reasoning(chunk: Any) -> tuple[str, str]:
     return "", ""
 
 
-def _format_anthropic_sse_events(
-    delta_text: str, delta_reasoning: str, *, has_thinking: bool
-) -> tuple[list[bytes], bool]:
-    events: list[bytes] = []
-    if delta_reasoning:
-        has_thinking = True
-        thinking_payload = {
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {"type": "thinking_delta", "thinking": delta_reasoning},
-        }
-        dumped = json.dumps(thinking_payload, separators=(",", ":"), ensure_ascii=False)
-        events.append(f"event: content_block_delta\ndata: {dumped}\n\n".encode())
-
-    if delta_text:
-        block_idx = 1 if has_thinking else 0
-        payload = {
-            "type": "content_block_delta",
-            "index": block_idx,
-            "delta": {"type": "text_delta", "text": delta_text},
-        }
-        dumped = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
-        events.append(f"event: content_block_delta\ndata: {dumped}\n\n".encode())
-
-    return events, has_thinking
-
-
 def _format_openai_sse_event(chunk: Any) -> bytes:
     chunk_dict = chunk.model_dump() if hasattr(chunk, "model_dump") else dict(chunk)
     dumped = json.dumps(chunk_dict, separators=(",", ":"), ensure_ascii=False)
@@ -88,7 +55,6 @@ def _format_openai_sse_event(chunk: Any) -> bytes:
 
 async def create_sse_stream_generator(
     response_gen: Any,
-    api_type: str,
     model: SleepyRouterModel,
     store: ConfigStore,
     *,
@@ -101,7 +67,6 @@ async def create_sse_stream_generator(
     output_tokens = 0
     accumulated_output_chars = 0
     stream_start = time.time()
-    has_thinking_block = False
 
     try:
         async for chunk in response_gen:
@@ -114,16 +79,9 @@ async def create_sse_stream_generator(
             delta_text, delta_reasoning = _extract_chunk_content_and_reasoning(chunk)
             accumulated_output_chars += len(delta_text) + len(delta_reasoning)
 
-            if api_type == "anthropic":
-                ev_list, has_thinking_block = _format_anthropic_sse_events(
-                    delta_text, delta_reasoning, has_thinking=has_thinking_block
-                )
-                for ev in ev_list:
-                    yield ev
-            else:
-                yield _format_openai_sse_event(chunk)
+            yield _format_openai_sse_event(chunk)
 
-        yield ANTHROPIC_STOP_EVENT if api_type == "anthropic" else OPENAI_DONE_EVENT
+        yield OPENAI_DONE_EVENT
 
         if output_tokens == 0 and accumulated_output_chars > 0:
             output_tokens = max(1, accumulated_output_chars // 4)

@@ -14,7 +14,6 @@ from sleepyrouter.events import (
     RequestReceivedEvent,
     default_event_bus,
 )
-from sleepyrouter.protocol import estimate_input_tokens
 from sleepyrouter.routing import all_group_model_ids, default_routing_engine
 from sleepyrouter.types import SleepyRouterConfig, SleepyRouterModel, source_of
 
@@ -82,13 +81,9 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
         ]
         return {"object": "list", "data": data}
 
-    @app.post("/anthropic/v1/messages/count_tokens")
-    @app.post("/anthropic/messages/count_tokens")
-    async def count_tokens(request: Request) -> dict[str, Any]:
+    @app.post("/v1/chat/completions")
+    async def chat_completions(request: Request) -> Response:
         body = await request.json()
-        return {"input_tokens": estimate_input_tokens(body)}
-
-    async def handle_chat_completion(body: dict[str, Any], api_type: str, path: str) -> Response:
         req_id = next(_request_counter)
         requested_model = str(body.get("model", ""))
         is_stream = bool(body.get("stream"))
@@ -98,7 +93,7 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
                 ts=time.time(),
                 request_id=req_id,
                 method="POST",
-                path=path,
+                path="/v1/chat/completions",
                 requested_model=requested_model,
                 is_stream=is_stream,
             )
@@ -138,20 +133,8 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
             by_id,
             candidates,
             body,
-            api_type,
             request_id=req_id,
             is_stream=is_stream,
         )
-
-    @app.post("/v1/chat/completions")
-    async def chat_completions(request: Request) -> Response:
-        body = await request.json()
-        return await handle_chat_completion(body, "openai", "/v1/chat/completions")
-
-    @app.post("/anthropic/v1/messages")
-    @app.post("/anthropic/messages")
-    async def anthropic_messages(request: Request) -> Response:
-        body = await request.json()
-        return await handle_chat_completion(body, "anthropic", "/anthropic/v1/messages")
 
     return app

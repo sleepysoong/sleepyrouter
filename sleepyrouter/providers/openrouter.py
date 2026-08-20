@@ -14,7 +14,7 @@ class OpenRouterProviderAdapter(BaseProviderAdapter):
             name="OpenRouter",
             source="openrouter",
             api_key_env_var="OPENROUTER_API_KEY",
-            message_protocol="anthropic",
+            message_protocol="openai",
             default_reasoning_effort="xhigh",
             default_thinking_budget=32000,
         )

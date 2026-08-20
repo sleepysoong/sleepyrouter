@@ -66,20 +66,6 @@ def test_models_endpoint_with_config(
     assert data["data"][0]["owned_by"] == "openrouter"
 
 
-def test_count_tokens_endpoint(
-    store_and_client: tuple[ConfigStore, TestClient],
-) -> None:
-    _, client = store_and_client
-    res = client.post(
-        "/anthropic/v1/messages/count_tokens",
-        json={"messages": [{"role": "user", "content": "Hello world"}]},
-    )
-    assert res.status_code == 200
-    data = res.json()
-    assert "input_tokens" in data
-    assert data["input_tokens"] > 0
-
-
 def test_chat_completions_missing_models(
     store_and_client: tuple[ConfigStore, TestClient],
 ) -> None:

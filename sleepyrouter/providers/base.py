@@ -4,7 +4,7 @@ from typing import Any, Protocol
 
 from sleepyrouter.types import ModelSource, SleepyRouterModel, source_of
 
-MessageProtocol = str  # "openai" | "anthropic"
+MessageProtocol = str  # "openai"
 
 
 def inject_max_reasoning(
