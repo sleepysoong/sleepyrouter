@@ -4,6 +4,8 @@ import os
 import sys
 from typing import Any
 
+from rich.console import Console
+from rich.table import Table
 import uvicorn
 
 from sleepyrouter.config import (
@@ -141,8 +143,10 @@ def run_usage_command(
     date: str | None = None,
     week: int | None = None,
     store: ConfigStore | None = None,
+    console: Console | None = None,
 ) -> None:
     active_store = store or ConfigStore()
+    active_console = console or Console()
     logs = active_store.read_usage_logs()
 
     if date:
@@ -150,27 +154,40 @@ def run_usage_command(
 
     if not logs:
         filter_desc = f" (날짜: {date})" if date else (f" (주차: {week}주차)" if week else "")
-        print(f"사용 기록이 없어요{filter_desc}.")
+        active_console.print(f"사용 기록이 없어요{filter_desc}.")
         return
 
     rows = _aggregate_usage_rows(logs)
-
-    print("\n모델별 사용량:")
-    print(f"{'모델':<40}{'요청':>8}{'실패':>8}{'입력토큰':>12}{'출력토큰':>12}")
-    print("-" * 80)
 
     total_requests = sum(r["requests"] for r in rows)
     total_failed = sum(r["failed"] for r in rows)
     total_input = sum(r["input_tokens"] for r in rows)
     total_output = sum(r["output_tokens"] for r in rows)
 
+    table = Table(title="모델별 사용량", show_footer=True, header_style="bold cyan")
+    table.add_column("모델", style="white", footer="합계")
+    table.add_column("요청", justify="right", style="cyan", footer=f"{total_requests:,}")
+    table.add_column(
+        "실패",
+        justify="right",
+        style="red" if total_failed > 0 else "green",
+        footer=f"{total_failed:,}",
+    )
+    table.add_column("입력 토큰", justify="right", style="magenta", footer=f"{total_input:,}")
+    table.add_column("출력 토큰", justify="right", style="green", footer=f"{total_output:,}")
+
     for r in rows:
-        print(
-            f"{r['model']:<40}{r['requests']:>8}{r['failed']:>8}"
-            f"{r['input_tokens']:>12}{r['output_tokens']:>12}"
+        table.add_row(
+            r["model"],
+            f"{r['requests']:,}",
+            f"{r['failed']:,}",
+            f"{r['input_tokens']:,}",
+            f"{r['output_tokens']:,}",
         )
-    print("-" * 80)
-    print(f"{'합계':<40}{total_requests:>8}{total_failed:>8}{total_input:>12}{total_output:>12}")
+
+    active_console.print()
+    active_console.print(table)
+    active_console.print()
 
 
 def main() -> None:
