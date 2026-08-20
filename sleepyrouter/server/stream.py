@@ -1,10 +1,13 @@
 """Streaming SSE response generator for OpenAI format."""
 
 from collections.abc import AsyncGenerator
+import contextlib
 import datetime
 import json
 import time
 from typing import Any
+
+from fastapi.responses import StreamingResponse
 
 from sleepyrouter.config import ConfigStore
 from sleepyrouter.events import (
@@ -133,3 +136,37 @@ async def create_sse_stream_generator(
                 success=False,
             )
         )
+
+
+async def _chain_first_chunk(first_chunk: Any, gen: Any) -> AsyncGenerator[Any, None]:
+    if first_chunk is not None:
+        yield first_chunk
+    async for item in gen:
+        yield item
+
+
+async def start_streaming_response(
+    raw_gen: Any,
+    model: SleepyRouterModel,
+    store: ConfigStore,
+    *,
+    request_id: int,
+    index: int,
+    total: int,
+    initial_input_tokens: int = 0,
+) -> StreamingResponse:
+    first_chunk = None
+    with contextlib.suppress(StopAsyncIteration):
+        first_chunk = await anext(raw_gen)
+
+    chained = _chain_first_chunk(first_chunk, raw_gen)
+    generator = create_sse_stream_generator(
+        chained,
+        model,
+        store,
+        request_id=request_id,
+        index=index,
+        total=total,
+        initial_input_tokens=initial_input_tokens,
+    )
+    return StreamingResponse(generator, media_type="text/event-stream")

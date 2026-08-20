@@ -1,25 +1,15 @@
 """Candidate failover and retry processing via LiteLLM and Antigravity."""
 
-from collections.abc import AsyncGenerator
-import contextlib
 import datetime
 import os
 import time
 from typing import Any
 
 from fastapi import Response
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from litellm import acompletion
 
 from sleepyrouter.config import ConfigStore, api_key_for
-from sleepyrouter.events import (
-    AllCandidatesFailedEvent,
-    CandidateAttemptEvent,
-    CandidateFailedEvent,
-    CandidateSucceededEvent,
-    FailoverEvent,
-    default_event_bus,
-)
 from sleepyrouter.protocol import estimate_input_tokens, transform_request
 from sleepyrouter.providers import map_to_litellm_kwargs
 from sleepyrouter.providers.antigravity import (
@@ -29,41 +19,13 @@ from sleepyrouter.providers.antigravity import (
 from sleepyrouter.types import ProviderAPIKeys, SleepyRouterModel, UsageLogEntry
 from sleepyrouter.utils import truncate
 
-from .stream import create_sse_stream_generator
-
-
-async def _chain_first_chunk(first_chunk: Any, gen: Any) -> AsyncGenerator[Any, None]:
-    if first_chunk is not None:
-        yield first_chunk
-    async for item in gen:
-        yield item
-
-
-async def _start_streaming_response(
-    raw_gen: Any,
-    model: SleepyRouterModel,
-    store: ConfigStore,
-    *,
-    request_id: int,
-    index: int,
-    total: int,
-    initial_input_tokens: int = 0,
-) -> StreamingResponse:
-    first_chunk = None
-    with contextlib.suppress(StopAsyncIteration):
-        first_chunk = await anext(raw_gen)
-
-    chained = _chain_first_chunk(first_chunk, raw_gen)
-    generator = create_sse_stream_generator(
-        chained,
-        model,
-        store,
-        request_id=request_id,
-        index=index,
-        total=total,
-        initial_input_tokens=initial_input_tokens,
-    )
-    return StreamingResponse(generator, media_type="text/event-stream")
+from .failover_events import (
+    emit_all_failed_event,
+    emit_attempt_event,
+    emit_failure_and_failover,
+    emit_success_event,
+)
+from .stream import start_streaming_response
 
 
 def _record_success_and_respond(
@@ -76,24 +38,19 @@ def _record_success_and_respond(
     total: int,
     duration_sec: float,
 ) -> Response:
-    usage_data = resp_dict.get("usage") or {}
-    in_tok = usage_data.get("prompt_tokens") or 0
-    out_tok = usage_data.get("completion_tokens") or 0
+    usage = resp_dict.get("usage") or {}
+    in_tok = usage.get("prompt_tokens") or 0
+    out_tok = usage.get("completion_tokens") or 0
 
-    default_event_bus.publish(
-        CandidateSucceededEvent(
-            ts=time.time(),
-            request_id=request_id,
-            index=index,
-            total=total,
-            model_id=model.id,
-            provider=model.provider,
-            duration_sec=duration_sec,
-            input_tokens=in_tok,
-            output_tokens=out_tok,
-        )
+    emit_success_event(
+        request_id=request_id,
+        index=index,
+        total=total,
+        model=model,
+        duration_sec=duration_sec,
+        input_tokens=in_tok,
+        output_tokens=out_tok,
     )
-
     store.append_usage(
         UsageLogEntry(
             ts=datetime.datetime.now(datetime.UTC).isoformat(),
@@ -103,7 +60,6 @@ def _record_success_and_respond(
             success=True,
         )
     )
-
     return JSONResponse(content=resp_dict)
 
 
@@ -123,57 +79,30 @@ async def _execute_candidate_attempt(
     upstream_model_id = model.upstream_id or model.id
     request_kwargs = transform_request(body, upstream_model_id)
 
-    default_event_bus.publish(
-        CandidateAttemptEvent(
-            ts=time.time(),
-            request_id=request_id,
-            index=index,
-            total=total,
-            model_id=model.id,
-            provider=model.provider,
-            upstream_id=upstream_model_id,
-        )
+    emit_attempt_event(
+        request_id=request_id,
+        index=index,
+        total=total,
+        model=model,
+        upstream_model_id=upstream_model_id,
     )
-
     est_input_tokens = estimate_input_tokens(body)
+    is_direct_antigravity = model.source == "antigravity" and not model.api_base
 
-    if model.source == "antigravity" and not model.api_base:
-        if is_stream:
+    if is_stream:
+        if is_direct_antigravity:
             gen = call_antigravity_stream(
                 upstream_model_id, api_key, request_kwargs, timeout=default_timeout
             )
-            return await _start_streaming_response(
-                gen,
-                model,
-                store,
-                request_id=request_id,
-                index=index,
-                total=total,
-                initial_input_tokens=est_input_tokens,
-            )
+        else:
+            kwargs = map_to_litellm_kwargs(model, api_key, request_kwargs)
+            kwargs["num_retries"] = 0
+            kwargs.pop("stream", None)
+            kwargs.setdefault("timeout", default_timeout)
+            gen = await acompletion(**kwargs, stream=True)
 
-        resp_dict = await call_antigravity_completion(
-            upstream_model_id, api_key, request_kwargs, timeout=default_timeout
-        )
-        return _record_success_and_respond(
-            resp_dict,
-            model,
-            store,
-            request_id=request_id,
-            index=index,
-            total=total,
-            duration_sec=time.time() - attempt_start,
-        )
-
-    litellm_kwargs = map_to_litellm_kwargs(model, api_key, request_kwargs)
-    litellm_kwargs["num_retries"] = 0
-    litellm_kwargs.pop("stream", None)
-    litellm_kwargs.setdefault("timeout", default_timeout)
-
-    if is_stream:
-        response_gen = await acompletion(**litellm_kwargs, stream=True)
-        return await _start_streaming_response(
-            response_gen,
+        return await start_streaming_response(
+            gen,
             model,
             store,
             request_id=request_id,
@@ -182,10 +111,17 @@ async def _execute_candidate_attempt(
             initial_input_tokens=est_input_tokens,
         )
 
-    response_obj = await acompletion(**litellm_kwargs)
-    resp_dict = (
-        response_obj.model_dump() if hasattr(response_obj, "model_dump") else dict(response_obj)
-    )
+    if is_direct_antigravity:
+        resp_dict = await call_antigravity_completion(
+            upstream_model_id, api_key, request_kwargs, timeout=default_timeout
+        )
+    else:
+        kwargs = map_to_litellm_kwargs(model, api_key, request_kwargs)
+        kwargs["num_retries"] = 0
+        kwargs.pop("stream", None)
+        kwargs.setdefault("timeout", default_timeout)
+        resp_obj = await acompletion(**kwargs)
+        resp_dict = resp_obj.model_dump() if hasattr(resp_obj, "model_dump") else dict(resp_obj)
 
     return _record_success_and_respond(
         resp_dict,
@@ -196,47 +132,6 @@ async def _execute_candidate_attempt(
         total=total,
         duration_sec=time.time() - attempt_start,
     )
-
-
-def _emit_failure_and_failover(
-    model: SleepyRouterModel,
-    error_message: str,
-    candidates: list[str],
-    idx: int,
-    by_id: dict[str, SleepyRouterModel],
-    *,
-    request_id: int,
-    total_cands: int,
-    duration_sec: float,
-) -> None:
-    default_event_bus.publish(
-        CandidateFailedEvent(
-            ts=time.time(),
-            request_id=request_id,
-            index=idx + 1,
-            total=total_cands,
-            model_id=model.id,
-            provider=model.provider,
-            duration_sec=duration_sec,
-            error_message=error_message,
-        )
-    )
-    for next_idx in range(idx + 1, len(candidates)):
-        next_cand = candidates[next_idx]
-        if next_cand in by_id:
-            default_event_bus.publish(
-                FailoverEvent(
-                    ts=time.time(),
-                    request_id=request_id,
-                    index=idx + 1,
-                    total=total_cands,
-                    failed_model_id=model.id,
-                    next_model_id=next_cand,
-                    provider=model.provider,
-                    error_message=error_message,
-                )
-            )
-            break
 
 
 async def process_chat_candidates(
@@ -268,7 +163,7 @@ async def process_chat_candidates(
 
         if not api_key:
             upstream_error = f"[{model_id}] API key missing for provider {model.source}"
-            _emit_failure_and_failover(
+            emit_failure_and_failover(
                 model,
                 upstream_error,
                 candidates,
@@ -305,7 +200,7 @@ async def process_chat_candidates(
                     success=False,
                 )
             )
-            _emit_failure_and_failover(
+            emit_failure_and_failover(
                 model,
                 err_msg,
                 candidates,
@@ -317,33 +212,18 @@ async def process_chat_candidates(
             )
 
     total_dur = time.time() - overall_start
-    default_event_bus.publish(
-        AllCandidatesFailedEvent(
-            ts=time.time(),
-            request_id=request_id,
-            candidates_tried=tried_models,
-            last_error=upstream_error,
-            total_duration_sec=total_dur,
-        )
+    emit_all_failed_event(
+        request_id=request_id,
+        candidates_tried=tried_models,
+        last_error=upstream_error,
+        total_duration_sec=total_dur,
     )
-
-    if not tried_any:
-        return JSONResponse(
-            status_code=502,
-            content={
-                "error": {
-                    "message": "사용 가능한 모델이 없어요. API 키를 확인하세요.",
-                    "details": upstream_error,
-                }
-            },
-        )
-
+    msg = (
+        "선택된 모든 무료 모델이 실패했어요."
+        if tried_any
+        else "사용 가능한 모델이 없어요. API 키를 확인하세요."
+    )
     return JSONResponse(
         status_code=502,
-        content={
-            "error": {
-                "message": "선택된 모든 무료 모델이 실패했어요.",
-                "details": upstream_error,
-            }
-        },
+        content={"error": {"message": msg, "details": upstream_error}},
     )
