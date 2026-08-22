@@ -44,16 +44,6 @@ class SleepyRouterConfig(BaseModel):
     models: dict[str, ModelDefinition] | None = None
 
 
-class ProviderAPIKeys(BaseModel):
-    open_router: str = ""
-    nvidia: str = ""
-    copilot: str = ""
-    zen: str = ""
-    google: str = ""
-    antigravity: str = ""
-    freebuff: str = ""
-
-
 def complete_group_order(groups: dict[str, list[str]], preferred: list[str]) -> list[str]:
     seen = set()
     order: list[str] = []

@@ -9,9 +9,12 @@ from typing import Any
 
 import httpx
 
-from sleepyrouter.config.api_keys import force_refresh_antigravity_token
 from sleepyrouter.types import SleepyRouterModel
 
+from .antigravity_oauth import (
+    force_refresh_antigravity_token,
+    resolve_antigravity_api_key,
+)
 from .base import (
     BaseProviderAdapter,
     inject_max_reasoning,
@@ -133,6 +136,11 @@ class AntigravityProviderAdapter(BaseProviderAdapter):
             default_reasoning_effort="high",
             default_thinking_budget=32000,
         )
+
+    def get_api_key(
+        self, env: dict[str, str] | None = None, root: Path | None = None
+    ) -> str:
+        return resolve_antigravity_api_key(env, root)
 
     def map_litellm_kwargs(
         self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]

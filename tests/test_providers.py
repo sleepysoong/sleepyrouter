@@ -1,6 +1,14 @@
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
+
+import pytest
+
 from sleepyrouter.providers import (
+    api_key_for,
     default_provider_registry,
     map_to_litellm_kwargs,
+    require_any_provider_api_key,
 )
 from sleepyrouter.providers.antigravity import (
     AntigravityAPIError,
@@ -8,6 +16,7 @@ from sleepyrouter.providers.antigravity import (
     get_runtime_model_and_thinking_config,
     parse_antigravity_response,
 )
+from sleepyrouter.providers.antigravity_oauth import force_refresh_antigravity_token
 from sleepyrouter.types import SleepyRouterModel
 
 
@@ -277,3 +286,51 @@ def test_nvidia_max_reasoning() -> None:
     )
     mapped = map_to_litellm_kwargs(model, "nvapi-test", {})
     assert mapped["reasoning_effort"] == "high"
+
+
+def test_get_api_key_env_wins_over_local_dotenv() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / ".env").write_text("NVIDIA_API_KEY=nv-local\n")
+        adapter = default_provider_registry.get("nvidia")
+        assert adapter is not None
+        assert adapter.get_api_key({"NVIDIA_API_KEY": "nv-env"}, root) == "nv-env"
+        assert adapter.get_api_key({}, root) == "nv-local"
+
+
+def test_google_adapter_dual_env_names() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = default_provider_registry.get("google")
+        assert adapter is not None
+        assert adapter.get_api_key({"GEMINI_API_KEY": "gk"}, Path(tmp)) == "gk"
+        assert adapter.get_api_key({"GOOGLE_API_KEY": "g2"}, Path(tmp)) == "g2"
+
+
+def test_antigravity_oauth_refresh_from_auth_json() -> None:
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        patch(
+            "sleepyrouter.providers.antigravity_oauth.refresh_antigravity_token",
+            return_value=("new-refreshed-access-token", 3600),
+        ),
+    ):
+        root = Path(tmp)
+        (root / "auth.json").write_text(
+            '{"antigravity": {"refresh": "mock-refresh-token", "access": "", "expires": 0}}'
+        )
+        adapter = default_provider_registry.get("antigravity")
+        assert adapter is not None
+        assert adapter.get_api_key({}, root) == "new-refreshed-access-token"
+        assert force_refresh_antigravity_token(root) == "new-refreshed-access-token"
+
+
+def test_api_key_for_custom_source_fallback() -> None:
+    assert api_key_for("custom-thing", {"CUSTOM_THING_API_KEY": "ck"}) == "ck"
+
+
+def test_require_any_provider_api_key_raises() -> None:
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        pytest.raises(ValueError, match="API 키가 설정되지 않았어요"),
+    ):
+        require_any_provider_api_key({}, Path(tmp))

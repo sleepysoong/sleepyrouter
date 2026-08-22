@@ -8,12 +8,13 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 import litellm
 
-from sleepyrouter.config import ConfigStore, require_any_provider_api_key
+from sleepyrouter.config import ConfigStore
 from sleepyrouter.events import (
     CandidatesResolvedEvent,
     RequestReceivedEvent,
     default_event_bus,
 )
+from sleepyrouter.providers import require_any_provider_api_key
 from sleepyrouter.routing import all_group_model_ids, default_routing_engine
 from sleepyrouter.types import SleepyRouterConfig, SleepyRouterModel, source_of
 
@@ -99,7 +100,7 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
             )
         )
 
-        api_keys = require_any_provider_api_key(env, active_store.root)
+        require_any_provider_api_key(env, active_store.root)
         models_list, by_id, config = _build_selected_models(active_store)
 
         if not models_list:
@@ -129,7 +130,6 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
 
         return await process_chat_candidates(
             active_store,
-            api_keys,
             by_id,
             candidates,
             body,

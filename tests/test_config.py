@@ -1,16 +1,7 @@
 from pathlib import Path
 import tempfile
-from unittest.mock import patch
 
-import pytest
-
-from sleepyrouter.config import (
-    ConfigStore,
-    api_key_for,
-    force_refresh_antigravity_token,
-    require_any_provider_api_key,
-    resolve_provider_api_keys,
-)
+from sleepyrouter.config import ConfigStore
 from sleepyrouter.types import SleepyRouterConfig, UsageLogEntry
 from sleepyrouter.utils import parse_dotenv, safe_log_value, strip_html_tags, truncate
 
@@ -87,48 +78,3 @@ def test_config_store_usage_logging() -> None:
         assert logs[0].success is True
         store.close()
 
-
-def test_resolve_provider_api_keys() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        env_file = root / ".env"
-        env_file.write_text(
-            "OPENROUTER_API_KEY=sk-local\n"
-            "GOOGLE_API_KEY=google-local\n"
-            "ANTIGRAVITY_API_KEY=anti-local\n"
-            "FREEBUFF_API_KEY=freebuff-local\n"
-        )
-
-        env = {"NVIDIA_API_KEY": "nv-env"}
-        keys = resolve_provider_api_keys(env, root)
-        assert keys.open_router == "sk-local"
-        assert keys.nvidia == "nv-env"
-        assert keys.google == "google-local"
-        assert keys.antigravity == "anti-local"
-        assert keys.freebuff == "freebuff-local"
-        assert api_key_for(keys, "freebuff") == "freebuff-local"
-
-
-def test_resolve_antigravity_auto_refresh_auth_json() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        auth_json_path = root / "auth.json"
-        auth_json_path.write_text(
-            '{"antigravity": {"refresh": "mock-refresh-token", "access": "", "expires": 0}}'
-        )
-
-        with patch(
-            "sleepyrouter.config.api_keys.refresh_antigravity_token",
-            return_value=("new-refreshed-access-token", 3600),
-        ):
-            keys = resolve_provider_api_keys({}, root)
-            assert keys.antigravity == "new-refreshed-access-token"
-            refreshed = force_refresh_antigravity_token(root)
-            assert refreshed == "new-refreshed-access-token"
-
-
-def test_require_any_provider_api_key_raises() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        with pytest.raises(ValueError, match="API 키가 설정되지 않았어요"):
-            require_any_provider_api_key({}, root)

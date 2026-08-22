@@ -9,14 +9,14 @@ from fastapi import Response
 from fastapi.responses import JSONResponse
 from litellm import acompletion
 
-from sleepyrouter.config import ConfigStore, api_key_for
+from sleepyrouter.config import ConfigStore
 from sleepyrouter.protocol import transform_request
-from sleepyrouter.providers import map_to_litellm_kwargs
+from sleepyrouter.providers import api_key_for, map_to_litellm_kwargs
 from sleepyrouter.providers.antigravity import (
     call_antigravity_completion,
     call_antigravity_stream,
 )
-from sleepyrouter.types import ProviderAPIKeys, SleepyRouterModel, UsageLogEntry
+from sleepyrouter.types import SleepyRouterModel, UsageLogEntry
 from sleepyrouter.utils import format_error_message, truncate
 
 from .failover_events import (
@@ -134,7 +134,6 @@ async def _execute_candidate_attempt(
 
 async def process_chat_candidates(
     store: ConfigStore,
-    api_keys: ProviderAPIKeys,
     by_id: dict[str, SleepyRouterModel],
     candidates: list[str],
     body: dict[str, Any],
@@ -156,7 +155,7 @@ async def process_chat_candidates(
 
         tried_any = True
         tried_models.append(model_id)
-        api_key = api_key_for(api_keys, model.source)
+        api_key = api_key_for(model.source)
         attempt_start = time.time()
 
         if not api_key:

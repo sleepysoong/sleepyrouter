@@ -1,10 +1,28 @@
 """Base ProviderAdapter and ProviderRegistry abstraction with reasoning & thinking injection."""
 
+from collections.abc import Sequence
+import os
+from pathlib import Path
 from typing import Any, Protocol
 
 from sleepyrouter.types import ModelSource, SleepyRouterModel, source_of
+from sleepyrouter.utils import get_config_root, read_local_env
 
 MessageProtocol = str  # "openai"
+
+
+def first_env(
+    names: Sequence[str], env: dict[str, str] | None = None, root: Path | None = None
+) -> str:
+    """Resolves the first non-empty env var: process env wins over local .env file."""
+    resolved_env = dict(os.environ) if env is None else env
+    config_root = root if root is not None else get_config_root(resolved_env)
+    local_env = read_local_env(config_root)
+    for name in names:
+        key = (resolved_env.get(name) or "").strip() or (local_env.get(name) or "").strip()
+        if key:
+            return key
+    return ""
 
 
 def inject_max_reasoning(
@@ -82,6 +100,9 @@ class BaseProviderAdapter:
 
     def prepare_api_key(self, api_key: str) -> str:
         return api_key
+
+    def get_api_key(self, env: dict[str, str] | None = None, root: Path | None = None) -> str:
+        return first_env([self._api_key_env_var], env, root)
 
     def map_litellm_kwargs(
         self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]

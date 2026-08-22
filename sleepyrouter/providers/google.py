@@ -1,9 +1,11 @@
+from pathlib import Path
 from typing import Any
 
 from sleepyrouter.types import SleepyRouterModel
 
 from .base import (
     BaseProviderAdapter,
+    first_env,
     inject_max_reasoning,
 )
 
@@ -17,6 +19,9 @@ class GoogleProviderAdapter(BaseProviderAdapter):
             message_protocol="openai",
             default_reasoning_effort="high",
         )
+
+    def get_api_key(self, env: dict[str, str] | None = None, root: Path | None = None) -> str:
+        return first_env(["GOOGLE_API_KEY", "GEMINI_API_KEY"], env, root)
 
     def map_litellm_kwargs(
         self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]

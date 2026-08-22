@@ -8,12 +8,8 @@ from rich.console import Console
 from rich.table import Table
 import uvicorn
 
-from sleepyrouter.config import (
-    DEFAULT_PORT,
-    ConfigStore,
-    require_any_provider_api_key,
-    resolve_provider_api_keys,
-)
+from sleepyrouter.config import DEFAULT_PORT, ConfigStore
+from sleepyrouter.providers import default_provider_registry, require_any_provider_api_key
 from sleepyrouter.routing import all_group_model_ids
 from sleepyrouter.server import VERSION, create_app
 from sleepyrouter.types import UsageLogEntry
@@ -48,17 +44,12 @@ def run_start_command(port: int = 0, store: ConfigStore | None = None) -> None:
         store.write_config(config)
 
     env = dict(os.environ)
-    keys = resolve_provider_api_keys(env, store.root)
-
     print(f"\nsleepyrouter v{VERSION}")
     print(f"  config: {get_config_path(store.root)}")
     print(f"  env: {get_env_path(store.root)}")
-    print(f"  NVIDIA_API_KEY: {_format_status(active=bool(keys.nvidia))}")
-    print(f"  OPENROUTER_API_KEY: {_format_status(active=bool(keys.open_router))}")
-    print(f"  OPENCODE_API_KEY: {_format_status(active=bool(keys.zen))}")
-    print(f"  GOOGLE_API_KEY: {_format_status(active=bool(keys.google))}")
-    print(f"  FREEBUFF_API_KEY: {_format_status(active=bool(keys.freebuff))}")
-    print(f"  ANTIGRAVITY_API_KEY: {_format_status(active=bool(keys.antigravity))}")
+    for adapter in default_provider_registry.get_all():
+        status = _format_status(active=bool(adapter.get_api_key(env, store.root)))
+        print(f"  {adapter.api_key_env_var}: {status}")
 
     require_any_provider_api_key(env, store.root)
 
