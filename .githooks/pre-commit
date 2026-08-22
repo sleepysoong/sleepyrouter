@@ -1,0 +1,28 @@
+#!/bin/bash
+set -e
+FILE="pyproject.toml"
+# only bump if file exists
+if [ ! -f "$FILE" ]; then
+  exit 0
+fi
+# read current version
+VERSION=$(grep -E '^version = ' "$FILE" | sed -E 's/version = "(.*)"/\1/')
+if [ -z "$VERSION" ]; then
+  exit 0
+fi
+IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+# ensure numeric
+if ! [[ "$PATCH" =~ ^[0-9]+$ ]]; then
+  exit 0
+fi
+NEW_PATCH=$((PATCH + 1))
+NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+# avoid double-bump if already staged? check staged diff
+STAGED_VERSION=$(git diff --cached -- "$FILE" | grep -E '^\+version = ' | sed -E 's/\+version = "(.*)"/\1/' | tail -1)
+if [ -n "$STAGED_VERSION" ] && [ "$STAGED_VERSION" != "$VERSION" ]; then
+  # version already bumped in staged changes, don't bump again
+  exit 0
+fi
+sed -i -E "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$FILE"
+git add "$FILE"
+echo "[version-bump] $VERSION -> $NEW_VERSION"
