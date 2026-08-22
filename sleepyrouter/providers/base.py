@@ -25,6 +25,14 @@ def first_env(
     return ""
 
 
+def safe_exists(path: Path) -> bool:
+    """Path.exists() re-raises EACCES on unreadable parents; treat those as missing."""
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
 def inject_max_reasoning(
     kwargs: dict[str, Any],
     effort: str = "high",

@@ -17,6 +17,7 @@ from sleepyrouter.providers.antigravity import (
     parse_antigravity_response,
 )
 from sleepyrouter.providers.antigravity_oauth import force_refresh_antigravity_token
+from sleepyrouter.providers.base import safe_exists
 from sleepyrouter.types import SleepyRouterModel
 
 
@@ -334,3 +335,11 @@ def test_require_any_provider_api_key_raises() -> None:
         pytest.raises(ValueError, match="API 키가 설정되지 않았어요"),
     ):
         require_any_provider_api_key({}, Path(tmp))
+
+
+def test_safe_exists_treats_unreadable_paths_as_missing() -> None:
+    """CI regression: pathlib.Path.exists() re-raises EACCES; discovery must not crash."""
+    from unittest.mock import patch
+
+    with patch("sleepyrouter.providers.base.os.stat", side_effect=PermissionError(13, "denied")):
+        assert safe_exists(Path("/root/.senpi/agent/auth.json")) is False

@@ -13,6 +13,8 @@ import urllib.request
 
 from sleepyrouter.utils import get_config_root, read_local_env
 
+from .base import safe_exists
+
 logger = logging.getLogger("sleepyrouter.providers.antigravity")
 
 
@@ -134,7 +136,7 @@ def _process_oauth_token_file(data: dict[str, Any], path: Path, *, force: bool) 
 
 
 def _extract_antigravity_token(path: Path, *, force: bool = False) -> str:
-    if not path.exists():
+    if not safe_exists(path):
         return ""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))

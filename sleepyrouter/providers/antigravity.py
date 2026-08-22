@@ -18,6 +18,7 @@ from .antigravity_oauth import (
 from .base import (
     BaseProviderAdapter,
     inject_max_reasoning,
+    safe_exists,
 )
 
 ANTIGRAVITY_BASE_URL = "https://cloudcode-pa.googleapis.com"
@@ -73,7 +74,7 @@ def resolve_antigravity_project_id() -> str:
         Path("/root/.senpi/agent/auth.json"),
     ]
     for p in auth_candidates:
-        if p.exists():
+        if safe_exists(p):
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))
                 proj = data.get("antigravity", {}).get("projectId")

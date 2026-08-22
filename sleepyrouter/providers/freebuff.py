@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from .base import BaseProviderAdapter, first_env
+from .base import BaseProviderAdapter, first_env, safe_exists
 
 FREEBUFF_BASE_URL = "https://codebuff.com/api/v1"
 _CREDENTIALS_FILENAME = "credentials.json"
@@ -31,7 +31,7 @@ class FreebuffProviderAdapter(BaseProviderAdapter):
             credentials_path = root / _CREDENTIALS_FILENAME
         else:
             credentials_path = Path.home() / ".config" / "manicode" / _CREDENTIALS_FILENAME
-        if not credentials_path.exists():
+        if not safe_exists(credentials_path):
             return ""
         try:
             data = json.loads(credentials_path.read_text(encoding="utf-8"))
