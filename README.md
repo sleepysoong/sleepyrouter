@@ -1,108 +1,107 @@
-# sleepyrouter (Python + LiteLLM Edition)
+# sleepyrouter
 
-`sleepyrouter`는 코딩 에이전트를 여러 무료 provider 중 설정된 순서대로 라우팅하는 로컬 프록시입니다. OpenAI 또는 Anthropic 호환 에이전트의 baseURL을 `localhost`로 바꾸고 free 모델 몇 개를 골라두면, rate-limit이나 quota 문제가 생겨도 `sleepyrouter`가 요청을 자동 페일오버하여 계속 흘려보냅니다.
+코딩 에이전트의 OpenAI 호환 요청을 무료 LLM 프로바이더로 라우팅하는 로컬 프록시.
+후보 모델을 설정 순서대로 시도하고, 실패하면 다음 후보로 자동 전환한다(failover).
 
-Python 3.12+, [LiteLLM](https://github.com/BerriAI/litellm), 그리고 [FastAPI](https://fastapi.tiangolo.com)를 기반으로 작동합니다.
+Python 3.12+ · FastAPI + LiteLLM
 
-## 왜 필요한가
-
-Free tier 코딩 에이전트는 스펙 시트에서는 멀쩡해 보이지만, 실제로 돌려보면 몇 가지 문제가 생깁니다.
-
-**Rate limit이 작업 중간에 끊습니다.** OpenRouter나 NVIDIA의 free 모델은 429를 예고 없이 던집니다. 잘 돌던 실행이 도구 호출 한 번에 멈추고, 사람이 직접 다시 시도해야 합니다.
-
-**Quota가 마르면 provider를 손으로 갈아끼워야 합니다.** 한 provider의 free quota가 떨어지면 키와 baseURL을 직접 바꿔야 합니다. 에이전트 설정은 그 변화를 스스로 따라잡지 않습니다.
-
-**Free 카탈로그가 자주 바뀝니다.** 모델이 새로 생기고, 사라지고, deprecated 표시가 붙고, 조용히 에러를 뱉기 시작합니다.
-
-## sleepyrouter가 하는 일
-
-쓸 free 모델의 allowlist를 `sleepyrouter`에 넘기면 `http://localhost:4567`에서 로컬 프록시로 동작합니다. 내부에서는 다음 일을 처리합니다.
-
-| 기능 | 처리 방식 |
-| --- | --- |
-| 요청 라우팅 | 설정된 모델 순서대로 LiteLLM을 통해 요청을 라우팅하고 실패 시 자동 페일오버합니다. |
-| 클라이언트 호환성 | OpenAI 호환 `/v1` 과 Anthropic 호환 `/anthropic` surface를 노출하고, Anthropic tool-use 및 로컬 token count도 지원합니다. |
-| LiteLLM 통합 | LiteLLM 통합 연동 엔진을 통해 OpenRouter, NVIDIA, Copilot, Google, Zen 등 100+ LLM 모델 지원 |
-
-## API 키 발급
-
-`sleepyrouter`는 트래픽만 전달합니다. 지원되는 provider(OpenRouter, NVIDIA, GitHub Copilot, Google, Zen) 중 하나 이상에서 직접 키를 발급받아야 합니다.
-
-- **OpenRouter** — [openrouter.ai](https://openrouter.ai) 키 발급 (`OPENROUTER_API_KEY`)
-- **NVIDIA** — [build.nvidia.com](https://build.nvidia.com) 키 발급 (`NVIDIA_API_KEY`)
-- **GitHub Copilot** — Personal Access Token (`GITHUB_COPILOT_TOKEN`)
-- **Google Gemini** — Google AI Studio 키 발급 (`GOOGLE_API_KEY` 또는 `GEMINI_API_KEY`)
-- **Zen / OpenCode** — OpenCode 키 발급 (`OPENCODE_API_KEY`)
-
-가지고 있는 키를 `~/.sleepyrouter/.env`에 넣어 두면, `sleepyrouter`는 키가 설정된 provider만 사용합니다.
-
-## Quick Start (Python)
-
-### 가상환경 설정 및 의존성 설치
+## 설치 및 실행
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install litellm fastapi uvicorn pydantic pytest requests
+pip install -e .
+
+python main.py start                # 포트 4567 기본
+python main.py start --port 4599
 ```
 
-### 실행 및 CLI 사용법
+설정과 사용량 기록은 `~/.sleepyrouter/` 아래에 저장된다(`SLEEPYROUTER_HOME`으로 변경 가능).
+
+## API
+
+| 엔드포인트 | 설명 |
+|---|---|
+| POST /v1/chat/completions | OpenAI 호환 채팅 완성. 스트리밍 지원 |
+| GET /v1/models | 등록된 모델 목록 |
+| GET /health | 헬스 체크 |
+
+## 라우팅
+
+요청의 `model` 필드를 다음 순서로 해석한다.
+
+1. `modelGroups`의 그룹 이름과 일치하면 그룹 내 모델을 나열 순서대로 시도
+2. 등록된 모델 ID와 직접 일치하면 해당 모델 하나만 시도
+3. 어느 쪽도 아니면 `defaultModelGroup`으로 폴백
+
+후보마다 API 키가 없거나 호출이 실패하면 다음 후보로 넘어가고, 전부 실패하면 502를 반환한다. 스트리밍 응답은 첫 청크 수신 전까지만 페일오버할 수 있다.
+
+호출 결과는 `~/.sleepyrouter/usage.jsonl`에 기록되며 `usage` 명령으로 조회한다.
 
 ```bash
-# 서버 시작 (기본 포트: 4567)
-python3 main.py start --port 4567
-
-# 사용량 확인
-python3 main.py usage [--date YYYYMMDD | --week NN]
-
-# 버전 확인
-python3 main.py --version
+python main.py usage                    # 최근 사용량 요약
+python main.py usage --date 20260822    # 날짜 필터
+python main.py usage --week 34          # 주 단위 필터
 ```
 
-### 테스트 실행
+## 설정
 
-```bash
-PYTHONPATH=. pytest -v
-```
-
-## 설정 예제
-
-`sleepyrouter` 설정은 `~/.sleepyrouter/config.json`에 JSON 형식으로 저장합니다.
+`~/.sleepyrouter/config.json`. 저장할 때마다 자동으로 반영된다(재시작 불필요).
 
 ```json
 {
   "port": 4567,
   "modelGroups": {
-    "fast": ["fast-llama", "fast-phi"],
-    "balanced": ["balanced-llama", "capable-gpt4o"],
-    "capable": ["capable-gpt4o", "capable-mistral"]
+    "max": [
+      "antigravity/claude-opus-4.6",
+      "antigravity/gemini-3.7-flash",
+      "nvidia/glm-5.2",
+      "google/gemini-3.7-flash",
+      "zen/deepseek-v4-flash"
+    ]
   },
-  "defaultModelGroup": "balanced",
+  "defaultModelGroup": "max",
   "models": {
-    "fast-llama": {
+    "antigravity/claude-opus-4.6": {
+      "provider": "antigravity",
+      "name": "claude-opus-4-6"
+    },
+    "nvidia/glm-5.2": {
       "provider": "nvidia",
-      "name": "meta/llama-3.1-8b-instruct"
-    },
-    "fast-phi": {
-      "provider": "openrouter",
-      "name": "microsoft/phi-3-mini-128k-instruct:free"
-    },
-    "balanced-llama": {
-      "provider": "nvidia",
-      "name": "meta/llama-3.1-70b-instruct"
-    },
-    "capable-gpt4o": {
-      "provider": "google",
-      "name": "gemini-3.6-flash"
-    },
-    "capable-mistral": {
-      "provider": "nvidia",
-      "name": "mistralai/mistral-large-2-instruct"
+      "name": "z-ai/glm-5.2"
     }
   }
 }
 ```
 
+- 그룹 간 우선순위는 `modelGroups` 키의 나열 순서를 따른다.
+- `models`의 키는 `<source>/<모델명>` 형식의 로컬 ID이고, `name`은 프로바이더에 보낼 실제 모델 ID다.
+- `inputPrice`, `outputPrice`(달러/백만 토큰)와 `apiBase`는 선택값이다.
+
+## 프로바이더와 API 키
+
+| 소스 | 환경 변수 | 비고 |
+|---|---|---|
+| openrouter | `OPENROUTER_API_KEY` | |
+| nvidia | `NVIDIA_API_KEY` | |
+| copilot | `GITHUB_COPILOT_TOKEN` | GitHub PAT를 내부 토큰으로 교환해 사용 |
+| google | `GOOGLE_API_KEY`, `GEMINI_API_KEY` | |
+| zen | `OPENCODE_API_KEY` | |
+| antigravity | `ANTIGRAVITY_API_KEY` | 키가 없으면 OAuth 파일에서 자동 발급·갱신 |
+| freebuff | `FREEBUFF_API_KEY` | 없으면 manicode credentials.json 참조 |
+
+키는 프로세스 환경 변수 또는 `~/.sleepyrouter/.env`에서 읽는다(환경 변수 우선). antigravity는 별도 키가 없어도 `~/.senpi/agent/auth.json` 또는 `~/.gemini/**/antigravity-oauth-token`의 OAuth 토큰을 사용하며, 만료 전에 자동 갱신한다.
+
+레지스트리에 없는 커스텀 소스는 `{SOURCE}_API_KEY` 형식의 환경 변수를 찾는다(예: 소스가 `together`면 `TOGETHER_API_KEY`).
+
+## 개발
+
+```bash
+pip install -e ".[dev]"
+
+ruff check .
+mypy sleepyrouter
+pytest -q
+```
+
 ## 라이선스
 
-[MIT License](LICENSE.md)
+MIT — [LICENSE.md](LICENSE.md)
