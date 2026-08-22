@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from litellm import acompletion
 
 from sleepyrouter.config import ConfigStore, api_key_for
-from sleepyrouter.protocol import estimate_input_tokens, transform_request
+from sleepyrouter.protocol import transform_request
 from sleepyrouter.providers import map_to_litellm_kwargs
 from sleepyrouter.providers.antigravity import (
     call_antigravity_completion,
@@ -86,7 +86,6 @@ async def _execute_candidate_attempt(
         model=model,
         upstream_model_id=upstream_model_id,
     )
-    est_input_tokens = estimate_input_tokens(body)
     is_direct_antigravity = model.source == "antigravity" and not model.api_base
 
     if is_stream:
@@ -108,7 +107,6 @@ async def _execute_candidate_attempt(
             request_id=request_id,
             index=index,
             total=total,
-            initial_input_tokens=est_input_tokens,
         )
 
     if is_direct_antigravity:

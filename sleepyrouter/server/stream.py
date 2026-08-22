@@ -64,9 +64,8 @@ async def create_sse_stream_generator(
     request_id: int = 0,
     index: int = 1,
     total: int = 1,
-    initial_input_tokens: int = 0,
 ) -> AsyncGenerator[bytes, None]:
-    input_tokens = initial_input_tokens
+    input_tokens = 0
     output_tokens = 0
     accumulated_output_chars = 0
     stream_start = time.time()
@@ -154,7 +153,6 @@ async def start_streaming_response(
     request_id: int,
     index: int,
     total: int,
-    initial_input_tokens: int = 0,
 ) -> StreamingResponse:
     try:
         first_chunk = await anext(raw_gen)
@@ -174,6 +172,5 @@ async def start_streaming_response(
         request_id=request_id,
         index=index,
         total=total,
-        initial_input_tokens=initial_input_tokens,
     )
     return StreamingResponse(generator, media_type="text/event-stream")

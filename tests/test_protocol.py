@@ -1,13 +1,7 @@
 from sleepyrouter.protocol import (
-    estimate_input_tokens,
     transform_request,
     transform_response,
 )
-
-
-def test_estimate_input_tokens() -> None:
-    body = {"messages": [{"role": "user", "content": "Hello world"}]}
-    assert estimate_input_tokens(body) > 0
 
 
 def test_transform_request() -> None:
