@@ -15,7 +15,7 @@ from sleepyrouter.events import (
     default_event_bus,
 )
 from sleepyrouter.providers import require_any_provider_api_key
-from sleepyrouter.routing import all_group_model_ids, default_routing_engine
+from sleepyrouter.routing import all_group_model_ids, ordered_candidates
 from sleepyrouter.types import SleepyRouterConfig, SleepyRouterModel, source_of
 
 from .failover import process_chat_candidates
@@ -110,11 +110,11 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
             )
             return JSONResponse(status_code=400, content={"error": {"message": err_msg}})
 
-        candidates, candidate_reason = default_routing_engine.resolve(
+        candidates, candidate_reason = ordered_candidates(
             config.model_groups,
             requested_model,
             config.default_model_group,
-            config.group_order,
+            *config.group_order,
             known_models=by_id,
         )
 
