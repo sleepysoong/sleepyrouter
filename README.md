@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" width="240" alt="sleepyrouter logo" />
+</p>
+
 # sleepyrouter
 
 코딩 에이전트의 OpenAI 호환 요청을 무료 LLM 프로바이더로 라우팅하는 로컬 프록시.
