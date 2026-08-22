@@ -135,6 +135,7 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
             body,
             request_id=req_id,
             is_stream=is_stream,
+            env=env,
         )
 
     return app

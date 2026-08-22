@@ -141,6 +141,7 @@ async def process_chat_candidates(
     *,
     request_id: int = 0,
     is_stream: bool = False,
+    env: dict[str, str] | None = None,
 ) -> Response:
     overall_start = time.time()
     upstream_error = ""
@@ -156,7 +157,7 @@ async def process_chat_candidates(
 
         tried_any = True
         tried_models.append(model_id)
-        api_key = api_key_for(model.source)
+        api_key = api_key_for(model.source, env)
         attempt_start = time.time()
 
         if not api_key:
