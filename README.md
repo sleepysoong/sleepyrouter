@@ -2,7 +2,7 @@
 
 `sleepyrouter`는 코딩 에이전트를 여러 무료 provider 중 설정된 순서대로 라우팅하는 로컬 프록시입니다. OpenAI 또는 Anthropic 호환 에이전트의 baseURL을 `localhost`로 바꾸고 free 모델 몇 개를 골라두면, rate-limit이나 quota 문제가 생겨도 `sleepyrouter`가 요청을 자동 페일오버하여 계속 흘려보냅니다.
 
-Python 3.14+, [LiteLLM](https://github.com/BerriAI/litellm), 그리고 [FastAPI](https://fastapi.tiangolo.com)를 기반으로 작동합니다.
+Python 3.12+, [LiteLLM](https://github.com/BerriAI/litellm), 그리고 [FastAPI](https://fastapi.tiangolo.com)를 기반으로 작동합니다.
 
 ## 왜 필요한가
 
