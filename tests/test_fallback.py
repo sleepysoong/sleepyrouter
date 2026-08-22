@@ -128,7 +128,10 @@ def test_candidate_stream_failover_success_on_second() -> None:
         app = create_app(store=store, env={"OPENROUTER_API_KEY": "sk-test"})
         client = TestClient(app)
 
+        captured_kwargs: list[dict[str, Any]] = []
+
         async def mock_stream_acompletion(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+            captured_kwargs.append(kwargs)
             model_param = str(kwargs.get("model", ""))
             if "m1" in model_param:
                 raise RuntimeError("Rate limit exceeded 429 on stream start")
@@ -155,6 +158,8 @@ def test_candidate_stream_failover_success_on_second() -> None:
             )
             assert res.status_code == 200
             assert "Stream chunk from m2" in res.text
+
+        assert captured_kwargs[0]["stream_options"] == {"include_usage": True}
 
         store.close()
 

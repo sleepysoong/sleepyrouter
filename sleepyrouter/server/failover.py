@@ -98,6 +98,7 @@ async def _execute_candidate_attempt(
             kwargs["num_retries"] = 0
             kwargs.pop("stream", None)
             kwargs.setdefault("timeout", default_timeout)
+            kwargs["stream_options"] = {"include_usage": True}
             gen = await acompletion(**kwargs, stream=True)
 
         return await start_streaming_response(
