@@ -31,6 +31,8 @@ class UsageLogEntry(BaseModel):
 class ModelDefinition(BaseModel):
     provider: str
     name: str
+    input_price: float | None = None
+    output_price: float | None = None
     api_base: str | None = None
 
 
