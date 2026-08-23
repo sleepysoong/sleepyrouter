@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" width="240" alt="sleepyrouter logo" />
+  <img src="assets/logo.png" width="120" alt="sleepyrouter logo" />
 </p>
 
 # sleepyrouter
