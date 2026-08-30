@@ -169,6 +169,33 @@ class AntigravityProviderAdapter(BaseProviderAdapter):
         }
         return res
 
+    async def complete(
+        self,
+        model: SleepyRouterModel,
+        api_key: str,
+        request_kwargs: dict[str, Any],
+        timeout: float = 60.0,
+    ) -> dict[str, Any]:
+        if model.api_base:
+            return await super().complete(model, api_key, request_kwargs, timeout=timeout)
+        upstream_id = model.upstream_id or model.id
+        return await call_antigravity_completion(
+            upstream_id, api_key, request_kwargs, timeout=timeout
+        )
+
+    async def stream(
+        self,
+        model: SleepyRouterModel,
+        api_key: str,
+        request_kwargs: dict[str, Any],
+        timeout: float = 60.0,
+    ) -> AsyncGenerator[Any, None]:
+        if model.api_base:
+            return await super().stream(model, api_key, request_kwargs, timeout=timeout)
+        upstream_id = model.upstream_id or model.id
+        return call_antigravity_stream(upstream_id, api_key, request_kwargs, timeout=timeout)
+
+
 
 def build_antigravity_headers(api_key: str) -> dict[str, str]:
     return {

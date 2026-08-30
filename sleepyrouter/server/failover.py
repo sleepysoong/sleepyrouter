@@ -1,4 +1,4 @@
-"""Candidate failover and retry processing via LiteLLM and Antigravity."""
+"""Candidate failover and retry processing via unified ProviderAdapter interface."""
 
 import datetime
 import os
@@ -7,14 +7,13 @@ from typing import Any
 
 from fastapi import Response
 from fastapi.responses import JSONResponse
-from litellm import acompletion
 
 from sleepyrouter.config import ConfigStore
 from sleepyrouter.protocol import transform_request
-from sleepyrouter.providers import api_key_for, map_to_litellm_kwargs
-from sleepyrouter.providers.antigravity import (
-    call_antigravity_completion,
-    call_antigravity_stream,
+from sleepyrouter.providers import (
+    BaseProviderAdapter,
+    api_key_for,
+    default_provider_registry,
 )
 from sleepyrouter.types import SleepyRouterModel, UsageLogEntry
 from sleepyrouter.utils import format_error_message, truncate
@@ -86,21 +85,20 @@ async def _execute_candidate_attempt(
         model=model,
         upstream_model_id=upstream_model_id,
     )
-    is_direct_antigravity = model.source == "antigravity" and not model.api_base
+
+    adapter = default_provider_registry.get(model.source) or BaseProviderAdapter(
+        name=model.provider,
+        source=model.source,
+        api_key_env_var="",
+    )
 
     if is_stream:
-        if is_direct_antigravity:
-            gen = call_antigravity_stream(
-                upstream_model_id, api_key, request_kwargs, timeout=default_timeout
-            )
-        else:
-            kwargs = map_to_litellm_kwargs(model, api_key, request_kwargs)
-            kwargs["num_retries"] = 0
-            kwargs.pop("stream", None)
-            kwargs.setdefault("timeout", default_timeout)
-            kwargs["stream_options"] = {"include_usage": True}
-            gen = await acompletion(**kwargs, stream=True)
-
+        gen = await adapter.stream(
+            model,
+            api_key,
+            request_kwargs,
+            timeout=default_timeout,
+        )
         return await start_streaming_response(
             gen,
             model,
@@ -110,18 +108,12 @@ async def _execute_candidate_attempt(
             total=total,
         )
 
-    if is_direct_antigravity:
-        resp_dict = await call_antigravity_completion(
-            upstream_model_id, api_key, request_kwargs, timeout=default_timeout
-        )
-    else:
-        kwargs = map_to_litellm_kwargs(model, api_key, request_kwargs)
-        kwargs["num_retries"] = 0
-        kwargs.pop("stream", None)
-        kwargs.setdefault("timeout", default_timeout)
-        resp_obj = await acompletion(**kwargs)
-        resp_dict = resp_obj.model_dump() if hasattr(resp_obj, "model_dump") else dict(resp_obj)
-
+    resp_dict = await adapter.complete(
+        model,
+        api_key,
+        request_kwargs,
+        timeout=default_timeout,
+    )
     return _record_success_and_respond(
         resp_dict,
         model,

@@ -35,7 +35,7 @@ def test_candidate_failover_all_fail() -> None:
         async def mock_acompletion(*args: Any, **kwargs: Any) -> Any:
             raise RuntimeError("Upstream 500 connection error")
 
-        with patch("sleepyrouter.server.failover.acompletion", side_effect=mock_acompletion):
+        with patch("sleepyrouter.providers.base.acompletion", side_effect=mock_acompletion):
             res = client.post(
                 "/v1/chat/completions",
                 json={"model": "high", "messages": [{"role": "user", "content": "hi"}]},
@@ -94,7 +94,7 @@ def test_candidate_failover_success_on_second() -> None:
                 raise RuntimeError("Rate limit exceeded 429")
             return MockResponseObj()
 
-        with patch("sleepyrouter.server.failover.acompletion", side_effect=mock_acompletion):
+        with patch("sleepyrouter.providers.base.acompletion", side_effect=mock_acompletion):
             res = client.post(
                 "/v1/chat/completions",
                 json={"model": "high", "messages": [{"role": "user", "content": "hi"}]},
@@ -145,7 +145,7 @@ def test_candidate_stream_failover_success_on_second() -> None:
             yield chunk
 
         with patch(
-            "sleepyrouter.server.failover.acompletion",
+            "sleepyrouter.providers.base.acompletion",
             side_effect=mock_stream_acompletion,
         ):
             res = client.post(
@@ -200,7 +200,7 @@ def test_antigravity_stream_failover_to_second_candidate() -> None:
             }
 
         with patch(
-            "sleepyrouter.server.failover.call_antigravity_stream",
+            "sleepyrouter.providers.antigravity.call_antigravity_stream",
             side_effect=mock_call_antigravity_stream,
         ):
             res = client.post(
@@ -253,7 +253,7 @@ def test_stream_failover_when_first_candidate_yields_empty_stream() -> None:
             yield chunk
 
         with patch(
-            "sleepyrouter.server.failover.acompletion",
+            "sleepyrouter.providers.base.acompletion",
             side_effect=mock_stream_acompletion,
         ):
             res = client.post(

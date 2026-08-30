@@ -1,5 +1,6 @@
 from pathlib import Path
 import tempfile
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -343,3 +344,68 @@ def test_safe_exists_treats_unreadable_paths_as_missing() -> None:
 
     with patch("sleepyrouter.providers.base.os.stat", side_effect=PermissionError(13, "denied")):
         assert safe_exists(Path("/root/.senpi/agent/auth.json")) is False
+
+
+@pytest.mark.anyio
+async def test_base_provider_adapter_complete_and_stream() -> None:
+    adapter = default_provider_registry.get("openrouter")
+    assert adapter is not None
+    model = SleepyRouterModel(
+        id="openrouter/gpt-4o",
+        upstream_id="gpt-4o",
+        provider="openrouter",
+        source="openrouter",
+    )
+
+    class MockResp:
+        def model_dump(self) -> dict[str, Any]:
+            return {"id": "test-123", "choices": []}
+
+    with patch("sleepyrouter.providers.base.acompletion", return_value=MockResp()) as mock_ac:
+        res = await adapter.complete(model, "key-1", {"messages": []}, timeout=30.0)
+        assert res["id"] == "test-123"
+        mock_ac.assert_called_once()
+
+    async def mock_stream_gen():
+        yield {"chunk": 1}
+
+    with patch(
+        "sleepyrouter.providers.base.acompletion", return_value=mock_stream_gen()
+    ) as mock_stream_ac:
+        gen = await adapter.stream(model, "key-1", {"messages": []}, timeout=30.0)
+        items = [item async for item in gen]
+        assert len(items) == 1
+        mock_stream_ac.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_antigravity_provider_adapter_polymorphic_complete_and_stream() -> None:
+    adapter = default_provider_registry.get("antigravity")
+    assert adapter is not None
+    model = SleepyRouterModel(
+        id="antigravity/gemini-3.7-flash",
+        upstream_id="gemini-3.7-flash",
+        provider="antigravity",
+        source="antigravity",
+    )
+
+    with patch(
+        "sleepyrouter.providers.antigravity.call_antigravity_completion",
+        return_value={"id": "ag-123"},
+    ) as mock_comp:
+        res = await adapter.complete(model, "ag-key", {"messages": []})
+        assert res["id"] == "ag-123"
+        mock_comp.assert_called_once()
+
+    async def mock_ag_stream(*args: Any, **kwargs: Any):
+        yield {"id": "chunk-1"}
+
+    with patch(
+        "sleepyrouter.providers.antigravity.call_antigravity_stream",
+        side_effect=mock_ag_stream,
+    ) as mock_stream:
+        gen = await adapter.stream(model, "ag-key", {"messages": []})
+        items = [item async for item in gen]
+        assert len(items) == 1
+        mock_stream.assert_called_once()
+

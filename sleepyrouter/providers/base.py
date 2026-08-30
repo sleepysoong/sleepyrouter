@@ -1,9 +1,11 @@
 """Base ProviderAdapter and ProviderRegistry abstraction with reasoning & thinking injection."""
 
-from collections.abc import Sequence
+from collections.abc import AsyncGenerator, Sequence
 import os
 from pathlib import Path
 from typing import Any, Protocol
+
+from litellm import acompletion
 
 from sleepyrouter.types import ModelSource, SleepyRouterModel, source_of
 from sleepyrouter.utils import get_config_root, read_local_env
@@ -64,6 +66,22 @@ class ProviderAdapter(Protocol):
     def map_litellm_kwargs(
         self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
     ) -> dict[str, Any]: ...
+
+    async def complete(
+        self,
+        model: SleepyRouterModel,
+        api_key: str,
+        request_kwargs: dict[str, Any],
+        timeout: float = 60.0,
+    ) -> dict[str, Any]: ...
+
+    async def stream(
+        self,
+        model: SleepyRouterModel,
+        api_key: str,
+        request_kwargs: dict[str, Any],
+        timeout: float = 60.0,
+    ) -> AsyncGenerator[Any, None]: ...
 
 
 class BaseProviderAdapter:
@@ -128,6 +146,41 @@ class BaseProviderAdapter:
         if self._extra_headers:
             litellm_kwargs["headers"] = dict(self._extra_headers)
         return litellm_kwargs
+
+    async def complete(
+        self,
+        model: SleepyRouterModel,
+        api_key: str,
+        request_kwargs: dict[str, Any],
+        timeout: float = 60.0,
+    ) -> dict[str, Any]:
+        prepared_key = self.prepare_api_key(api_key)
+        kwargs = self.map_litellm_kwargs(model, prepared_key, request_kwargs)
+        if model.api_base:
+            kwargs["api_base"] = model.api_base
+        kwargs["num_retries"] = 0
+        kwargs.pop("stream", None)
+        kwargs.setdefault("timeout", timeout)
+        resp_obj = await acompletion(**kwargs)
+        return resp_obj.model_dump() if hasattr(resp_obj, "model_dump") else dict(resp_obj)
+
+    async def stream(
+        self,
+        model: SleepyRouterModel,
+        api_key: str,
+        request_kwargs: dict[str, Any],
+        timeout: float = 60.0,
+    ) -> AsyncGenerator[Any, None]:
+        prepared_key = self.prepare_api_key(api_key)
+        kwargs = self.map_litellm_kwargs(model, prepared_key, request_kwargs)
+        if model.api_base:
+            kwargs["api_base"] = model.api_base
+        kwargs["num_retries"] = 0
+        kwargs.pop("stream", None)
+        kwargs.setdefault("timeout", timeout)
+        kwargs["stream_options"] = {"include_usage": True}
+        return await acompletion(**kwargs, stream=True)  # type: ignore[no-any-return]
+
 
 
 class ProviderRegistry:
