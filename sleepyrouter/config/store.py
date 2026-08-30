@@ -110,5 +110,8 @@ class ConfigStore:
     def read_usage_logs(self) -> list[UsageLogEntry]:
         return self.logger.read_usage_logs()
 
+    def get_initial_request_id(self) -> int:
+        return self.logger.get_request_count()
+
     def close(self) -> None:
         self.logger.close()

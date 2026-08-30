@@ -25,7 +25,6 @@ litellm.drop_params = True
 litellm.suppress_debug_info = True
 
 VERSION = "1.0.0"
-_request_counter = itertools.count(1)
 
 
 def _build_selected_models(
@@ -55,6 +54,7 @@ def _build_selected_models(
 def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = None) -> FastAPI:
     app = FastAPI(title="sleepyrouter", version=VERSION)
     active_store = store or ConfigStore()
+    request_counter = itertools.count(active_store.get_initial_request_id() + 1)
     start_time = time.time()
 
     @app.get("/health")
@@ -85,7 +85,7 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request) -> Response:
         body = await request.json()
-        req_id = next(_request_counter)
+        req_id = next(request_counter)
         requested_model = str(body.get("model", ""))
         is_stream = bool(body.get("stream"))
 

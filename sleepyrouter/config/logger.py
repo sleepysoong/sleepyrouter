@@ -73,6 +73,15 @@ class UsageLogger:
         except sqlite3.Error:
             return []
 
+    def get_request_count(self) -> int:
+        try:
+            conn = self._init_db()
+            cursor = conn.execute("SELECT COUNT(*) FROM usage_log")
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+        except sqlite3.Error:
+            return 0
+
     def close(self) -> None:
         if self._conn:
             self._conn.close()

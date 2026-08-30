@@ -77,3 +77,43 @@ def test_chat_completions_missing_models(
     assert res.status_code == 400
     data = res.json()
     assert "선택된 무료 모델이 없어요" in data["error"]["message"]
+
+
+def test_request_id_persistence_across_restarts() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = ConfigStore(root)
+        store.ensure_root()
+        assert store.get_initial_request_id() == 0
+
+        from sleepyrouter.types import UsageLogEntry
+
+        store.append_usage(
+            UsageLogEntry(
+                ts="2026-08-30T00:00:00Z",
+                model="test-model",
+                input_tokens=10,
+                output_tokens=20,
+                success=True,
+            )
+        )
+        store.append_usage(
+            UsageLogEntry(
+                ts="2026-08-30T00:01:00Z",
+                model="test-model",
+                input_tokens=5,
+                output_tokens=15,
+                success=True,
+            )
+        )
+        assert store.get_initial_request_id() == 2
+
+        app = create_app(store=store, env={"OPENROUTER_API_KEY": "sk-test"})
+        client = TestClient(app)
+        res = client.post(
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "Hi"}]},
+        )
+        assert res.status_code == 400
+        store.close()
+
