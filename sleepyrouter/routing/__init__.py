@@ -1,10 +1,114 @@
-from .groups import (
-    all_group_model_ids,
-    normalize_model_group_name,
-    normalize_model_groups_ordered,
-    resolve_default_group,
-)
-from .resolver import RouteReason, candidate_ids, ordered_candidates
+"""Model group normalization, candidate resolution, and routing logic."""
+
+from typing import Any
+
+from sleepyrouter.types import complete_group_order
+
+RouteReason = str  # "model-group" | "direct-model" | "fallback-order"
+
+
+def normalize_model_group_name(value: str) -> str:
+    """Normalizes model group name string."""
+    return value.strip().lower() if value else ""
+
+
+def normalize_model_groups_ordered(
+    value: Any,
+) -> tuple[dict[str, list[str]], list[str]]:
+    """Extracts and orders model group mappings."""
+    groups: dict[str, list[str]] = {}
+    order: list[str] = []
+    if isinstance(value, dict):
+        for key, raw in value.items():
+            if isinstance(raw, list):
+                groups[key] = [str(v) for v in raw if isinstance(v, (str, int))]
+                order.append(key)
+    order.sort()
+    return groups, order
+
+
+def all_group_model_ids(groups: dict[str, list[str]], *group_order: str) -> list[str]:
+    """Lists all unique model IDs across configured groups in priority order."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for group in complete_group_order(groups, list(group_order)):
+        for model_id in groups.get(group, []):
+            if model_id not in seen:
+                seen.add(model_id)
+                result.append(model_id)
+    return result
+
+
+def resolve_default_group(
+    groups: dict[str, list[str]], default_group: str | None, *group_order: str
+) -> str:
+    """Resolves the default model group identifier."""
+    if default_group and default_group in groups:
+        return default_group
+    order = complete_group_order(groups, list(group_order))
+    return order[0] if order else ""
+
+
+def _find_direct_match(
+    normalized: str,
+    requested_model: str,
+    groups: dict[str, list[str]],
+    known_models: dict[str, Any] | None,
+) -> list[str] | None:
+    if known_models:
+        if requested_model in known_models:
+            return [requested_model]
+        for m_id in known_models:
+            if normalize_model_group_name(m_id) == normalized:
+                return [m_id]
+
+    for g_vals in groups.values():
+        for val in g_vals:
+            if normalize_model_group_name(val) == normalized:
+                return [val]
+    return None
+
+
+def candidate_ids(
+    groups: dict[str, list[str]],
+    requested_model: str,
+    default_group: str | None,
+    *group_order: str,
+    known_models: dict[str, Any] | None = None,
+) -> tuple[list[str], RouteReason]:
+    """Resolves matching candidate model IDs and route reason."""
+    normalized = normalize_model_group_name(requested_model)
+
+    # 1. Match model group
+    for g_k, g_v in groups.items():
+        if normalize_model_group_name(g_k) == normalized:
+            return g_v, "model-group"
+
+    # 2. Match direct model ID
+    direct = _find_direct_match(normalized, requested_model, groups, known_models)
+    if direct is not None:
+        return direct, "direct-model"
+
+    # 3. Fallback to default group
+    resolved = resolve_default_group(groups, default_group, *group_order)
+    if not resolved:
+        return [], "fallback-order"
+    return groups.get(resolved, []), "fallback-order"
+
+
+def ordered_candidates(
+    groups: dict[str, list[str]],
+    requested_model: str,
+    default_group: str | None,
+    *group_order: str,
+    known_models: dict[str, Any] | None = None,
+) -> tuple[list[str], RouteReason]:
+    """Ordered candidate list wrapper."""
+    ids, reason = candidate_ids(
+        groups, requested_model, default_group, *group_order, known_models=known_models
+    )
+    return list(ids), reason
+
 
 __all__ = [
     "RouteReason",

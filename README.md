@@ -55,18 +55,18 @@ python main.py usage --week 34          # 주 단위 필터
   "port": 4567,
   "modelGroups": {
     "max": [
-      "antigravity/claude-opus-4.6",
-      "antigravity/gemini-3.7-flash",
+      "openrouter/claude-3-7-sonnet",
+      "google/gemini-2.5-flash",
       "nvidia/glm-5.2",
-      "google/gemini-3.7-flash",
       "zen/deepseek-v4-flash"
     ]
   },
   "defaultModelGroup": "max",
   "models": {
-    "antigravity/claude-opus-4.6": {
-      "provider": "antigravity",
-      "name": "claude-opus-4-6"
+    "openrouter/claude-3-7-sonnet": {
+      "provider": "openrouter",
+      "name": "anthropic/claude-3.7-sonnet",
+      "maxEffort": "high"
     },
     "nvidia/glm-5.2": {
       "provider": "nvidia",
@@ -78,7 +78,7 @@ python main.py usage --week 34          # 주 단위 필터
 
 - 그룹 간 우선순위는 `modelGroups` 키의 나열 순서를 따른다.
 - `models`의 키는 `<source>/<모델명>` 형식의 로컬 ID이고, `name`은 프로바이더에 보낼 실제 모델 ID다.
-- `inputPrice`, `outputPrice`(달러/백만 토큰)와 `apiBase`는 선택값이다.
+- `inputPrice`, `outputPrice`(달러/백만 토큰), `apiBase`, `maxEffort`, `thinkingBudget`은 선택값이다.
 
 ## 프로바이더와 API 키
 
@@ -87,12 +87,11 @@ python main.py usage --week 34          # 주 단위 필터
 | openrouter | `OPENROUTER_API_KEY` | |
 | nvidia | `NVIDIA_API_KEY` | |
 | copilot | `GITHUB_COPILOT_TOKEN` | GitHub PAT를 내부 토큰으로 교환해 사용 |
-| google | `GOOGLE_API_KEY`, `GEMINI_API_KEY` | |
+| google | `GOOGLE_API_KEY`, `GEMINI_API_KEY` | 공식 OpenAI 호환 엔드포인트 연동 |
 | zen | `OPENCODE_API_KEY` | |
-| antigravity | `ANTIGRAVITY_API_KEY` | 키가 없으면 OAuth 파일에서 자동 발급·갱신 |
 | freebuff | `FREEBUFF_API_KEY` | 없으면 manicode credentials.json 참조 |
 
-키는 프로세스 환경 변수 또는 `~/.sleepyrouter/.env`에서 읽는다(환경 변수 우선). antigravity는 별도 키가 없어도 `~/.senpi/agent/auth.json` 또는 `~/.gemini/**/antigravity-oauth-token`의 OAuth 토큰을 사용하며, 만료 전에 자동 갱신한다.
+키는 프로세스 환경 변수 또는 `~/.sleepyrouter/.env`에서 읽는다(환경 변수 우선).
 
 레지스트리에 없는 커스텀 소스는 `{SOURCE}_API_KEY` 형식의 환경 변수를 찾는다(예: 소스가 `together`면 `TOGETHER_API_KEY`).
 

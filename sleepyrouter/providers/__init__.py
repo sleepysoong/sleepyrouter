@@ -5,7 +5,6 @@ from pathlib import Path
 
 from sleepyrouter.types import ModelSource
 
-from .antigravity import AntigravityProviderAdapter
 from .base import (
     BaseProviderAdapter,
     MessageProtocol,
@@ -29,7 +28,6 @@ default_provider_registry.register(NVIDIAProviderAdapter())
 default_provider_registry.register(CopilotProviderAdapter())
 default_provider_registry.register(GoogleProviderAdapter())
 default_provider_registry.register(ZenProviderAdapter())
-default_provider_registry.register(AntigravityProviderAdapter())
 default_provider_registry.register(FreebuffProviderAdapter())
 
 
@@ -68,7 +66,6 @@ def require_any_provider_api_key(
 
 
 __all__ = [
-    "AntigravityProviderAdapter",
     "BaseProviderAdapter",
     "CopilotProviderAdapter",
     "FreebuffProviderAdapter",

@@ -9,7 +9,14 @@ from fastapi import Response
 from fastapi.responses import JSONResponse
 
 from sleepyrouter.config import ConfigStore
-from sleepyrouter.protocol import transform_request
+from sleepyrouter.events import (
+    AllCandidatesFailedEvent,
+    CandidateAttemptEvent,
+    CandidateFailedEvent,
+    CandidateSucceededEvent,
+    FailoverEvent,
+    default_event_bus,
+)
 from sleepyrouter.providers import (
     BaseProviderAdapter,
     api_key_for,
@@ -18,13 +25,110 @@ from sleepyrouter.providers import (
 from sleepyrouter.types import SleepyRouterModel, UsageLogEntry
 from sleepyrouter.utils import format_error_message, truncate
 
-from .failover_events import (
-    emit_all_failed_event,
-    emit_attempt_event,
-    emit_failure_and_failover,
-    emit_success_event,
-)
 from .stream import start_streaming_response
+
+
+def transform_request(body: dict[str, Any], model_id: str) -> dict[str, Any]:
+    """Sets the target model field on the request payload."""
+    res = dict(body)
+    res["model"] = model_id
+    return res
+
+
+
+def _emit_attempt(
+    *, request_id: int, index: int, total: int, model: SleepyRouterModel, upstream_id: str
+) -> None:
+    default_event_bus.publish(
+        CandidateAttemptEvent(
+            ts=time.time(),
+            request_id=request_id,
+            index=index,
+            total=total,
+            model_id=model.id,
+            provider=model.provider,
+            upstream_id=upstream_id,
+        )
+    )
+
+
+def _emit_success(
+    *,
+    request_id: int,
+    index: int,
+    total: int,
+    model: SleepyRouterModel,
+    duration_sec: float,
+    input_tokens: int,
+    output_tokens: int,
+) -> None:
+    default_event_bus.publish(
+        CandidateSucceededEvent(
+            ts=time.time(),
+            request_id=request_id,
+            index=index,
+            total=total,
+            model_id=model.id,
+            provider=model.provider,
+            duration_sec=duration_sec,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+    )
+
+
+def _emit_failure_and_failover(
+    model: SleepyRouterModel,
+    error_message: str,
+    candidates: list[str],
+    idx: int,
+    by_id: dict[str, SleepyRouterModel],
+    *,
+    request_id: int,
+    total_cands: int,
+    duration_sec: float,
+) -> None:
+    default_event_bus.publish(
+        CandidateFailedEvent(
+            ts=time.time(),
+            request_id=request_id,
+            index=idx + 1,
+            total=total_cands,
+            model_id=model.id,
+            provider=model.provider,
+            duration_sec=duration_sec,
+            error_message=error_message,
+        )
+    )
+    for next_cand in candidates[idx + 1 :]:
+        if next_cand in by_id:
+            default_event_bus.publish(
+                FailoverEvent(
+                    ts=time.time(),
+                    request_id=request_id,
+                    index=idx + 1,
+                    total=total_cands,
+                    failed_model_id=model.id,
+                    next_model_id=next_cand,
+                    provider=model.provider,
+                    error_message=error_message,
+                )
+            )
+            break
+
+
+def _emit_all_failed(
+    *, request_id: int, candidates_tried: list[str], last_error: str, total_duration_sec: float
+) -> None:
+    default_event_bus.publish(
+        AllCandidatesFailedEvent(
+            ts=time.time(),
+            request_id=request_id,
+            candidates_tried=candidates_tried,
+            last_error=last_error,
+            total_duration_sec=total_duration_sec,
+        )
+    )
 
 
 def _record_success_and_respond(
@@ -41,7 +145,7 @@ def _record_success_and_respond(
     in_tok = usage.get("prompt_tokens") or 0
     out_tok = usage.get("completion_tokens") or 0
 
-    emit_success_event(
+    _emit_success(
         request_id=request_id,
         index=index,
         total=total,
@@ -78,12 +182,12 @@ async def _execute_candidate_attempt(
     upstream_model_id = model.upstream_id or model.id
     request_kwargs = transform_request(body, upstream_model_id)
 
-    emit_attempt_event(
+    _emit_attempt(
         request_id=request_id,
         index=index,
         total=total,
         model=model,
-        upstream_model_id=upstream_model_id,
+        upstream_id=upstream_model_id,
     )
 
     adapter = default_provider_registry.get(model.source) or BaseProviderAdapter(
@@ -154,7 +258,7 @@ async def process_chat_candidates(
 
         if not api_key:
             upstream_error = f"[{model_id}] API key missing for provider {model.source}"
-            emit_failure_and_failover(
+            _emit_failure_and_failover(
                 model,
                 upstream_error,
                 candidates,
@@ -191,7 +295,7 @@ async def process_chat_candidates(
                     success=False,
                 )
             )
-            emit_failure_and_failover(
+            _emit_failure_and_failover(
                 model,
                 err_msg,
                 candidates,
@@ -203,7 +307,7 @@ async def process_chat_candidates(
             )
 
     total_dur = time.time() - overall_start
-    emit_all_failed_event(
+    _emit_all_failed(
         request_id=request_id,
         candidates_tried=tried_models,
         last_error=upstream_error,

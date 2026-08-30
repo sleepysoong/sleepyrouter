@@ -1,12 +1,10 @@
-"""Types module for sleepyrouter."""
+"""Data models for sleepyrouter."""
 
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ModelSource = (
-    str  # "openrouter", "nvidia", "copilot", "zen", "google", "antigravity", "freebuff", or custom
-)
+ModelSource = str  # "openrouter", "nvidia", "copilot", "zen", "google", "freebuff", or custom
 
 
 class ChatMessage(BaseModel):
@@ -22,7 +20,6 @@ class ChatCompletionRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1)
     model: str = ""
     stream: bool = False
-
 
 
 class SleepyRouterModel(BaseModel):
@@ -60,7 +57,6 @@ class ModelDefinition(BaseModel):
     thinking_budget: int | None = None
 
 
-
 class SleepyRouterConfig(BaseModel):
     port: int = 4567
     model_groups: dict[str, list[str]] = Field(default_factory=dict)
@@ -76,6 +72,5 @@ def complete_group_order(groups: dict[str, list[str]], preferred: list[str]) -> 
         if name not in seen and name in groups:
             seen.add(name)
             order.append(name)
-
     remaining = sorted([n for n in groups if n not in seen])
     return order + remaining
