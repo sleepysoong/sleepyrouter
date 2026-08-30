@@ -89,3 +89,40 @@ def test_usage_command_with_date_filter() -> None:
 
         assert "사용 기록이 없어요 (날짜: 20260820)" in output
         store.close()
+
+
+def test_usage_command_with_week_filter() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = ConfigStore(root)
+        store.ensure_root()
+
+        # 2026-08-20 is in ISO week 34
+        store.append_usage(
+            UsageLogEntry(
+                ts="2026-08-20T10:00:00Z",
+                model="openai/gpt-4o",
+                input_tokens=1000,
+                output_tokens=250,
+                success=True,
+            )
+        )
+        # 2026-08-10 is in ISO week 33
+        store.append_usage(
+            UsageLogEntry(
+                ts="2026-08-10T10:00:00Z",
+                model="deepseek-v4-pro",
+                input_tokens=500,
+                output_tokens=100,
+                success=True,
+            )
+        )
+
+        console = Console(record=True)
+        run_usage_command(week=34, store=store, console=console)
+        output = console.export_text()
+
+        assert "openai/gpt-4o" in output
+        assert "deepseek-v4-pro" not in output
+        store.close()
+

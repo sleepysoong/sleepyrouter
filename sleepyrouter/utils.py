@@ -1,8 +1,11 @@
 """Utility helpers for sleepyrouter."""
 
+import io
 import os
 from pathlib import Path
 import re
+
+from dotenv import dotenv_values
 
 CONFIG_FILE_NAME = "config.json"
 USAGE_FILE_NAME = "usage.jsonl"
@@ -29,24 +32,9 @@ def get_env_path(root: Path) -> Path:
 
 
 def parse_dotenv(content: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for raw_line in content.replace("\r\n", "\n").split("\n"):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if not key:
-            continue
-        if len(value) >= 2 and (
-            (value[0] == '"' and value[-1] == '"') or (value[0] == "'" and value[-1] == "'")
-        ):
-            value = value[1:-1]
-        values[key] = value
-    return values
+    parsed = dotenv_values(stream=io.StringIO(content))
+    return {k: str(v) for k, v in parsed.items() if v is not None}
+
 
 
 def read_local_env(root: Path) -> dict[str, str]:

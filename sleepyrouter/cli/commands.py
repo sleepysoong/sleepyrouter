@@ -1,5 +1,7 @@
 """CLI commands implementation (start and usage)."""
 
+import argparse
+import datetime
 import os
 import sys
 from typing import Any
@@ -15,7 +17,21 @@ from sleepyrouter.server import VERSION, create_app
 from sleepyrouter.types import UsageLogEntry
 from sleepyrouter.utils import get_config_path, get_env_path
 
-from .parser import build_cli_parser
+
+def build_cli_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="sleepyrouter")
+    subparsers = parser.add_subparsers(dest="command")
+
+    start_parser = subparsers.add_parser("start")
+    start_parser.add_argument("--port", type=int, default=0, help="Port to serve on")
+
+    usage_parser = subparsers.add_parser("usage")
+    usage_parser.add_argument("--date", type=str, help="Date filter (YYYYMMDD)")
+    usage_parser.add_argument("--week", type=int, help="Week filter")
+
+    parser.add_argument("-v", "--version", action="version", version=VERSION)
+    return parser
+
 
 
 def _format_status(*, active: bool) -> str:
@@ -106,6 +122,19 @@ def _filter_logs_by_date(logs: list[UsageLogEntry], date: str) -> list[UsageLogE
     return filtered
 
 
+def _filter_logs_by_week(logs: list[UsageLogEntry], week: int) -> list[UsageLogEntry]:
+    filtered: list[UsageLogEntry] = []
+    for entry in logs:
+        try:
+            dt = datetime.datetime.fromisoformat(entry.ts)
+            if dt.isocalendar().week == week:
+                filtered.append(entry)
+        except (ValueError, TypeError, KeyError):
+            pass
+    return filtered
+
+
+
 def _aggregate_usage_rows(logs: list[UsageLogEntry]) -> list[dict[str, Any]]:
     by_model: dict[str, dict[str, Any]] = {}
     for entry in logs:
@@ -142,6 +171,8 @@ def run_usage_command(
 
     if date:
         logs = _filter_logs_by_date(logs, date)
+    elif week is not None:
+        logs = _filter_logs_by_week(logs, week)
 
     if not logs:
         filter_desc = f" (날짜: {date})" if date else (f" (주차: {week}주차)" if week else "")

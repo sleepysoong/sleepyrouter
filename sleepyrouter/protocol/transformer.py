@@ -1,15 +1,6 @@
-"""ProtocolTransformer: identity pass-through for OpenAI-format requests."""
+"""ProtocolTransformer: re-exported from protocol package."""
 
-from typing import Any
+from . import transform_request, transform_response
 
+__all__ = ["transform_request", "transform_response"]
 
-def transform_request(body: dict[str, Any], model_id: str) -> dict[str, Any]:
-    """Set the model field and pass through."""
-    res = dict(body)
-    res["model"] = model_id
-    return res
-
-
-def transform_response(response: dict[str, Any]) -> dict[str, Any]:
-    """Identity — upstream responses are already OpenAI format."""
-    return response
