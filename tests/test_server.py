@@ -117,3 +117,70 @@ def test_request_id_persistence_across_restarts() -> None:
         assert res.status_code == 400
         store.close()
 
+
+def test_chat_completions_invalid_json(
+    store_and_client: tuple[ConfigStore, TestClient],
+) -> None:
+    _, client = store_and_client
+    res = client.post(
+        "/v1/chat/completions",
+        content="not valid json",
+        headers={"Content-Type": "application/json"},
+    )
+    assert res.status_code == 400
+    data = res.json()
+    assert data["error"]["code"] == "invalid_json"
+
+
+def test_chat_completions_non_dict_payload(
+    store_and_client: tuple[ConfigStore, TestClient],
+) -> None:
+    _, client = store_and_client
+    res = client.post(
+        "/v1/chat/completions",
+        json=["invalid", "array"],
+    )
+    assert res.status_code == 400
+    data = res.json()
+    assert data["error"]["code"] == "invalid_payload"
+
+
+def test_chat_completions_missing_messages(
+    store_and_client: tuple[ConfigStore, TestClient],
+) -> None:
+    _, client = store_and_client
+    res = client.post(
+        "/v1/chat/completions",
+        json={"model": "gpt-4"},
+    )
+    assert res.status_code == 400
+    data = res.json()
+    assert data["error"]["code"] == "missing_required_field"
+
+
+def test_chat_completions_empty_messages(
+    store_and_client: tuple[ConfigStore, TestClient],
+) -> None:
+    _, client = store_and_client
+    res = client.post(
+        "/v1/chat/completions",
+        json={"model": "gpt-4", "messages": []},
+    )
+    assert res.status_code == 400
+    data = res.json()
+    assert data["error"]["code"] == "missing_required_field"
+
+
+def test_chat_completions_invalid_message_item(
+    store_and_client: tuple[ConfigStore, TestClient],
+) -> None:
+    _, client = store_and_client
+    res = client.post(
+        "/v1/chat/completions",
+        json={"model": "gpt-4", "messages": [{"content": "no role"}]},
+    )
+    assert res.status_code == 400
+    data = res.json()
+    assert data["error"]["code"] == "invalid_message"
+
+

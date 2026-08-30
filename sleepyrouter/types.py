@@ -1,10 +1,28 @@
 """Types module for sleepyrouter."""
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 ModelSource = (
     str  # "openrouter", "nvidia", "copilot", "zen", "google", "antigravity", "freebuff", or custom
 )
+
+
+class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    role: str
+    content: Any = ""
+
+
+class ChatCompletionRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    messages: list[ChatMessage] = Field(min_length=1)
+    model: str = ""
+    stream: bool = False
+
 
 
 class SleepyRouterModel(BaseModel):

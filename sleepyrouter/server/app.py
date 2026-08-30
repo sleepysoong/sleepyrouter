@@ -1,6 +1,7 @@
 """FastAPI application initialization and route definitions."""
 
 import itertools
+import json
 import time
 from typing import Any
 
@@ -51,6 +52,51 @@ def _build_selected_models(
     return models, by_id, config
 
 
+def _validate_request_payload(body: Any) -> Response | None:
+    if not isinstance(body, dict):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "message": "Request body must be a JSON object",
+                    "type": "invalid_request_error",
+                    "param": None,
+                    "code": "invalid_payload",
+                }
+            },
+        )
+
+    messages = body.get("messages")
+    if not isinstance(messages, list) or len(messages) == 0:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "message": "Invalid request: 'messages' must be a non-empty list",
+                    "type": "invalid_request_error",
+                    "param": "messages",
+                    "code": "missing_required_field",
+                }
+            },
+        )
+
+    for i, msg in enumerate(messages):
+        if not isinstance(msg, dict) or not msg.get("role"):
+            err_msg = f"Invalid request: message at index {i} must be an object with a 'role'"
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "message": err_msg,
+                        "type": "invalid_request_error",
+                        "param": f"messages[{i}]",
+                        "code": "invalid_message",
+                    }
+                },
+            )
+    return None
+
+
 def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = None) -> FastAPI:
     app = FastAPI(title="sleepyrouter", version=VERSION)
     active_store = store or ConfigStore()
@@ -84,7 +130,25 @@ def create_app(store: ConfigStore | None = None, env: dict[str, str] | None = No
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request) -> Response:
-        body = await request.json()
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "message": "Invalid JSON in request body",
+                        "type": "invalid_request_error",
+                        "param": None,
+                        "code": "invalid_json",
+                    }
+                },
+            )
+
+        val_err = _validate_request_payload(body)
+        if val_err is not None:
+            return val_err
+
         req_id = next(request_counter)
         requested_model = str(body.get("model", ""))
         is_stream = bool(body.get("stream"))
