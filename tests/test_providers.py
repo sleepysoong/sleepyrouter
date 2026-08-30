@@ -1,5 +1,6 @@
 from pathlib import Path
 import tempfile
+import time
 from typing import Any
 from unittest.mock import patch
 
@@ -348,6 +349,8 @@ def test_safe_exists_treats_unreadable_paths_as_missing() -> None:
 
 @pytest.mark.anyio
 async def test_base_provider_adapter_complete_and_stream() -> None:
+    from unittest.mock import AsyncMock
+
     adapter = default_provider_registry.get("openrouter")
     assert adapter is not None
     model = SleepyRouterModel(
@@ -361,21 +364,24 @@ async def test_base_provider_adapter_complete_and_stream() -> None:
         def model_dump(self) -> dict[str, Any]:
             return {"id": "test-123", "choices": []}
 
-    with patch("sleepyrouter.providers.base.acompletion", return_value=MockResp()) as mock_ac:
+    mock_create = AsyncMock(return_value=MockResp())
+    with patch("openai.resources.chat.completions.AsyncCompletions.create", mock_create):
         res = await adapter.complete(model, "key-1", {"messages": []}, timeout=30.0)
         assert res["id"] == "test-123"
-        mock_ac.assert_called_once()
+        mock_create.assert_called_once()
 
-    async def mock_stream_gen():
+    async def mock_stream_gen(*args: Any, **kwargs: Any) -> Any:
         yield {"chunk": 1}
 
+    mock_stream_create = AsyncMock(side_effect=mock_stream_gen)
     with patch(
-        "sleepyrouter.providers.base.acompletion", return_value=mock_stream_gen()
-    ) as mock_stream_ac:
+        "openai.resources.chat.completions.AsyncCompletions.create", mock_stream_create
+    ):
         gen = await adapter.stream(model, "key-1", {"messages": []}, timeout=30.0)
         items = [item async for item in gen]
         assert len(items) == 1
-        mock_stream_ac.assert_called_once()
+        mock_stream_create.assert_called_once()
+
 
 
 @pytest.mark.anyio
@@ -441,5 +447,52 @@ def test_parse_antigravity_sse_chunk_direct() -> None:
     assert chunk["choices"][0]["finish_reason"] == "stop"
     assert chunk["usage"]["prompt_tokens"] == 15
     assert chunk["usage"]["completion_tokens"] == 10
+
+
+def test_provider_model_custom_max_effort_and_thinking_budget() -> None:
+    adapter = default_provider_registry.get("openrouter")
+    assert adapter is not None
+    model = SleepyRouterModel(
+        id="openrouter/custom-model",
+        upstream_id="custom-model",
+        provider="openrouter",
+        source="openrouter",
+        max_effort="low",
+        thinking_budget=8000,
+    )
+    payload = adapter.prepare_payload(model, {"messages": []})
+    assert payload["model"] == "custom-model"
+    assert payload["reasoning_effort"] == "low"
+    assert payload["thinking"] == {"type": "enabled", "budget_tokens": 8000}
+
+
+def test_copilot_token_cache_thread_safety() -> None:
+    import concurrent.futures
+
+    from sleepyrouter.providers.copilot import CopilotTokenCache
+
+    cache = CopilotTokenCache()
+    call_count = 0
+
+    class MockResp:
+        status_code = 200
+        reason_phrase = "OK"
+
+        def json(self) -> dict[str, Any]:
+            return {"token": "gh-token-123", "expires_at": time.time() + 3600}
+
+    def mock_get(*args: Any, **kwargs: Any) -> MockResp:
+        nonlocal call_count
+        call_count += 1
+        return MockResp()
+
+    with patch("httpx.Client.get", side_effect=mock_get):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            tokens = list(executor.map(lambda _: cache.get_token("api-key"), range(10)))
+
+        assert all(t == "gh-token-123" for t in tokens)
+        assert call_count == 1
+
+
 
 

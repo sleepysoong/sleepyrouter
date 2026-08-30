@@ -7,7 +7,6 @@ from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
-import litellm
 
 from sleepyrouter.config import ConfigStore
 from sleepyrouter.events import (
@@ -20,10 +19,6 @@ from sleepyrouter.routing import all_group_model_ids, ordered_candidates
 from sleepyrouter.types import SleepyRouterConfig, SleepyRouterModel, source_of
 
 from .failover import process_chat_candidates
-
-# Configure LiteLLM globally
-litellm.drop_params = True
-litellm.suppress_debug_info = True
 
 VERSION = "1.0.0"
 
@@ -46,6 +41,9 @@ def _build_selected_models(
             source=def_obj.provider,
             usage_id=mid,
             api_base=def_obj.api_base,
+            max_effort=def_obj.max_effort,
+            reasoning_effort=def_obj.reasoning_effort or def_obj.max_effort,
+            thinking_budget=def_obj.thinking_budget,
         )
         models.append(m)
         by_id[mid] = m

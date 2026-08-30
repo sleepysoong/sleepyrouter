@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import sqlite3
+import threading
 
 from sleepyrouter.types import UsageLogEntry
 
@@ -10,6 +11,7 @@ class UsageLogger:
     def __init__(self, root: Path) -> None:
         self.db_path = root / "usage.db"
         self._conn: sqlite3.Connection | None = None
+        self._lock = threading.Lock()
 
     def _init_db(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -35,23 +37,24 @@ class UsageLogger:
         return self._conn
 
     def append_usage(self, entry: UsageLogEntry) -> None:
-        try:
-            conn = self._init_db()
-            with conn:
-                conn.execute(
-                    """INSERT INTO usage_log
-                       (ts, model, input_tokens, output_tokens, success)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (
-                        entry.ts,
-                        entry.model,
-                        entry.input_tokens,
-                        entry.output_tokens,
-                        1 if entry.success else 0,
-                    ),
-                )
-        except sqlite3.Error:
-            pass
+        with self._lock:
+            try:
+                conn = self._init_db()
+                with conn:
+                    conn.execute(
+                        """INSERT INTO usage_log
+                           (ts, model, input_tokens, output_tokens, success)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (
+                            entry.ts,
+                            entry.model,
+                            entry.input_tokens,
+                            entry.output_tokens,
+                            1 if entry.success else 0,
+                        ),
+                    )
+            except sqlite3.Error:
+                pass
 
     def read_usage_logs(self) -> list[UsageLogEntry]:
         try:

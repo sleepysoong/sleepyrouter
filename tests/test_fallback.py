@@ -35,7 +35,10 @@ def test_candidate_failover_all_fail() -> None:
         async def mock_acompletion(*args: Any, **kwargs: Any) -> Any:
             raise RuntimeError("Upstream 500 connection error")
 
-        with patch("sleepyrouter.providers.base.acompletion", side_effect=mock_acompletion):
+        with patch(
+            "openai.resources.chat.completions.AsyncCompletions.create",
+            side_effect=mock_acompletion,
+        ):
             res = client.post(
                 "/v1/chat/completions",
                 json={"model": "high", "messages": [{"role": "user", "content": "hi"}]},
@@ -94,7 +97,10 @@ def test_candidate_failover_success_on_second() -> None:
                 raise RuntimeError("Rate limit exceeded 429")
             return MockResponseObj()
 
-        with patch("sleepyrouter.providers.base.acompletion", side_effect=mock_acompletion):
+        with patch(
+            "openai.resources.chat.completions.AsyncCompletions.create",
+            side_effect=mock_acompletion,
+        ):
             res = client.post(
                 "/v1/chat/completions",
                 json={"model": "high", "messages": [{"role": "user", "content": "hi"}]},
@@ -102,7 +108,7 @@ def test_candidate_failover_success_on_second() -> None:
             assert res.status_code == 200
             data = res.json()
             assert data["choices"][0]["message"]["content"] == "Success response!"
-            assert attempted_models == ["openrouter/m1", "openrouter/m2"]
+            assert attempted_models == ["m1", "m2"]
 
         store.close()
 
@@ -130,22 +136,26 @@ def test_candidate_stream_failover_success_on_second() -> None:
 
         captured_kwargs: list[dict[str, Any]] = []
 
-        async def mock_stream_acompletion(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+        async def mock_stream_acompletion(*args: Any, **kwargs: Any) -> Any:
             captured_kwargs.append(kwargs)
             model_param = str(kwargs.get("model", ""))
             if "m1" in model_param:
                 raise RuntimeError("Rate limit exceeded 429 on stream start")
-            chunk = MagicMock()
-            chunk.choices = [MagicMock()]
-            chunk.choices[0].delta = MagicMock(content="Stream chunk from m2")
-            chunk.model_dump.return_value = {
-                "choices": [{"delta": {"content": "Stream chunk from m2"}}]
-            }
-            chunk.usage = None
-            yield chunk
+
+            async def _stream_gen() -> AsyncGenerator[Any, None]:
+                chunk = MagicMock()
+                chunk.choices = [MagicMock()]
+                chunk.choices[0].delta = MagicMock(content="Stream chunk from m2")
+                chunk.model_dump.return_value = {
+                    "choices": [{"delta": {"content": "Stream chunk from m2"}}]
+                }
+                chunk.usage = None
+                yield chunk
+
+            return _stream_gen()
 
         with patch(
-            "sleepyrouter.providers.base.acompletion",
+            "openai.resources.chat.completions.AsyncCompletions.create",
             side_effect=mock_stream_acompletion,
         ):
             res = client.post(
@@ -239,21 +249,29 @@ def test_stream_failover_when_first_candidate_yields_empty_stream() -> None:
         app = create_app(store=store, env={"OPENROUTER_API_KEY": "sk-test"})
         client = TestClient(app)
 
-        async def mock_stream_acompletion(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+        async def mock_stream_acompletion(*args: Any, **kwargs: Any) -> Any:
             model_param = str(kwargs.get("model", ""))
             if "m1" in model_param:
-                return
-            chunk = MagicMock()
-            chunk.choices = [MagicMock()]
-            chunk.choices[0].delta = MagicMock(content="Working chunk from m2")
-            chunk.model_dump.return_value = {
-                "choices": [{"delta": {"content": "Working chunk from m2"}}]
-            }
-            chunk.usage = None
-            yield chunk
+                async def _empty_gen() -> AsyncGenerator[Any, None]:
+                    if False:
+                        yield None
+
+                return _empty_gen()
+
+            async def _working_gen() -> AsyncGenerator[Any, None]:
+                chunk = MagicMock()
+                chunk.choices = [MagicMock()]
+                chunk.choices[0].delta = MagicMock(content="Working chunk from m2")
+                chunk.model_dump.return_value = {
+                    "choices": [{"delta": {"content": "Working chunk from m2"}}]
+                }
+                chunk.usage = None
+                yield chunk
+
+            return _working_gen()
 
         with patch(
-            "sleepyrouter.providers.base.acompletion",
+            "openai.resources.chat.completions.AsyncCompletions.create",
             side_effect=mock_stream_acompletion,
         ):
             res = client.post(

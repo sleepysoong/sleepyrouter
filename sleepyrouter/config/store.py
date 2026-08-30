@@ -62,12 +62,29 @@ class ConfigStore:
             models_map: dict[str, ModelDefinition] = {}
             for key, def_raw in data["models"].items():
                 if isinstance(def_raw, dict):
+                    max_effort = (
+                        def_raw.get("maxEffort")
+                        or def_raw.get("max_effort")
+                        or def_raw.get("reasoningEffort")
+                        or def_raw.get("reasoning_effort")
+                    )
+                    thinking_budget = def_raw.get("thinkingBudget") or def_raw.get(
+                        "thinking_budget"
+                    )
+                    if isinstance(thinking_budget, str) and thinking_budget.isdigit():
+                        thinking_budget = int(thinking_budget)
+
                     models_map[key] = ModelDefinition(
                         provider=def_raw.get("provider", ""),
                         name=def_raw.get("name", ""),
                         input_price=def_raw.get("inputPrice"),
                         output_price=def_raw.get("outputPrice"),
                         api_base=def_raw.get("apiBase") or def_raw.get("api_base"),
+                        max_effort=str(max_effort) if max_effort is not None else None,
+                        reasoning_effort=str(max_effort) if max_effort is not None else None,
+                        thinking_budget=thinking_budget
+                        if isinstance(thinking_budget, int)
+                        else None,
                     )
             config.models = models_map
 
@@ -91,6 +108,16 @@ class ConfigStore:
                     **({"inputPrice": v.input_price} if v.input_price is not None else {}),
                     **({"outputPrice": v.output_price} if v.output_price is not None else {}),
                     **({"apiBase": v.api_base} if v.api_base is not None else {}),
+                    **(
+                        {"maxEffort": v.max_effort or v.reasoning_effort}
+                        if (v.max_effort or v.reasoning_effort) is not None
+                        else {}
+                    ),
+                    **(
+                        {"thinkingBudget": v.thinking_budget}
+                        if v.thinking_budget is not None
+                        else {}
+                    ),
                 }
                 for k, v in config.models.items()
             }

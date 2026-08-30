@@ -7,7 +7,7 @@
 코딩 에이전트의 OpenAI 호환 요청을 무료 LLM 프로바이더로 라우팅하는 로컬 프록시.
 후보 모델을 설정 순서대로 시도하고, 실패하면 다음 후보로 자동 전환한다(failover).
 
-Python 3.12+ · FastAPI + LiteLLM
+Python 3.12+ · FastAPI + OpenAI & Google SDKs
 
 ## 설치 및 실행
 

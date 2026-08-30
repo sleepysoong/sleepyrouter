@@ -1,11 +1,11 @@
-"""Base ProviderAdapter and ProviderRegistry abstraction with reasoning & thinking injection."""
+"""Base ProviderAdapter and ProviderRegistry abstraction using official AsyncOpenAI SDK."""
 
 from collections.abc import AsyncGenerator, Sequence
 import os
 from pathlib import Path
 from typing import Any, Protocol
 
-from litellm import acompletion
+from openai import AsyncOpenAI
 
 from sleepyrouter.types import ModelSource, SleepyRouterModel, source_of
 from sleepyrouter.utils import get_config_root, read_local_env
@@ -130,6 +130,43 @@ class BaseProviderAdapter:
     def get_api_key(self, env: dict[str, str] | None = None, root: Path | None = None) -> str:
         return first_env([self._api_key_env_var], env, root)
 
+    def get_client(
+        self, api_key: str, api_base: str | None = None, timeout: float = 60.0
+    ) -> AsyncOpenAI:
+        base_url = api_base or self._api_base
+        return AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            default_headers=self._extra_headers or None,
+            timeout=timeout,
+            max_retries=0,
+        )
+
+    def prepare_payload(
+        self, model: SleepyRouterModel, request_kwargs: dict[str, Any]
+    ) -> dict[str, Any]:
+        upstream_id = model.upstream_id or model.id
+        if "/" in upstream_id and upstream_id.startswith(("openai/", "gemini/", "openrouter/")):
+            upstream_id = upstream_id.split("/", 1)[1]
+        effort = (
+            request_kwargs.get("reasoning_effort")
+            or model.reasoning_effort
+            or model.max_effort
+            or self._default_reasoning_effort
+        )
+        budget = (
+            request_kwargs.get("thinking_budget")
+            or model.thinking_budget
+            or self._default_thinking_budget
+        )
+        payload = inject_max_reasoning(
+            request_kwargs,
+            effort=effort,
+            thinking_budget=budget,
+        )
+        payload["model"] = upstream_id
+        return payload
+
     def map_litellm_kwargs(
         self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
     ) -> dict[str, Any]:
@@ -155,13 +192,10 @@ class BaseProviderAdapter:
         timeout: float = 60.0,
     ) -> dict[str, Any]:
         prepared_key = self.prepare_api_key(api_key)
-        kwargs = self.map_litellm_kwargs(model, prepared_key, request_kwargs)
-        if model.api_base:
-            kwargs["api_base"] = model.api_base
-        kwargs["num_retries"] = 0
-        kwargs.pop("stream", None)
-        kwargs.setdefault("timeout", timeout)
-        resp_obj = await acompletion(**kwargs)
+        client = self.get_client(prepared_key, api_base=model.api_base, timeout=timeout)
+        payload = self.prepare_payload(model, request_kwargs)
+        payload.pop("stream", None)
+        resp_obj = await client.chat.completions.create(**payload)
         return resp_obj.model_dump() if hasattr(resp_obj, "model_dump") else dict(resp_obj)
 
     async def stream(
@@ -172,15 +206,11 @@ class BaseProviderAdapter:
         timeout: float = 60.0,
     ) -> AsyncGenerator[Any, None]:
         prepared_key = self.prepare_api_key(api_key)
-        kwargs = self.map_litellm_kwargs(model, prepared_key, request_kwargs)
-        if model.api_base:
-            kwargs["api_base"] = model.api_base
-        kwargs["num_retries"] = 0
-        kwargs.pop("stream", None)
-        kwargs.setdefault("timeout", timeout)
-        kwargs["stream_options"] = {"include_usage": True}
-        return await acompletion(**kwargs, stream=True)  # type: ignore[no-any-return]
-
+        client = self.get_client(prepared_key, api_base=model.api_base, timeout=timeout)
+        payload = self.prepare_payload(model, request_kwargs)
+        payload.pop("stream", None)
+        payload["stream_options"] = {"include_usage": True}
+        return await client.chat.completions.create(**payload, stream=True)  # type: ignore[no-any-return]
 
 
 class ProviderRegistry:

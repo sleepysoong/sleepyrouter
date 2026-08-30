@@ -7,7 +7,7 @@ import pytest
 
 from sleepyrouter.config import ConfigStore
 from sleepyrouter.server import create_app
-from sleepyrouter.types import ModelDefinition, SleepyRouterConfig
+from sleepyrouter.types import ModelDefinition, SleepyRouterConfig, UsageLogEntry
 
 
 @pytest.fixture
@@ -182,5 +182,34 @@ def test_chat_completions_invalid_message_item(
     assert res.status_code == 400
     data = res.json()
     assert data["error"]["code"] == "invalid_message"
+
+
+def test_concurrent_usage_logging_stability() -> None:
+    import concurrent.futures
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = ConfigStore(root)
+        store.ensure_root()
+
+        def _log_one(i: int) -> None:
+            store.append_usage(
+                UsageLogEntry(
+                    ts=f"2026-08-30T10:00:{i:02d}Z",
+                    model=f"model-{i % 3}",
+                    input_tokens=10 * i,
+                    output_tokens=5 * i,
+                    success=True,
+                )
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            list(executor.map(_log_one, range(30)))
+
+        logs = store.read_usage_logs()
+        assert len(logs) == 30
+        assert store.get_initial_request_id() == 30
+        store.close()
+
 
 

@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 
 from sleepyrouter.config import ConfigStore
-from sleepyrouter.types import SleepyRouterConfig, UsageLogEntry
+from sleepyrouter.types import ModelDefinition, SleepyRouterConfig, UsageLogEntry
 from sleepyrouter.utils import parse_dotenv, safe_log_value, strip_html_tags, truncate
 
 
@@ -47,6 +47,14 @@ def test_config_store_read_write() -> None:
             port=8080,
             model_groups={"fast": ["model-1"]},
             default_model_group="fast",
+            models={
+                "model-1": ModelDefinition(
+                    provider="openrouter",
+                    name="openai/gpt-4o",
+                    max_effort="high",
+                    thinking_budget=16000,
+                )
+            },
         )
         store.write_config(new_cfg)
 
@@ -54,6 +62,10 @@ def test_config_store_read_write() -> None:
         assert reloaded.port == 8080
         assert reloaded.model_groups == {"fast": ["model-1"]}
         assert reloaded.default_model_group == "fast"
+        assert reloaded.models is not None
+        assert reloaded.models["model-1"].max_effort == "high"
+        assert reloaded.models["model-1"].thinking_budget == 16000
+
 
 
 def test_config_store_usage_logging() -> None:
