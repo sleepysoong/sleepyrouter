@@ -409,3 +409,37 @@ async def test_antigravity_provider_adapter_polymorphic_complete_and_stream() ->
         assert len(items) == 1
         mock_stream.assert_called_once()
 
+
+def test_parse_antigravity_sse_chunk_direct() -> None:
+    from sleepyrouter.providers.antigravity import parse_antigravity_sse_chunk
+
+    raw_chunk = {
+        "response": {
+            "responseId": "test-chunk-id",
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {"thought": True, "text": "Thinking process..."},
+                            {"text": "Hello world!"},
+                        ]
+                    },
+                    "finishReason": "STOP",
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 15,
+                "candidatesTokenCount": 10,
+            },
+        }
+    }
+    chunk = parse_antigravity_sse_chunk(raw_chunk, "gemini-3.7-flash")
+    assert chunk is not None
+    assert chunk["id"] == "test-chunk-id"
+    assert chunk["choices"][0]["delta"]["content"] == "Hello world!"
+    assert chunk["choices"][0]["delta"]["reasoning_content"] == "Thinking process..."
+    assert chunk["choices"][0]["finish_reason"] == "stop"
+    assert chunk["usage"]["prompt_tokens"] == 15
+    assert chunk["usage"]["completion_tokens"] == 10
+
+
