@@ -13,7 +13,6 @@ from .base import (
     default_provider_registry,
     first_env,
     inject_max_reasoning,
-    map_to_litellm_kwargs,
 )
 from .copilot import CopilotProviderAdapter, exchange_copilot_token
 from .freebuff import FreebuffProviderAdapter
@@ -81,6 +80,5 @@ __all__ = [
     "exchange_copilot_token",
     "first_env",
     "inject_max_reasoning",
-    "map_to_litellm_kwargs",
     "require_any_provider_api_key",
 ]

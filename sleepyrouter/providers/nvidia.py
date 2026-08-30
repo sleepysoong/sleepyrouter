@@ -10,5 +10,4 @@ class NVIDIAProviderAdapter(BaseProviderAdapter):
             source="nvidia",
             api_key_env_var="NVIDIA_API_KEY",
             api_base="https://integrate.api.nvidia.com/v1",
-            default_reasoning_effort="high",
         )

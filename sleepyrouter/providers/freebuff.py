@@ -17,7 +17,6 @@ class FreebuffProviderAdapter(BaseProviderAdapter):
             api_key_env_var="FREEBUFF_API_KEY",
             api_base=FREEBUFF_BASE_URL,
             extra_headers={"User-Agent": "freebuff/1.0.0"},
-            default_reasoning_effort="high",
         )
 
     def get_api_key(

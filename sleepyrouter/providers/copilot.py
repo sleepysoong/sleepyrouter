@@ -3,13 +3,10 @@
 import asyncio
 import threading
 import time
-from typing import Any
 
 import httpx
 
-from sleepyrouter.types import SleepyRouterModel
-
-from .base import BaseProviderAdapter, inject_max_reasoning
+from .base import BaseProviderAdapter
 
 COPILOT_TOKEN_ENDPOINT = "https://api.github.com/copilot_internal/v2/token"  # noqa: S105
 COPILOT_BASE_URL = "https://api.githubcopilot.com"
@@ -102,7 +99,6 @@ class CopilotProviderAdapter(BaseProviderAdapter):
             source="copilot",
             api_key_env_var="GITHUB_COPILOT_TOKEN",
             message_protocol="openai",
-            default_reasoning_effort="high",
             api_base=COPILOT_BASE_URL,
             extra_headers={
                 "Copilot-Integration-Id": "vscode-chat",
@@ -114,15 +110,3 @@ class CopilotProviderAdapter(BaseProviderAdapter):
 
     def prepare_api_key(self, api_key: str) -> str:
         return exchange_copilot_token(api_key)
-
-    def map_litellm_kwargs(
-        self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
-    ) -> dict[str, Any]:
-        upstream_id = model.upstream_id or model.id
-        res = inject_max_reasoning(kwargs, effort="high")
-        res["model"] = f"openai/{upstream_id}"
-        res["api_base"] = COPILOT_BASE_URL
-        res["api_key"] = api_key
-        res["headers"] = dict(self._extra_headers)
-        return res
-

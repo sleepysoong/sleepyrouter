@@ -11,7 +11,7 @@ from sleepyrouter.events import (
     notify_discord_on_failure,
 )
 from sleepyrouter.events.discord import get_webhook_url
-from sleepyrouter.providers import map_to_litellm_kwargs
+from sleepyrouter.providers import BaseProviderAdapter
 from sleepyrouter.types import ModelDefinition, SleepyRouterModel
 
 
@@ -28,9 +28,10 @@ def test_custom_api_base_in_model_definition() -> None:
         source=def_obj.provider,
         api_base=def_obj.api_base,
     )
-    mapped = map_to_litellm_kwargs(model, "sk-test", {})
-    assert mapped["model"] == "openai/llama3.1"
-    assert mapped["api_base"] == "http://localhost:11434/v1"
+    adapter = BaseProviderAdapter(name="ollama", source="ollama", api_key_env_var="OLLAMA_API_KEY")
+    client = adapter.get_client("sk-test", api_base=model.api_base)
+    assert str(client.base_url) == "http://localhost:11434/v1/"
+
 
 
 def test_event_bus_publish_and_subscribe() -> None:

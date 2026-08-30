@@ -11,7 +11,6 @@ import pytest
 from sleepyrouter.providers import (
     api_key_for,
     default_provider_registry,
-    map_to_litellm_kwargs,
     require_any_provider_api_key,
 )
 from sleepyrouter.providers.base import safe_exists
@@ -32,44 +31,59 @@ def test_provider_registry_contains_google() -> None:
     assert adapter.api_key_env_var == "GOOGLE_API_KEY"
 
 
-def test_freebuff_litellm_kwargs_mapping() -> None:
+def test_freebuff_payload_and_client() -> None:
+    adapter = default_provider_registry.get("freebuff")
+    assert adapter is not None
     model = SleepyRouterModel(
         id="freebuff/deepseek-v4-pro",
         upstream_id="deepseek-v4-pro",
         provider="freebuff",
         source="freebuff",
+        max_effort="high",
     )
-    mapped = map_to_litellm_kwargs(model, "test-freebuff-token", {"temperature": 0.7})
-    assert mapped["model"] == "openai/deepseek-v4-pro"
-    assert mapped["api_key"] == "test-freebuff-token"
-    assert mapped["api_base"] == "https://codebuff.com/api/v1"
-    assert "headers" in mapped
-    assert mapped["headers"]["User-Agent"] == "freebuff/1.0.0"
-    assert mapped["reasoning_effort"] == "high"
+    payload = adapter.prepare_payload(model, {"temperature": 0.7})
+    assert payload["model"] == "deepseek-v4-pro"
+    assert payload["temperature"] == 0.7
+    assert payload["reasoning_effort"] == "high"
+
+    client = adapter.get_client("test-freebuff-token")
+    assert str(client.base_url) == "https://codebuff.com/api/v1/"
+    assert client.default_headers.get("User-Agent") == "freebuff/1.0.0"
 
 
-def test_openrouter_max_reasoning_and_thinking() -> None:
+def test_openrouter_payload_and_thinking() -> None:
+    adapter = default_provider_registry.get("openrouter")
+    assert adapter is not None
     model = SleepyRouterModel(
         id="openrouter/claude-3-7-sonnet",
         upstream_id="anthropic/claude-3.7-sonnet",
         provider="openrouter",
         source="openrouter",
+        max_effort="xhigh",
+        thinking_budget=32000,
     )
-    mapped = map_to_litellm_kwargs(model, "sk-or-test", {})
-    assert mapped["model"] == "openrouter/anthropic/claude-3.7-sonnet"
-    assert mapped["reasoning_effort"] == "xhigh"
-    assert mapped["thinking"] == {"type": "enabled", "budget_tokens": 32000}
+    payload = adapter.prepare_payload(model, {})
+    assert payload["model"] == "anthropic/claude-3.7-sonnet"
+    assert payload["reasoning_effort"] == "xhigh"
+    assert payload["thinking"] == {"type": "enabled", "budget_tokens": 32000}
 
 
-def test_nvidia_max_reasoning() -> None:
+def test_nvidia_payload_and_client() -> None:
+    adapter = default_provider_registry.get("nvidia")
+    assert adapter is not None
     model = SleepyRouterModel(
         id="nvidia/deepseek-r1",
         upstream_id="deepseek-ai/deepseek-r1",
         provider="nvidia",
         source="nvidia",
+        max_effort="high",
     )
-    mapped = map_to_litellm_kwargs(model, "nvapi-test", {})
-    assert mapped["reasoning_effort"] == "high"
+    payload = adapter.prepare_payload(model, {})
+    assert payload["model"] == "deepseek-ai/deepseek-r1"
+    assert payload["reasoning_effort"] == "high"
+
+    client = adapter.get_client("nvapi-test")
+    assert str(client.base_url) == "https://integrate.api.nvidia.com/v1/"
 
 
 def test_get_api_key_env_wins_over_local_dotenv() -> None:

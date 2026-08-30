@@ -15,6 +15,4 @@ class OpenRouterProviderAdapter(BaseProviderAdapter):
                 "HTTP-Referer": "https://github.com/sleepysoong/sleepyrouter",
                 "X-OpenRouter-Title": "sleepyrouter",
             },
-            default_reasoning_effort="xhigh",
-            default_thinking_budget=32000,
         )

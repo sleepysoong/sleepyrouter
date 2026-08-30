@@ -10,5 +10,4 @@ class ZenProviderAdapter(BaseProviderAdapter):
             source="zen",
             api_key_env_var="OPENCODE_API_KEY",
             api_base="https://opencode.ai/zen/v1",
-            default_reasoning_effort="high",
         )

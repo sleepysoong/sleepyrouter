@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from openai import AsyncOpenAI
 
-from sleepyrouter.types import ModelSource, SleepyRouterModel, source_of
+from sleepyrouter.types import ModelSource, SleepyRouterModel
 from sleepyrouter.utils import get_config_root, read_local_env
 
 MessageProtocol = str  # "openai"
@@ -37,11 +37,11 @@ def safe_exists(path: Path) -> bool:
 
 def inject_max_reasoning(
     kwargs: dict[str, Any],
-    effort: str = "high",
+    effort: str | None = None,
     thinking_budget: int | None = None,
 ) -> dict[str, Any]:
     res = dict(kwargs)
-    if "reasoning_effort" not in res:
+    if effort is not None and "reasoning_effort" not in res:
         res["reasoning_effort"] = effort
     if thinking_budget is not None and "thinking" not in res:
         res["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
@@ -63,8 +63,8 @@ class ProviderAdapter(Protocol):
 
     def prepare_api_key(self, api_key: str) -> str: ...
 
-    def map_litellm_kwargs(
-        self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
+    def prepare_payload(
+        self, model: SleepyRouterModel, request_kwargs: dict[str, Any]
     ) -> dict[str, Any]: ...
 
     async def complete(
@@ -92,8 +92,6 @@ class BaseProviderAdapter:
         api_key_env_var: str,
         *,
         message_protocol: MessageProtocol = "openai",
-        default_reasoning_effort: str = "high",
-        default_thinking_budget: int | None = None,
         api_base: str | None = None,
         model_prefix: str = "openai",
         extra_headers: dict[str, str] | None = None,
@@ -102,8 +100,6 @@ class BaseProviderAdapter:
         self._source = source
         self._api_key_env_var = api_key_env_var
         self._message_protocol = message_protocol
-        self._default_reasoning_effort = default_reasoning_effort
-        self._default_thinking_budget = default_thinking_budget
         self._api_base = api_base
         self._model_prefix = model_prefix
         self._extra_headers = extra_headers or {}
@@ -148,41 +144,22 @@ class BaseProviderAdapter:
         upstream_id = model.upstream_id or model.id
         if "/" in upstream_id and upstream_id.startswith(("openai/", "gemini/", "openrouter/")):
             upstream_id = upstream_id.split("/", 1)[1]
+        payload = dict(request_kwargs)
+        payload["model"] = upstream_id
+
         effort = (
             request_kwargs.get("reasoning_effort")
             or model.reasoning_effort
             or model.max_effort
-            or self._default_reasoning_effort
         )
-        budget = (
-            request_kwargs.get("thinking_budget")
-            or model.thinking_budget
-            or self._default_thinking_budget
-        )
-        payload = inject_max_reasoning(
-            request_kwargs,
-            effort=effort,
-            thinking_budget=budget,
-        )
-        payload["model"] = upstream_id
-        return payload
+        if effort and "reasoning_effort" not in payload:
+            payload["reasoning_effort"] = effort
 
-    def map_litellm_kwargs(
-        self, model: SleepyRouterModel, api_key: str, kwargs: dict[str, Any]
-    ) -> dict[str, Any]:
-        upstream_id = model.upstream_id or model.id
-        litellm_kwargs = inject_max_reasoning(
-            kwargs,
-            effort=self._default_reasoning_effort,
-            thinking_budget=self._default_thinking_budget,
-        )
-        litellm_kwargs["model"] = f"{self._model_prefix}/{upstream_id}"
-        litellm_kwargs["api_key"] = api_key
-        if self._api_base:
-            litellm_kwargs["api_base"] = self._api_base
-        if self._extra_headers:
-            litellm_kwargs["headers"] = dict(self._extra_headers)
-        return litellm_kwargs
+        budget = request_kwargs.get("thinking_budget") or model.thinking_budget
+        if budget and "thinking" not in payload:
+            payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
+
+        return payload
 
     async def complete(
         self,
@@ -232,26 +209,3 @@ class ProviderRegistry:
 
 
 default_provider_registry = ProviderRegistry()
-
-
-def map_to_litellm_kwargs(
-    model: SleepyRouterModel,
-    api_key: str,
-    kwargs: dict[str, Any],
-) -> dict[str, Any]:
-    source = source_of(model)
-    adapter = default_provider_registry.get(source)
-    if adapter:
-        prepared_key = adapter.prepare_api_key(api_key)
-        res = adapter.map_litellm_kwargs(model, prepared_key, kwargs)
-        if model.api_base:
-            res["api_base"] = model.api_base
-        return res
-
-    upstream_id = model.upstream_id or model.id
-    res = inject_max_reasoning(kwargs, effort="high")
-    res["model"] = f"openai/{upstream_id}"
-    res["api_key"] = api_key
-    if model.api_base:
-        res["api_base"] = model.api_base
-    return res
