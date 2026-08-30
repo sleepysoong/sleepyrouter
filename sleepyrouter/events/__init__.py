@@ -117,8 +117,7 @@ class EventBus:
         self._handlers[event_type].append(handler)
 
     def publish(self, event: ServerEvent) -> None:
-        handlers = self._handlers.get(type(event), [])
-        for handler in handlers:
+        for handler in self._handlers.get(type(event), []):
             try:
                 if inspect.iscoroutinefunction(handler):
                     task = asyncio.create_task(handler(event))
@@ -176,7 +175,7 @@ def log_candidates_resolved(event: CandidatesResolvedEvent) -> None:
 
 
 def log_candidate_attempt(event: CandidateAttemptEvent) -> None:
-    upstream_info = (
+    upstream = (
         f" (upstream: {event.upstream_id})"
         if event.upstream_id and event.upstream_id != event.model_id
         else ""
@@ -187,7 +186,7 @@ def log_candidate_attempt(event: CandidateAttemptEvent) -> None:
         event.index,
         event.total,
         event.model_id,
-        upstream_info,
+        upstream,
     )
 
 
@@ -282,7 +281,6 @@ def _send_webhook(content: str) -> None:
     url = get_webhook_url()
     if not url:
         return
-
     payload = {"content": content, "text": content}
     try:
         loop = asyncio.get_running_loop()
@@ -298,40 +296,39 @@ def _send_webhook(content: str) -> None:
 
 
 def notify_discord_on_failure(event: CandidateFailedEvent) -> None:
-    err_text = truncate(event.error_message, 1700)
-    content = (
+    msg = truncate(event.error_message, 1700)
+    _send_webhook(
         f"⚠️ **[SleepyRouter] 모델 호출 실패**\n"
         f"• **대상 모델**: `{event.model_id}` (제공자: `{event.provider}`)\n"
-        f"• **오류 내용**: ```\n{err_text}\n```"
+        f"• **오류 내용**: ```\n{msg}\n```"
     )
-    _send_webhook(content)
 
 
 def notify_discord_on_failover(event: FailoverEvent) -> None:
-    err_text = truncate(event.error_message, 1600)
-    content = (
+    msg = truncate(event.error_message, 1600)
+    _send_webhook(
         f"🔄 **[SleepyRouter] 모델 호출 실패 → 다음 후보 모델 전환**\n"
         f"• **실패 모델**: `{event.failed_model_id}` (제공자: `{event.provider}`)\n"
         f"• **다음 시도 모델**: `{event.next_model_id}`\n"
-        f"• **실패 상세 내용**: ```\n{err_text}\n```"
+        f"• **실패 상세 내용**: ```\n{msg}\n```"
     )
-    _send_webhook(content)
 
 
 def notify_discord_on_all_failed(event: AllCandidatesFailedEvent) -> None:
     tried = (
-        ", ".join(f"`{m}`" for m in event.candidates_tried) if event.candidates_tried else "(없음)"
+        ", ".join(f"`{m}`" for m in event.candidates_tried)
+        if event.candidates_tried
+        else "(없음)"
     )
-    err_text = truncate(event.last_error, 1600)
-    content = (
+    msg = truncate(event.last_error, 1600)
+    _send_webhook(
         f"🚨 **[SleepyRouter] 모든 후보 모델 호출 실패**\n"
         f"• **시도한 모델 목록**: {tried}\n"
-        f"• **최종 오류 내용**: ```\n{err_text}\n```"
+        f"• **최종 오류 내용**: ```\n{msg}\n```"
     )
-    _send_webhook(content)
 
 
-# Subscribe defaults
+
 default_event_bus.subscribe(RequestReceivedEvent, log_request_received)
 default_event_bus.subscribe(CandidatesResolvedEvent, log_candidates_resolved)
 default_event_bus.subscribe(CandidateAttemptEvent, log_candidate_attempt)

@@ -1,10 +1,10 @@
-"""Data models for sleepyrouter."""
+"""Data types and schemas for sleepyrouter."""
 
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ModelSource = str  # "openrouter", "nvidia", "copilot", "zen", "google", "freebuff", or custom
+ModelSource = str
 
 
 class ChatMessage(BaseModel):
@@ -66,11 +66,11 @@ class SleepyRouterConfig(BaseModel):
 
 
 def complete_group_order(groups: dict[str, list[str]], preferred: list[str]) -> list[str]:
-    seen = set()
+    seen: set[str] = set()
     order: list[str] = []
     for name in preferred:
-        if name not in seen and name in groups:
+        if name in groups and name not in seen:
             seen.add(name)
             order.append(name)
-    remaining = sorted([n for n in groups if n not in seen])
-    return order + remaining
+    return order + sorted([n for n in groups if n not in seen])
+

@@ -1,4 +1,4 @@
-"""JSON configuration store and SQLite usage logger."""
+"""JSON configuration and thread-safe SQLite usage store."""
 
 import json
 from pathlib import Path
@@ -29,11 +29,7 @@ class ConfigStore:
 
     def _init_db(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(
-                str(self.db_path),
-                timeout=10.0,
-                check_same_thread=False,
-            )
+            self._conn = sqlite3.connect(str(self.db_path), timeout=10.0, check_same_thread=False)
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA busy_timeout=5000")
             self._conn.execute("PRAGMA synchronous=NORMAL")
