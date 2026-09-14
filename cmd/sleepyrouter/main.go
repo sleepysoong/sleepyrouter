@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/buildinfo"
 	"github.com/sleepysoong/sleepyrouter/internal/config"
@@ -55,7 +56,7 @@ Usage:
   sleepyrouter validate
   sleepyrouter doctor
   sleepyrouter models
-  sleepyrouter usage
+  sleepyrouter usage [--today] [--week] [--date YYYYMMDD] [--model ID]
   sleepyrouter version`)
 }
 
@@ -173,6 +174,7 @@ func runServe(o serveOpts) int {
 		defer stopWatch()
 	}
 
+	log.Info("config_loaded", "generation", store.Generation(), "groups", len(cfg.Groups), "models", len(cfg.Models))
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	httpSrv := &http.Server{Addr: addr, Handler: srv.Handler()}
 	ln, err := net.Listen("tcp", addr)
@@ -343,14 +345,58 @@ func runModels() int {
 }
 
 func runUsage(args []string) int {
+	var today, week bool
+	var date, model string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--today":
+			today = true
+		case "--week":
+			week = true
+		case "--date":
+			if i+1 < len(args) {
+				date = args[i+1]
+				i++
+			}
+		case "--model":
+			if i+1 < len(args) {
+				model = args[i+1]
+				i++
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "unknown flag %q\n", args[i])
+			return 2
+		}
+	}
+	var since, until time.Time
+	now := time.Now()
+	switch {
+	case date != "":
+		d, err := time.ParseInLocation("20060102", date, time.Local)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "invalid --date %q (want YYYYMMDD)\n", date)
+			return 2
+		}
+		since, until = d, d.AddDate(0, 0, 1)
+	case today:
+		y, m, d := now.Date()
+		since = time.Date(y, m, d, 0, 0, 0, 0, time.Local)
+	case week:
+		// ISO week bounds (Monday..Sunday).
+		wd := int(now.Weekday())
+		if wd == 0 {
+			wd = 7
+		}
+		monday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, -(wd - 1))
+		since, until = monday, monday.AddDate(0, 0, 7)
+	}
 	home := config.ResolveHome()
 	ustore := usage.Open(config.UsageDBPath(home), true)
 	defer ustore.Close()
-	sum := ustore.Summary()
+	sum := ustore.SummaryFiltered(model, since, until)
 	fmt.Printf("requests: %d failed: %d input: %d output: %d\n", sum.Requests, sum.Failed, sum.InputTokens, sum.OutputTokens)
 	for _, m := range sum.ByModel {
 		fmt.Printf("  %-30s req=%d fail=%d in=%d out=%d\n", m.Model, m.Requests, m.Failed, m.InputTokens, m.OutputTokens)
 	}
-	_ = args
 	return 0
 }

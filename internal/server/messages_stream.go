@@ -19,10 +19,11 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 
 	for _, c := range candidates {
 		if authFailed[c.ProviderID] {
+			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorAuth, SafeMessage: "provider skipped after auth failure", Skipped: true, SkipReason: "provider_auth_failed"})
 			continue
 		}
 		if c.Provider == nil || c.Provider.APIKey == "" {
-			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID})
+			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID, Skipped: true, SkipReason: "missing_api_key"})
 			continue
 		}
 		upBody, err := anthropic.ToResponses(parsed, c.UpstreamModel)
@@ -40,6 +41,7 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 			}
 			if ae.Class == routing.ErrorClient {
 				anthropic.WriteError(w, http.StatusBadRequest, "invalid_request_error", ae.SafeMessage)
+				s.logAttempts(reqID, attempts)
 				return
 			}
 			continue
@@ -68,10 +70,22 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 		}
 		rows = append(rows, usage.Attempt{RequestID: reqID, Index: len(attempts) + 1, Model: c.LocalModelID, Provider: c.ProviderID, DurationMs: dur.Milliseconds(), Success: res.success, ErrorClass: res.errClass})
 		s.recordUsage(reqID, "anthropic", parsed.RequestedModel, c.LocalModelID, c.ProviderID, res.inTok, res.outTok, len(rows), res.success, res.errClass, time.Since(start).Milliseconds(), parsed.SessionID, snap.Generation, rows)
+		if s.deps.Logger != nil {
+			s.deps.Logger.Info("request_completed", "request_id", reqID, "protocol", "anthropic", "routed_model", c.LocalModelID, "success", res.success)
+		}
+		s.logAttempts(reqID, attempts)
 		return
 	}
-	anthropic.WriteError(w, http.StatusBadGateway, "api_error", "All configured candidates failed")
+	status := http.StatusBadGateway
+	if len(attempts) > 0 && allKeyMissing(attempts) {
+		status = http.StatusServiceUnavailable
+	}
+	anthropic.WriteError(w, status, "api_error", "All configured candidates failed")
 	s.recordUsage(reqID, "anthropic", parsed.RequestedModel, "", "", 0, 0, len(attempts), false, "upstream", time.Since(start).Milliseconds(), parsed.SessionID, snap.Generation, toUsageAttempts(reqID, attempts))
+	if s.deps.Logger != nil {
+		s.deps.Logger.Info("request_failed", "request_id", reqID, "attempts", len(attempts))
+	}
+	s.logAttempts(reqID, attempts)
 }
 
 func (s *Server) precommitAndStreamAnthropic(w http.ResponseWriter, r *http.Request, snap *config.RuntimeSnapshot, reqID string, parsed anthropic.Parsed, c routing.Candidate, st openai.EventStream, attemptNo int) (bool, streamResult) {
@@ -185,10 +199,12 @@ collect:
 	if s.deps.Logger != nil {
 		s.deps.Logger.Info("stream_committed", "request_id", reqID, "candidate", c.LocalModelID, "protocol", "anthropic")
 	}
-	// Drain rest post-commit (no failover).
+	// Drain rest post-commit (no failover). The producer above stays the
+	// sole st reader; we drain steps in order.
 	success := true
 	errClass := ""
 	restDone := make(chan struct{})
+	activity := make(chan struct{}, 1)
 	go func() {
 		defer close(restDone)
 		for {
@@ -198,26 +214,58 @@ collect:
 					return
 				}
 				flushEncode(stp.typ, stp.payload)
+				select {
+				case activity <- struct{}{}:
+				default:
+				}
 			case <-doneRead:
 				return
 			}
 		}
 	}()
-	select {
-	case <-r.Context().Done():
-		success = false
-		errClass = "client"
-	case <-restDone:
-		if err := st.Err(); err != nil {
+	// Idle means "no event for stream_idle", not total elapsed.
+	idleTimeout := snap.Timeouts.StreamIdle
+	idleTimer := time.NewTimer(idleTimeout)
+	defer idleTimer.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
 			success = false
-			errClass = "upstream"
+			errClass = "client"
+			_ = st.Close()
+			inTok = enc.InputTokens
+			outTok = enc.OutputTokens
+			return true, streamResult{success: success, inTok: inTok, outTok: outTok, errClass: errClass}
+		case <-restDone:
+			if err := st.Err(); err != nil {
+				success = false
+				errClass = "upstream"
+			}
+			_ = st.Close()
+			inTok = enc.InputTokens
+			outTok = enc.OutputTokens
+			return true, streamResult{success: success, inTok: inTok, outTok: outTok, errClass: errClass}
+		case <-activity:
+			if !idleTimer.Stop() {
+				select {
+				case <-idleTimer.C:
+				default:
+				}
+			}
+			idleTimer.Reset(idleTimeout)
+		case <-idleTimer.C:
+			select {
+			case <-activity:
+				idleTimer.Reset(idleTimeout)
+				continue
+			default:
+			}
+			success = false
+			errClass = "timeout"
+			_ = st.Close()
+			inTok = enc.InputTokens
+			outTok = enc.OutputTokens
+			return true, streamResult{success: success, inTok: inTok, outTok: outTok, errClass: errClass}
 		}
-	case <-time.After(snap.Timeouts.StreamIdle):
-		success = false
-		errClass = "timeout"
 	}
-	_ = st.Close()
-	inTok = enc.InputTokens
-	outTok = enc.OutputTokens
-	return true, streamResult{success: success, inTok: inTok, outTok: outTok, errClass: errClass}
 }

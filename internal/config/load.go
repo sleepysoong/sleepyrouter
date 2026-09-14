@@ -80,7 +80,9 @@ func orderedGroupKeys(data []byte, groups map[string][]string) []string {
 			continue
 		}
 		if len(t) > 1 && t[0] == '[' {
-			inGroups = (t == "[groups]")
+			// Strip trailing comments so "[groups] # comment" still matches.
+			header := trimSpace(cutComment(t))
+			inGroups = (header == "[groups]")
 			continue
 		}
 		if !inGroups {
@@ -144,6 +146,15 @@ func indexByte(s string, b byte) int {
 		}
 	}
 	return -1
+}
+
+// cutComment strips a trailing "#" comment. Only used for table headers,
+// where "#" cannot appear inside a bare key.
+func cutComment(s string) string {
+	if i := indexByte(s, '#'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // Parse parses TOML bytes into Config with defaults applied.

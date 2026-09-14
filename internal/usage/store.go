@@ -2,7 +2,9 @@ package usage
 
 import (
 	"database/sql"
+	"strings"
 	"sync"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -105,13 +107,19 @@ type ModelRow struct {
 	OutputTokens int64
 }
 
-func (s *Store) Summary() Summary {
+func (s *Store) Summary() Summary { return s.SummaryFiltered("", time.Time{}, time.Time{}) }
+
+// SummaryFiltered aggregates requests constrained by model (exact match on
+// routed or requested model, empty = all) and started_at range
+// (zero time = unbounded).
+func (s *Store) SummaryFiltered(model string, since, until time.Time) Summary {
 	var out Summary
 	if !s.enabled || s.db == nil {
 		return out
 	}
-	_ = s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM requests`).Scan(&out.Requests, &out.Failed, &out.InputTokens, &out.OutputTokens)
-	rows, err := s.db.Query(`SELECT COALESCE(routed_model, requested_model), COUNT(*), COALESCE(SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM requests GROUP BY COALESCE(routed_model, requested_model) ORDER BY COUNT(*) DESC`)
+	where, args := filteredWhere(model, since, until)
+	_ = s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM requests`+where, args...).Scan(&out.Requests, &out.Failed, &out.InputTokens, &out.OutputTokens)
+	rows, err := s.db.Query(`SELECT COALESCE(NULLIF(routed_model,''), requested_model), COUNT(*), COALESCE(SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM requests`+where+` GROUP BY COALESCE(NULLIF(routed_model,''), requested_model) ORDER BY COUNT(*) DESC`, args...)
 	if err != nil {
 		return out
 	}
@@ -123,4 +131,25 @@ func (s *Store) Summary() Summary {
 		}
 	}
 	return out
+}
+
+func filteredWhere(model string, since, until time.Time) (string, []any) {
+	var conds []string
+	var args []any
+	if model != "" {
+		conds = append(conds, `(routed_model = ? OR requested_model = ?)`)
+		args = append(args, model, model)
+	}
+	if !since.IsZero() {
+		conds = append(conds, `started_at >= ?`)
+		args = append(args, since.UTC().Format("2006-01-02 15:04:05"))
+	}
+	if !until.IsZero() {
+		conds = append(conds, `started_at < ?`)
+		args = append(args, until.UTC().Format("2006-01-02 15:04:05"))
+	}
+	if len(conds) == 0 {
+		return "", nil
+	}
+	return " WHERE " + strings.Join(conds, " AND "), args
 }

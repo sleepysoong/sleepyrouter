@@ -81,10 +81,11 @@ func (s *Server) serveMessagesNonStream(w http.ResponseWriter, r *http.Request, 
 	var attempts []routing.AttemptError
 	for _, c := range candidates {
 		if authFailed[c.ProviderID] {
+			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorAuth, SafeMessage: "provider skipped after auth failure", Skipped: true, SkipReason: "provider_auth_failed"})
 			continue
 		}
 		if c.Provider == nil || c.Provider.APIKey == "" {
-			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID})
+			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID, Skipped: true, SkipReason: "missing_api_key"})
 			continue
 		}
 		upBody, err := anthropic.ToResponses(parsed, c.UpstreamModel)
@@ -104,6 +105,7 @@ func (s *Server) serveMessagesNonStream(w http.ResponseWriter, r *http.Request, 
 			if ae.Class == routing.ErrorClient {
 				anthropic.WriteError(w, http.StatusBadRequest, "invalid_request_error", ae.SafeMessage)
 				s.recordUsage(reqID, "anthropic", parsed.RequestedModel, "", "", 0, 0, len(attempts), false, ae.Class.String(), time.Since(start).Milliseconds(), parsed.SessionID, snap.Generation, toUsageAttempts(reqID, attempts))
+				s.logAttempts(reqID, attempts)
 				return
 			}
 			continue
@@ -122,6 +124,10 @@ func (s *Server) serveMessagesNonStream(w http.ResponseWriter, r *http.Request, 
 		}
 		rows = append(rows, usage.Attempt{RequestID: reqID, Index: len(attempts) + 1, Model: c.LocalModelID, Provider: c.ProviderID, DurationMs: time.Since(start).Milliseconds(), Success: true})
 		s.recordUsage(reqID, "anthropic", parsed.RequestedModel, c.LocalModelID, c.ProviderID, inT, outT, len(rows), true, "", time.Since(start).Milliseconds(), parsed.SessionID, snap.Generation, rows)
+		if s.deps.Logger != nil {
+			s.deps.Logger.Info("request_completed", "request_id", reqID, "protocol", "anthropic", "routed_model", c.LocalModelID)
+		}
+		s.logAttempts(reqID, attempts)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(out)
 		return
@@ -131,6 +137,10 @@ func (s *Server) serveMessagesNonStream(w http.ResponseWriter, r *http.Request, 
 		status = http.StatusServiceUnavailable
 	}
 	s.recordUsage(reqID, "anthropic", parsed.RequestedModel, "", "", 0, 0, len(attempts), false, "upstream", time.Since(start).Milliseconds(), parsed.SessionID, snap.Generation, toUsageAttempts(reqID, attempts))
+	if s.deps.Logger != nil {
+		s.deps.Logger.Info("request_failed", "request_id", reqID, "attempts", len(attempts))
+	}
+	s.logAttempts(reqID, attempts)
 	anthropic.WriteError(w, status, "api_error", "All configured candidates failed")
 }
 

@@ -179,7 +179,7 @@ export ANTHROPIC_API_KEY="local-dummy"   # auth mode none이면 무시됨
 - `sleepyrouter validate`: parse/validate만 수행.
 - `sleepyrouter doctor`: config/.env/key/group/port/DB/proxy 점검 (과금 호출 없음).
 - `sleepyrouter models`: group 순서 + key 유무 (값 출력 안 함).
-- `sleepyrouter usage`: requests/success/input/output 집계.
+- `sleepyrouter usage [--today] [--week] [--date YYYYMMDD] [--model ID]`: requests/success/input/output 집계.
 - `GET /health`: `{ok, service, version, config_generation, uptime_seconds}`.
   키가 없다고 false가 되지 않는다.
 - `GET /ready`, `GET /version`도 제공.

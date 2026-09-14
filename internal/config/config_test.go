@@ -151,3 +151,24 @@ func TestInvalidReloadKeepsOld(t *testing.T) {
 		t.Fatalf("generation = %d, want 3", store.Generation())
 	}
 }
+
+func TestGroupOrderReversedAndCommented(t *testing.T) {
+	cfg, err := config.Parse([]byte(`
+version = 1
+[models."zen/a"]
+provider = "zen"
+upstream_model = "a"
+[models."nvidia/b"]
+provider = "nvidia"
+upstream_model = "b"
+[groups] # trailing comment must not break order detection
+zebra = ["nvidia/b"]
+alpha = ["zen/a"]
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(cfg.GroupOrd) != 2 || cfg.GroupOrd[0] != "zebra" || cfg.GroupOrd[1] != "alpha" {
+		t.Fatalf("group order = %v, want [zebra alpha] (document order, not alphabetical)", cfg.GroupOrd)
+	}
+}

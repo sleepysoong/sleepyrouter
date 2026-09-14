@@ -34,9 +34,13 @@ func (e *sdkAttemptError) AttemptError() routing.AttemptError { return e.ae }
 func (s *SDKCaller) DoNonStream(ctx context.Context, c routing.Candidate, rawBody []byte) (upstream.Result, error) {
 	cl, hook, ok := s.clientFor(c)
 	if !ok {
-		return upstream.Result{}, &sdkAttemptError{ae: routing.AttemptError{Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID}}
+		return upstream.Result{}, &sdkAttemptError{ae: routing.AttemptError{Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID, Skipped: true, SkipReason: "missing_api_key"}}
 	}
 	rewritten, err := upstream.RewriteModel(rawBody, c.UpstreamModel)
+	if err != nil {
+		return upstream.Result{}, err
+	}
+	rewritten, err = upstream.ApplyProviderDefaults(rewritten, c)
 	if err != nil {
 		return upstream.Result{}, err
 	}
@@ -58,9 +62,13 @@ func (s *SDKCaller) DoNonStream(ctx context.Context, c routing.Candidate, rawBod
 func (s *SDKCaller) DoStream(ctx context.Context, c routing.Candidate, rawBody []byte) (EventStream, error) {
 	cl, hook, ok := s.clientFor(c)
 	if !ok {
-		return nil, &sdkAttemptError{ae: routing.AttemptError{Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID}}
+		return nil, &sdkAttemptError{ae: routing.AttemptError{Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID, Skipped: true, SkipReason: "missing_api_key"}}
 	}
 	rewritten, err := upstream.RewriteModel(rawBody, c.UpstreamModel)
+	if err != nil {
+		return nil, err
+	}
+	rewritten, err = upstream.ApplyProviderDefaults(rewritten, c)
 	if err != nil {
 		return nil, err
 	}

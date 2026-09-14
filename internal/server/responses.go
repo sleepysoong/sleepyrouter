@@ -29,7 +29,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err != nil {
-		openai.WriteBadRequest(w, "body_too_large", "request body too large")
+		openai.WriteError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")
 		return
 	}
 	parsed, err := openai.Parse(raw)
@@ -140,7 +140,9 @@ func (s *Server) onOpenAISuccess(snap *config.RuntimeSnapshot, reqID string, par
 	s.recordUsage(reqID, "openai", parsed.RequestedModel, c.LocalModelID, c.ProviderID, res.InputTokens, res.OutputTokens, len(atts), true, "", dur.Milliseconds(), "", snap.Generation, atts)
 	if s.deps.Logger != nil {
 		s.deps.Logger.Info("candidate_success", "request_id", reqID, "candidate", c.LocalModelID, "attempt", len(atts), "duration_ms", dur.Milliseconds())
+		s.deps.Logger.Info("request_completed", "request_id", reqID, "protocol", "openai", "routed_model", c.LocalModelID)
 	}
+	s.logAttempts(reqID, attempts)
 }
 
 func (s *Server) onOpenAIFailure(w http.ResponseWriter, reqID string, parsed openai.ParsedRequest, dur time.Duration, attempts []routing.AttemptError, lastErr *routing.AttemptError, gen uint64) {
@@ -175,12 +177,16 @@ func (s *Server) onOpenAIFailure(w http.ResponseWriter, reqID string, parsed ope
 	if s.deps.Logger != nil {
 		s.deps.Logger.Info("request_failed", "request_id", reqID, "attempts", len(atts), "error", msg)
 	}
+	s.logAttempts(reqID, attempts)
 	openai.WriteError(w, status, code, msg)
 }
 
 func allKeyMissing(atts []routing.AttemptError) bool {
+	if len(atts) == 0 {
+		return false
+	}
 	for _, a := range atts {
-		if a.Class != routing.ErrorUnknown {
+		if !a.Skipped {
 			return false
 		}
 	}

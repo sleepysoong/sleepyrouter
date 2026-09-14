@@ -3,6 +3,8 @@ package upstream_test
 import (
 	"testing"
 
+	"github.com/sleepysoong/sleepyrouter/internal/config"
+	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/sleepysoong/sleepyrouter/internal/upstream"
 )
 
@@ -51,4 +53,28 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestApplyProviderDefaults(t *testing.T) {
+	budget := 1024
+	c := routing.Candidate{Model: config.RuntimeModel{
+		ThinkingBudget: &budget, Extra: map[string]any{"service_tier": "flex"},
+	}}
+	out, err := upstream.ApplyProviderDefaults([]byte(`{"model":"m","input":"hi"}`), c)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	for _, want := range []string{`"budget_tokens":1024`, `"service_tier":"flex"`} {
+		if !contains(string(out), want) {
+			t.Fatalf("missing %s in %s", want, out)
+		}
+	}
+	// Explicit client values always win.
+	out2, err := upstream.ApplyProviderDefaults([]byte(`{"model":"m","service_tier":"auto","thinking":{"type":"disabled"}}`), c)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if !contains(string(out2), `"service_tier":"auto"`) || contains(string(out2), "flex") || contains(string(out2), "1024") {
+		t.Fatalf("client value overridden: %s", out2)
+	}
 }

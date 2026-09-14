@@ -64,6 +64,12 @@ upstream_model = "vendor/model-d"
 # vision = true
 # reasoning = true
 
+# Optional per-model upstream defaults (applied only when the client
+# omits them; explicit client values always win):
+# thinking_budget = 1024
+# [models."openrouter/model-d".extra]
+# service_tier = "flex"
+
 [groups]
 coding = [
   "zen/model-a",

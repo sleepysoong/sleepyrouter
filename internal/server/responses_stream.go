@@ -22,10 +22,11 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 
 	for _, c := range candidates {
 		if authFailed[c.ProviderID] {
+			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorAuth, SafeMessage: "provider skipped after auth failure", Skipped: true, SkipReason: "provider_auth_failed"})
 			continue
 		}
 		if c.Provider == nil || c.Provider.APIKey == "" {
-			ae := routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID}
+			ae := routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID, Skipped: true, SkipReason: "missing_api_key"}
 			attempts = append(attempts, ae)
 			continue
 		}
@@ -85,6 +86,10 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 			s.deps.Affinity.Set(state.ResponseAffinity{ResponseID: result.responseID, ProviderID: c.ProviderID, LocalModelID: c.LocalModelID, UpstreamModel: c.UpstreamModel, CreatedAt: time.Now()})
 		}
 		s.recordUsage(reqID, "openai", parsed.RequestedModel, c.LocalModelID, c.ProviderID, result.inTok, result.outTok, len(attemptRows), result.success, result.errClass, time.Since(start).Milliseconds(), "", snap.Generation, attemptRows)
+		if s.deps.Logger != nil {
+			s.deps.Logger.Info("request_completed", "request_id", reqID, "protocol", "openai", "routed_model", c.LocalModelID, "success", result.success)
+		}
+		s.logAttempts(reqID, attempts)
 		return
 	}
 
@@ -97,6 +102,10 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 		code = "no_usable_candidates"
 	}
 	s.recordUsage(reqID, "openai", parsed.RequestedModel, "", "", 0, 0, len(attempts), false, "upstream", dur.Milliseconds(), "", snap.Generation, toUsageAttempts(reqID, attempts))
+	if s.deps.Logger != nil {
+		s.deps.Logger.Info("request_failed", "request_id", reqID, "attempts", len(attempts))
+	}
+	s.logAttempts(reqID, attempts)
 	openai.WriteError(w, status, code, "All configured candidates failed")
 }
 
@@ -128,12 +137,15 @@ func (s *Server) precommitAndStreamOpenAI(w http.ResponseWriter, r *http.Request
 	var precommitCh <-chan time.Time
 
 	nextResult := make(chan bool, 1)
+	doneRead := make(chan bool, 1)
 	type step struct {
 		ok      bool
 		typ     string
 		payload []byte
 	}
 	steps := make(chan step, 1)
+	// Single producer: the ONLY reader of st. Post-commit draining also
+	// goes through steps, so events are never split or lost.
 	go func() {
 		for st.Next() {
 			t, p := st.Event()
@@ -141,11 +153,9 @@ func (s *Server) precommitAndStreamOpenAI(w http.ResponseWriter, r *http.Request
 			steps <- step{ok: true, typ: t, payload: cp}
 		}
 		nextResult <- false
+		doneRead <- false
 		close(steps)
 	}()
-
-	commit := func() {}
-	_ = commit
 
 	var firstEventAt time.Time
 	meaningful := false
@@ -244,64 +254,100 @@ COMMIT:
 		s.deps.Logger.Info("stream_committed", "request_id", reqID, "candidate", c.LocalModelID)
 	}
 	// Continue streaming rest (post-commit: no failover).
-	idleTimeout := snap.Timeouts.StreamIdle
+	// The producer above stays the sole st reader; we drain steps in order.
 	success := true
 	errClass := ""
 	statusCode := 0
-	done := make(chan struct{})
+	restDone := make(chan struct{})
+	activity := make(chan struct{}, 1)
+	markActivity := func() {
+		select {
+		case activity <- struct{}{}:
+		default:
+		}
+	}
+	forward := func(typ string, payload []byte) {
+		inT, outT, rid := parseOpenAIEventMeta(string(payload))
+		if inT > 0 {
+			inTok = inT
+		}
+		if outT > 0 {
+			outTok = outT
+		}
+		if rid != "" {
+			respID = rid
+		}
+		body := openai.RewriteStreamEventModel(string(payload), parsed.RequestedModel)
+		if typ != "" {
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", typ, body)
+		} else {
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", body)
+		}
+		if fl != nil {
+			fl.Flush()
+		}
+		markActivity()
+	}
 	go func() {
-		defer close(done)
-		for st.Next() {
-			t, p := st.Event()
-			inT, outT, rid := parseOpenAIEventMeta(string(p))
-			if inT > 0 {
-				inTok = inT
-			}
-			if outT > 0 {
-				outTok = outT
-			}
-			if rid != "" {
-				respID = rid
-			}
-			payload := openai.RewriteStreamEventModel(string(p), parsed.RequestedModel)
-			if t != "" {
-				_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", t, payload)
-			} else {
-				_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
-			}
-			if fl != nil {
-				fl.Flush()
+		defer close(restDone)
+		for {
+			select {
+			case stp, ok := <-steps:
+				if !ok {
+					return
+				}
+				forward(stp.typ, stp.payload)
+			case <-doneRead:
+				return
 			}
 		}
 	}()
-	// Wait with idle detection (simplified: wait for done or ctx cancel or idle timeout).
-	// Idle detection needs event activity; poll via timer reset is complex without
-	// per-event channel. Use overall wait + ctx; per-event idle enforced by goroutine closing on timeout is best-effort.
-	select {
-	case <-r.Context().Done():
-		success = false
-		errClass = "client"
-	case <-done:
-		if err := st.Err(); err != nil {
+	// Idle means "no event for stream_idle", not total elapsed: the timer
+	// resets on every forwarded event.
+	idleTimeout := snap.Timeouts.StreamIdle
+	idleTimer := time.NewTimer(idleTimeout)
+	defer idleTimer.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
 			success = false
-			errClass = "upstream"
-			// Post-commit: terminate, do not failover.
-			_, _ = fmt.Fprintf(w, "event: response.failed\ndata: %s\n\n", `{"type":"response.failed"}`)
-			if fl != nil {
-				fl.Flush()
+			errClass = "client"
+			_ = st.Close()
+			return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
+		case <-restDone:
+			if err := st.Err(); err != nil {
+				success = false
+				errClass = "upstream"
+				// Post-commit: terminate, do not failover.
+				_, _ = fmt.Fprintf(w, "event: response.failed\ndata: %s\n\n", `{"type":"response.failed"}`)
+				if fl != nil {
+					fl.Flush()
+				}
 			}
+			_ = st.Close()
+			return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
+		case <-activity:
+			if !idleTimer.Stop() {
+				select {
+				case <-idleTimer.C:
+				default:
+				}
+			}
+			idleTimer.Reset(idleTimeout)
+		case <-idleTimer.C:
+			// A racing event may have arrived concurrently; re-check.
+			select {
+			case <-activity:
+				idleTimer.Reset(idleTimeout)
+				continue
+			default:
+			}
+			success = false
+			errClass = "timeout"
+			_ = st.Close()
+			return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
 		}
-	case <-time.After(idleTimeout):
-		success = false
-		errClass = "timeout"
 	}
-	_ = st.Close()
-	// Estimate output tokens if usage absent but text flowed.
-	if outTok == 0 {
-		// counted during parse if available; leave 0 otherwise (no fabrication beyond estimator here).
-	}
-	_ = respID
-	return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
 }
 
 func parseOpenAIEventMeta(payload string) (inT, outT int64, respID string) {

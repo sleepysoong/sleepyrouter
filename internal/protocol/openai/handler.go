@@ -44,10 +44,11 @@ func ExecuteNonStream(ctx context.Context, caller UpstreamCaller, candidates []r
 	var attempts []routing.AttemptError
 	for i, c := range candidates {
 		if authFailed[c.ProviderID] {
+			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorAuth, SafeMessage: "provider skipped after auth failure", Skipped: true, SkipReason: "provider_auth_failed"})
 			continue
 		}
 		if c.Provider == nil || c.Provider.APIKey == "" {
-			ae := routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID}
+			ae := routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID, Skipped: true, SkipReason: "missing_api_key"}
 			attempts = append(attempts, ae)
 			continue
 		}

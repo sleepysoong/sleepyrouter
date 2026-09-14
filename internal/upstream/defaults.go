@@ -7,6 +7,8 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // applyModelDefaults fills omitted reasoning options from model config.
@@ -20,6 +22,32 @@ func applyModelDefaults(params *responses.ResponseNewParams, c routing.Candidate
 // ApplyModelDefaultsForTest is the exported form for protocol packages.
 func ApplyModelDefaultsForTest(params *responses.ResponseNewParams, c routing.Candidate) {
 	applyModelDefaults(params, c)
+}
+
+// ApplyProviderDefaults fills omitted top-level fields from model config on
+// the raw body. Explicit client values always win (spec: model defaults only
+// for omitted fields). Call after RewriteModel, before SDK unmarshal.
+func ApplyProviderDefaults(raw []byte, c routing.Candidate) ([]byte, error) {
+	out := raw
+	var err error
+	if c.Model.ThinkingBudget != nil && !gjson.GetBytes(out, "thinking").Exists() {
+		out, err = sjson.SetBytes(out, "thinking", map[string]any{
+			"type": "enabled", "budget_tokens": *c.Model.ThinkingBudget,
+		})
+		if err != nil {
+			return raw, err
+		}
+	}
+	for k, v := range c.Model.Extra {
+		if k == "" || k == "model" || gjson.GetBytes(out, k).Exists() {
+			continue
+		}
+		out, err = sjson.SetBytes(out, k, v)
+		if err != nil {
+			return raw, err
+		}
+	}
+	return out, nil
 }
 
 // DeriveRequirements inspects raw Responses body for capability needs.
