@@ -158,6 +158,8 @@ OpenAI Responses 호환 업스트림으로 변환하므로 **Anthropic API 전�
 `stop_reason=max_tokens`로 표시한다. 그 외 upstream 실패·중단은 정상
 `end_turn`으로 위장하지 않고 스트림 오류로 알린다. 실제 Claude Code/Codex
 버전과 업스트림이 사용하는 확장 기능까지 모두 검증했다는 뜻은 아니다.
+이때 도구 호출이 JSON 인자 중간에서 잘릴 수 있으므로 클라이언트는
+`max_tokens`를 확인하고 불완전한 도구 인자를 실행하지 않아야 한다.
 
 ## Routing behavior
 
@@ -183,8 +185,9 @@ OpenAI Responses 호환 업스트림으로 변환하므로 **Anthropic API 전�
   response ID / tool ID / index가 바뀌어 client parser가 깨지기 때문이다.
 - `first_event` / `stream_idle` timeout은 candidate failover 사유.
 - client disconnect는 context로 upstream까지 전파.
-- usage의 `output_tokens`는 upstream 값을 쓰고, 없을 때만 추정하지 않고 0 유지
-  (Anthropic usage fabrication 금지).
+- usage는 upstream 값만 쓰고 추정하지 않는다. usage가 없으면 DB 집계는 0이며,
+  Anthropic 스트림은 알려진 누적 토큰만 `message_delta`에 보낸다. input usage는
+  upstream이 완료 시점에만 알려주면 시작 이벤트의 0에서 최종 값으로 갱신된다.
 
 ## Stateful Responses caveat
 

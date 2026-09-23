@@ -90,6 +90,9 @@ func TestOfficialClientsReadGatewayStreams(t *testing.T) {
 	if len(message.Content) != 1 || message.Content[0].AsToolUse().ID != "call_1" || string(message.Content[0].AsToolUse().Input) != `{"path":"a"}` || string(message.StopReason) != "tool_use" {
 		t.Fatalf("Anthropic SDK message: %+v", message)
 	}
+	if message.Usage.InputTokens != 3 || message.Usage.OutputTokens != 7 {
+		t.Fatalf("Anthropic SDK usage: %+v", message.Usage)
+	}
 	followup, err := anthropicClient.Messages.New(context.Background(), anthropicsdk.MessageNewParams{
 		Model: "coding", MaxTokens: 32,
 		Messages: []anthropicsdk.MessageParam{

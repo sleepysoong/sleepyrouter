@@ -17,19 +17,21 @@ type SSEEvent struct {
 // StreamEncoder converts one OpenAI Responses stream to an Anthropic stream.
 // OpenAI item IDs identify deltas; call IDs identify client-facing tool calls.
 type StreamEncoder struct {
-	MessageID      string
-	RequestedModel string
-	NextIndex      int
-	TextOpen       bool
-	TextIndex      int
-	InputTokens    int64
-	OutputTokens   int64
-	StopReason     string
-	Started        bool
-	Terminal       bool
-	Success        bool
-	toolsByItem    map[string]*streamTool
-	toolsByOutput  map[int]*streamTool
+	MessageID         string
+	RequestedModel    string
+	NextIndex         int
+	TextOpen          bool
+	TextIndex         int
+	InputTokens       int64
+	OutputTokens      int64
+	InputTokensKnown  bool
+	OutputTokensKnown bool
+	StopReason        string
+	Started           bool
+	Terminal          bool
+	Success           bool
+	toolsByItem       map[string]*streamTool
+	toolsByOutput     map[int]*streamTool
 }
 
 type streamTool struct {
@@ -74,13 +76,14 @@ func (e *StreamEncoder) HandleResponsesEvent(typeName, payload string) []SSEEven
 	if err := upstream.UnmarshalJSON([]byte(payload)); err != nil {
 		return e.Fail("api_error", "invalid upstream stream event")
 	}
-	if inT, outT := extractUsage(payload); inT > 0 || outT > 0 {
-		if inT > 0 {
-			e.InputTokens = inT
-		}
-		if outT > 0 {
-			e.OutputTokens = outT
-		}
+	inT, outT, hasIn, hasOut := extractUsage(payload)
+	if hasIn {
+		e.InputTokens = inT
+		e.InputTokensKnown = true
+	}
+	if hasOut {
+		e.OutputTokens = outT
+		e.OutputTokensKnown = true
 	}
 	switch typeName {
 	case "response.output_text.delta":
@@ -212,12 +215,13 @@ func (e *StreamEncoder) finishTool(tool *streamTool, final string) []SSEEvent {
 	if tool.arguments == "" {
 		out = append(out, e.toolDelta(tool, "{}"))
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(tool.arguments), &obj); err != nil || obj == nil {
-		return e.Fail("api_error", "invalid upstream function arguments")
-	}
 	tool.closed = true
 	return append(out, event("content_block_stop", wireBlockStop{Type: "content_block_stop", Index: tool.index}))
+}
+
+func validToolArguments(arguments string) bool {
+	var obj map[string]json.RawMessage
+	return json.Unmarshal([]byte(arguments), &obj) == nil && obj != nil
 }
 
 // Finish closes all blocks and emits exactly one normal Anthropic terminator.
@@ -240,13 +244,23 @@ func (e *StreamEncoder) Finish(stopReason string) []SSEEvent {
 			}
 			out = append(out, more...)
 		}
+		if stopReason != "max_tokens" && !validToolArguments(tool.arguments) {
+			return e.Fail("api_error", "invalid upstream function arguments")
+		}
 	}
 	e.StopReason = stopReason
 	e.Terminal = true
 	e.Success = true
+	usage := wireDeltaUsage{}
+	if e.InputTokensKnown {
+		usage.InputTokens = &e.InputTokens
+	}
+	if e.OutputTokensKnown {
+		usage.OutputTokens = &e.OutputTokens
+	}
 	out = append(out, event("message_delta", wireMessageDelta{
 		Type: "message_delta", Delta: wireStopDelta{StopReason: stopReason},
-		Usage: wireDeltaUsage{OutputTokens: e.OutputTokens},
+		Usage: usage,
 	}))
 	return append(out, event("message_stop", wireMessageStop{Type: "message_stop"}))
 }
@@ -261,27 +275,34 @@ func (e *StreamEncoder) Fail(errType, message string) []SSEEvent {
 	return []SSEEvent{event("error", wireErrorEvent{Type: "error", Error: wireErrorBody{Type: errType, Message: message}})}
 }
 
-func extractUsage(payload string) (int64, int64) {
+func extractUsage(payload string) (input, output int64, hasInput, hasOutput bool) {
 	var v struct {
 		Usage *struct {
-			InputTokens  int64 `json:"input_tokens"`
-			OutputTokens int64 `json:"output_tokens"`
+			InputTokens  *int64 `json:"input_tokens"`
+			OutputTokens *int64 `json:"output_tokens"`
 		} `json:"usage"`
 		Response *struct {
 			Usage *struct {
-				InputTokens  int64 `json:"input_tokens"`
-				OutputTokens int64 `json:"output_tokens"`
+				InputTokens  *int64 `json:"input_tokens"`
+				OutputTokens *int64 `json:"output_tokens"`
 			} `json:"usage"`
 		} `json:"response"`
 	}
 	if json.Unmarshal([]byte(payload), &v) != nil {
-		return 0, 0
+		return 0, 0, false, false
 	}
+	usage := v.Usage
 	if v.Response != nil && v.Response.Usage != nil {
-		return v.Response.Usage.InputTokens, v.Response.Usage.OutputTokens
+		usage = v.Response.Usage
 	}
-	if v.Usage != nil {
-		return v.Usage.InputTokens, v.Usage.OutputTokens
+	if usage == nil {
+		return 0, 0, false, false
 	}
-	return 0, 0
+	if usage.InputTokens != nil {
+		input, hasInput = *usage.InputTokens, true
+	}
+	if usage.OutputTokens != nil {
+		output, hasOutput = *usage.OutputTokens, true
+	}
+	return input, output, hasInput, hasOutput
 }

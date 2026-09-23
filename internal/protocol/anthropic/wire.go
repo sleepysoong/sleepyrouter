@@ -66,7 +66,8 @@ type wireStopDelta struct {
 }
 
 type wireDeltaUsage struct {
-	OutputTokens int64 `json:"output_tokens"`
+	InputTokens  *int64 `json:"input_tokens,omitempty"`
+	OutputTokens *int64 `json:"output_tokens,omitempty"`
 }
 
 type wireMessageDelta struct {

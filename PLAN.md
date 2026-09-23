@@ -71,10 +71,12 @@ Code)를 제공하지만, **모든 업스트림 호출은 OpenAI Responses 호�
   블록 인덱스가 일정해야 한다.
 - `response.function_call_arguments.done`의 최종 `arguments`는 누락된
   인자만 보충하는 데 사용하고, `response.output_item.done`와 중복되어도
-  블록을 정확히 한 번만 닫는다. 완료 시점에 최종 인자는 JSON 객체인지
-  검증한다. 불일치/무효 인자는 조용히 `{}`로 위장하지 않고 스트림 오류로
-  끝낸다. `response.completed`에서 열린 블록을 정리할 때도 순서와
-  중복 없는 종료를 보장한다.
+  블록을 정확히 한 번만 닫는다. 정상 `response.completed`에서는 최종
+  인자가 JSON 객체인지 검증한다. 불일치/무효 인자는 조용히 `{}`로 위장하지
+  않고 스트림 오류로 끝낸다. 단 `max_output_tokens`로 끝난 응답은 공식
+  Anthropic 동작에 맞춰 잘린 partial JSON을 보존하고 `max_tokens`로 종료한다.
+  `response.completed`에서 열린 블록을 정리할 때도 순서와 중복 없는 종료를
+  보장한다.
 
 ### C. Anthropic 종료·오류 및 비스트리밍
 

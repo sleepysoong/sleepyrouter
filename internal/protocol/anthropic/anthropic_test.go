@@ -218,6 +218,9 @@ func TestOfficialAnthropicSDKAccumulatesToolStream(t *testing.T) {
 	if len(msg.Content) != 1 || msg.Content[0].AsToolUse().ID != "call_1" || string(msg.Content[0].AsToolUse().Input) != `{"path":"a"}` || string(msg.StopReason) != "tool_use" {
 		t.Fatalf("accumulated message = %+v", msg)
 	}
+	if msg.Usage.InputTokens != 2 || msg.Usage.OutputTokens != 4 {
+		t.Fatalf("accumulated usage = %+v", msg.Usage)
+	}
 }
 
 func TestStreamToolFinalArgumentsWithoutDeltas(t *testing.T) {
@@ -235,12 +238,53 @@ func TestInvalidToolArgumentsFailWithoutNormalStop(t *testing.T) {
 	enc := anthropic.NewStreamEncoder("virtual")
 	enc.StartEvents()
 	enc.HandleResponsesEvent("response.output_item.added", `{"output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"read_file","arguments":""}}`)
-	events := enc.HandleResponsesEvent("response.function_call_arguments.done", `{"item_id":"fc_1","output_index":0,"arguments":"[1,2]"}`)
-	if len(events) != 1 || events[0].Event != "error" || !enc.Terminal || enc.Success {
-		t.Fatalf("events=%v terminal=%v success=%v", events, enc.Terminal, enc.Success)
+	closed := enc.HandleResponsesEvent("response.function_call_arguments.done", `{"item_id":"fc_1","output_index":0,"arguments":"[1,2]"}`)
+	if len(closed) != 2 || closed[0].Event != "content_block_delta" || closed[1].Event != "content_block_stop" || enc.Terminal {
+		t.Fatalf("closed=%v terminal=%v", closed, enc.Terminal)
+	}
+	terminal := enc.HandleResponsesEvent("response.completed", `{"response":{"usage":{"input_tokens":1,"output_tokens":2}}}`)
+	if len(terminal) != 1 || terminal[0].Event != "error" || !enc.Terminal || enc.Success {
+		t.Fatalf("terminal=%v terminal-state=%v success=%v", terminal, enc.Terminal, enc.Success)
 	}
 	if more := enc.HandleResponsesEvent("response.completed", `{}`); len(more) != 0 {
 		t.Fatalf("unexpected normal stop: %v", more)
+	}
+}
+
+func TestMaxTokensPreservesTruncatedToolArguments(t *testing.T) {
+	enc := anthropic.NewStreamEncoder("virtual")
+	events := enc.StartEvents()
+	events = append(events, enc.HandleResponsesEvent("response.output_item.added", `{"output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"read_file","arguments":""}}`)...)
+	events = append(events, enc.HandleResponsesEvent("response.function_call_arguments.delta", `{"item_id":"fc_1","output_index":0,"delta":"{\"path\":"}`)...)
+	events = append(events, enc.HandleResponsesEvent("response.function_call_arguments.done", `{"item_id":"fc_1","output_index":0,"arguments":"{\"path\":"}`)...)
+	events = append(events, enc.HandleResponsesEvent("response.incomplete", `{"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":3,"output_tokens":5}}}`)...)
+	if enc.Success || !enc.Terminal || enc.StopReason != "max_tokens" {
+		t.Fatalf("success=%v terminal=%v stop=%s", enc.Success, enc.Terminal, enc.StopReason)
+	}
+	var partialJSON string
+	var message anthropicsdk.Message
+	for _, item := range events {
+		var ev anthropicsdk.MessageStreamEventUnion
+		if err := ev.UnmarshalJSON([]byte(item.Data)); err != nil {
+			t.Fatalf("parse %s: %v", item.Event, err)
+		}
+		if err := message.Accumulate(ev); err != nil {
+			t.Fatalf("accumulate %s: %v", item.Event, err)
+		}
+		if item.Event == "content_block_delta" {
+			var delta struct {
+				Delta struct {
+					PartialJSON string `json:"partial_json"`
+				} `json:"delta"`
+			}
+			if err := json.Unmarshal([]byte(item.Data), &delta); err != nil {
+				t.Fatal(err)
+			}
+			partialJSON += delta.Delta.PartialJSON
+		}
+	}
+	if partialJSON != `{"path":` || string(message.StopReason) != "max_tokens" || message.Usage.InputTokens != 3 || message.Usage.OutputTokens != 5 {
+		t.Fatalf("partial=%q stop=%q usage=%+v", partialJSON, message.StopReason, message.Usage)
 	}
 }
 
