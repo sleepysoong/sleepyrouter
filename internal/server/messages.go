@@ -37,8 +37,6 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parsed.SessionID = r.Header.Get("X-Claude-Code-Session-Id")
-	parsed.AnthropicVer = r.Header.Get("Anthropic-Version")
-	parsed.AnthropicBeta = r.Header.Get("Anthropic-Beta")
 	if s.deps.Logger != nil {
 		s.deps.Logger.Info("request_received", "request_id", reqID, "protocol", "anthropic", "requested_model", parsed.RequestedModel, "stream", parsed.Stream, "session", parsed.SessionID)
 	}
@@ -116,14 +114,16 @@ func (s *Server) serveMessagesNonStream(w http.ResponseWriter, r *http.Request, 
 			attempts = append(attempts, ae)
 			continue
 		}
-		inT, outT := anthropicUsage(out)
+		inT, outT, cacheWriteT, cachedT := anthropicUsage(out)
 		setDebugHeaders(w, reqID, c, len(attempts)+1, snap.Generation)
 		var rows []usage.Attempt
 		for i, a := range attempts {
 			rows = append(rows, usage.Attempt{RequestID: reqID, Index: i + 1, Model: a.Candidate, Provider: a.Provider, DurationMs: a.Duration.Milliseconds(), StatusCode: a.StatusCode, ErrorClass: a.Class.String()})
 		}
 		rows = append(rows, usage.Attempt{RequestID: reqID, Index: len(attempts) + 1, Model: c.LocalModelID, Provider: c.ProviderID, DurationMs: time.Since(start).Milliseconds(), Success: true})
-		s.recordUsage(reqID, "anthropic", parsed.RequestedModel, c.LocalModelID, c.ProviderID, inT, outT, len(rows), true, "", time.Since(start).Milliseconds(), parsed.SessionID, snap.Generation, rows)
+		s.recordUsageWithCache(reqID, "anthropic", parsed.RequestedModel, c.LocalModelID, c.ProviderID,
+			inT+cacheWriteT+cachedT, outT, cachedT, cacheWriteT, len(rows), true, "",
+			time.Since(start).Milliseconds(), parsed.SessionID, snap.Generation, rows)
 		if s.deps.Logger != nil {
 			s.deps.Logger.Info("request_completed", "request_id", reqID, "protocol", "anthropic", "routed_model", c.LocalModelID)
 		}
@@ -144,17 +144,19 @@ func (s *Server) serveMessagesNonStream(w http.ResponseWriter, r *http.Request, 
 	anthropic.WriteError(w, status, "api_error", "All configured candidates failed")
 }
 
-func anthropicUsage(body []byte) (int64, int64) {
+func anthropicUsage(body []byte) (input, output, cacheWrite, cacheRead int64) {
 	var v struct {
 		Usage struct {
-			InputTokens  int64 `json:"input_tokens"`
-			OutputTokens int64 `json:"output_tokens"`
+			InputTokens              int64 `json:"input_tokens"`
+			OutputTokens             int64 `json:"output_tokens"`
+			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &v); err != nil {
-		return 0, 0
+		return 0, 0, 0, 0
 	}
-	return v.Usage.InputTokens, v.Usage.OutputTokens
+	return v.Usage.InputTokens, v.Usage.OutputTokens, v.Usage.CacheCreationInputTokens, v.Usage.CacheReadInputTokens
 }
 
 func toUsageAttempts(reqID string, atts []routing.AttemptError) []usage.Attempt {

@@ -5,8 +5,10 @@ import "encoding/json"
 // These types describe only the Messages wire forms this gateway emits.
 // They are intentionally distinct from SDK request Param types.
 type wireUsage struct {
-	InputTokens  int64 `json:"input_tokens"`
-	OutputTokens int64 `json:"output_tokens"`
+	InputTokens              int64 `json:"input_tokens"`
+	OutputTokens             int64 `json:"output_tokens"`
+	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
 }
 
 type wireContentBlock struct {
@@ -66,8 +68,10 @@ type wireStopDelta struct {
 }
 
 type wireDeltaUsage struct {
-	InputTokens  *int64 `json:"input_tokens,omitempty"`
-	OutputTokens *int64 `json:"output_tokens,omitempty"`
+	InputTokens              *int64 `json:"input_tokens,omitempty"`
+	OutputTokens             *int64 `json:"output_tokens,omitempty"`
+	CacheCreationInputTokens *int64 `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     *int64 `json:"cache_read_input_tokens,omitempty"`
 }
 
 type wireMessageDelta struct {

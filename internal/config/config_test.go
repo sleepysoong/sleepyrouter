@@ -2,9 +2,16 @@ package config_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/config"
 )
+
+func TestDefaultStreamIdleExceedsClaudeCodeWatchdog(t *testing.T) {
+	if got, want := config.Defaults().Timeouts.StreamIdle, 330*time.Second; got != want {
+		t.Fatalf("default stream idle = %s, want %s", got, want)
+	}
+}
 
 const exampleTOML = `
 version = 1
@@ -108,6 +115,22 @@ coding = ["coding"]
 	}
 	if err := config.Validate(&cfg); err == nil {
 		t.Fatal("expected collision error")
+	}
+}
+
+func TestValidationRejectsAnthropicThinkingBudgetForResponsesUpstream(t *testing.T) {
+	cfg, err := config.Parse([]byte(`
+version = 1
+[models."zen/model-a"]
+provider = "zen"
+upstream_model = "model-a"
+thinking_budget = 1024
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := config.Validate(&cfg); err == nil {
+		t.Fatal("expected incompatible thinking_budget validation error")
 	}
 }
 

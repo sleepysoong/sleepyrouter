@@ -6,7 +6,8 @@ import (
 )
 
 // handleModels returns a superset for OpenAI + Claude discovery.
-// Aliases starting with claude-/anthropic- surface for picker discovery.
+// Claude Code currently filters discovered model IDs to those containing
+// "claude" or "anthropic"; the gateway returns all IDs and lets clients filter.
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	snap := s.deps.Store.Current()
 	if snap == nil {

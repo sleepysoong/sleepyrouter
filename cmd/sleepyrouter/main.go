@@ -394,9 +394,20 @@ func runUsage(args []string) int {
 	ustore := usage.Open(config.UsageDBPath(home), true)
 	defer ustore.Close()
 	sum := ustore.SummaryFiltered(model, since, until)
-	fmt.Printf("requests: %d failed: %d input: %d output: %d\n", sum.Requests, sum.Failed, sum.InputTokens, sum.OutputTokens)
+	fmt.Printf("requests: %d failed: %d input: %d output: %d cache-read: %d cache-write: %d cache-hit: %.1f%%\n",
+		sum.Requests, sum.Failed, sum.InputTokens, sum.OutputTokens,
+		sum.CachedInputTokens, sum.CacheWriteInputTokens, cacheHitRate(sum.CachedInputTokens, sum.InputTokens))
 	for _, m := range sum.ByModel {
-		fmt.Printf("  %-30s req=%d fail=%d in=%d out=%d\n", m.Model, m.Requests, m.Failed, m.InputTokens, m.OutputTokens)
+		fmt.Printf("  %-30s req=%d fail=%d in=%d out=%d cache-read=%d cache-write=%d cache-hit=%.1f%%\n",
+			m.Model, m.Requests, m.Failed, m.InputTokens, m.OutputTokens,
+			m.CachedInputTokens, m.CacheWriteInputTokens, cacheHitRate(m.CachedInputTokens, m.InputTokens))
 	}
 	return 0
+}
+
+func cacheHitRate(cachedInputTokens, inputTokens int64) float64 {
+	if inputTokens <= 0 {
+		return 0
+	}
+	return 100 * float64(cachedInputTokens) / float64(inputTokens)
 }

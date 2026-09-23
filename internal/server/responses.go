@@ -142,7 +142,9 @@ func (s *Server) onOpenAISuccess(snap *config.RuntimeSnapshot, reqID string, par
 		atts = append(atts, usage.Attempt{RequestID: reqID, Index: i + 1, Model: a.Candidate, Provider: a.Provider, DurationMs: a.Duration.Milliseconds(), StatusCode: a.StatusCode, ErrorClass: a.Class.String()})
 	}
 	atts = append(atts, usage.Attempt{RequestID: reqID, Index: len(attempts) + 1, Model: c.LocalModelID, Provider: c.ProviderID, DurationMs: dur.Milliseconds(), Success: success, ErrorClass: errClass})
-	s.recordUsage(reqID, "openai", parsed.RequestedModel, c.LocalModelID, c.ProviderID, res.InputTokens, res.OutputTokens, len(atts), success, errClass, dur.Milliseconds(), "", snap.Generation, atts)
+	s.recordUsageWithCache(reqID, "openai", parsed.RequestedModel, c.LocalModelID, c.ProviderID,
+		res.InputTokens, res.OutputTokens, res.CachedInputTokens, res.CacheWriteInputTokens,
+		len(atts), success, errClass, dur.Milliseconds(), "", snap.Generation, atts)
 	if s.deps.Logger != nil {
 		s.deps.Logger.Info("candidate_result", "request_id", reqID, "candidate", c.LocalModelID, "attempt", len(atts), "duration_ms", dur.Milliseconds(), "success", success)
 		s.deps.Logger.Info("request_completed", "request_id", reqID, "protocol", "openai", "routed_model", c.LocalModelID, "success", success)
@@ -206,13 +208,19 @@ func setDebugHeaders(w http.ResponseWriter, reqID string, c routing.Candidate, a
 }
 
 func (s *Server) recordUsage(reqID, protocol, requested, routed, provider string, inT, outT int64, attempts int, success bool, errClass string, durMs int64, session string, gen uint64, atts []usage.Attempt) {
+	s.recordUsageWithCache(reqID, protocol, requested, routed, provider, inT, outT, 0, 0, attempts, success, errClass, durMs, session, gen, atts)
+}
+
+func (s *Server) recordUsageWithCache(reqID, protocol, requested, routed, provider string, inT, outT, cachedInT, cacheWriteInT int64, attempts int, success bool, errClass string, durMs int64, session string, gen uint64, atts []usage.Attempt) {
 	if s.deps.Usage == nil {
 		return
 	}
 	s.deps.Usage.RecordRequest(usage.Record{
 		RequestID: reqID, Protocol: protocol, RequestedModel: requested,
 		RoutedModel: routed, Provider: provider, Attempts: attempts,
-		InputTokens: inT, OutputTokens: outT, Success: success,
+		InputTokens: inT, OutputTokens: outT,
+		CachedInputTokens: cachedInT, CacheWriteInputTokens: cacheWriteInT,
+		Success:    success,
 		ErrorClass: errClass, DurationMs: durMs, SessionID: session, ConfigGen: gen,
 	}, atts)
 }

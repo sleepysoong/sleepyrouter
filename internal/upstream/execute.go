@@ -17,12 +17,14 @@ import (
 
 // Result is a successful non-streaming upstream call.
 type Result struct {
-	RawBody      []byte
-	ResponseID   string
-	InputTokens  int64
-	OutputTokens int64
-	Model        string
-	Status       responses.ResponseStatus
+	RawBody               []byte
+	ResponseID            string
+	InputTokens           int64
+	CachedInputTokens     int64
+	CacheWriteInputTokens int64
+	OutputTokens          int64
+	Model                 string
+	Status                responses.ResponseStatus
 }
 
 // RewriteModel replaces top-level "model" without touching other fields.
@@ -101,17 +103,24 @@ func ExecuteNonStream(ctx context.Context, client openai.Client, c routing.Candi
 		out = b
 	}
 	var usageIn, usageOut int64
+	var cachedInput, cacheWriteInput int64
 	var respID, model string
 	if resp.Usage.InputTokens != 0 || resp.Usage.OutputTokens != 0 {
 		usageIn = resp.Usage.InputTokens
 		usageOut = resp.Usage.OutputTokens
+		cachedInput = resp.Usage.InputTokensDetails.CachedTokens
+		cacheWriteInput = resp.Usage.InputTokensDetails.CacheWriteTokens
 	}
 	respID = resp.ID
 	model = string(resp.Model)
 	if (resp.Status == responses.ResponseStatusCompleted || resp.Status == "") && isEmptyResponse(resp) {
 		return Result{}, &emptyResponseError{status: http.StatusOK}
 	}
-	return Result{RawBody: out, ResponseID: respID, InputTokens: usageIn, OutputTokens: usageOut, Model: model, Status: resp.Status}, nil
+	return Result{
+		RawBody: out, ResponseID: respID, InputTokens: usageIn,
+		CachedInputTokens: cachedInput, CacheWriteInputTokens: cacheWriteInput,
+		OutputTokens: usageOut, Model: model, Status: resp.Status,
+	}, nil
 }
 
 type emptyResponseError struct{ status int }

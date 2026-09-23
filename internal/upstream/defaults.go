@@ -30,14 +30,6 @@ func ApplyModelDefaultsForTest(params *responses.ResponseNewParams, c routing.Ca
 func ApplyProviderDefaults(raw []byte, c routing.Candidate) ([]byte, error) {
 	out := raw
 	var err error
-	if c.Model.ThinkingBudget != nil && !gjson.GetBytes(out, "thinking").Exists() {
-		out, err = sjson.SetBytes(out, "thinking", map[string]any{
-			"type": "enabled", "budget_tokens": *c.Model.ThinkingBudget,
-		})
-		if err != nil {
-			return raw, err
-		}
-	}
 	for k, v := range c.Model.Extra {
 		if k == "" || k == "model" || gjson.GetBytes(out, k).Exists() {
 			continue

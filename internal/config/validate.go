@@ -49,6 +49,9 @@ func Validate(cfg *Config) error {
 		if strings.TrimSpace(m.UpstreamModel) == "" {
 			return fmt.Errorf("models.%q: upstream_model is empty", id)
 		}
+		if m.ThinkingBudget != nil {
+			return fmt.Errorf("models.%q: thinking_budget is Anthropic-specific and cannot be represented by the Responses upstream; use reasoning_effort", id)
+		}
 	}
 	// Collision checks: group/model/alias names must be disjoint.
 	for g := range cfg.Groups {

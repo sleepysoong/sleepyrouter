@@ -17,21 +17,25 @@ type SSEEvent struct {
 // StreamEncoder converts one OpenAI Responses stream to an Anthropic stream.
 // OpenAI item IDs identify deltas; call IDs identify client-facing tool calls.
 type StreamEncoder struct {
-	MessageID         string
-	RequestedModel    string
-	NextIndex         int
-	TextOpen          bool
-	TextIndex         int
-	InputTokens       int64
-	OutputTokens      int64
-	InputTokensKnown  bool
-	OutputTokensKnown bool
-	StopReason        string
-	Started           bool
-	Terminal          bool
-	Success           bool
-	toolsByItem       map[string]*streamTool
-	toolsByOutput     map[int]*streamTool
+	MessageID                string
+	RequestedModel           string
+	NextIndex                int
+	TextOpen                 bool
+	TextIndex                int
+	InputTokens              int64
+	OutputTokens             int64
+	CacheCreationInputTokens int64
+	CacheReadInputTokens     int64
+	InputTokensKnown         bool
+	OutputTokensKnown        bool
+	CacheCreationKnown       bool
+	CacheReadKnown           bool
+	StopReason               string
+	Started                  bool
+	Terminal                 bool
+	Success                  bool
+	toolsByItem              map[string]*streamTool
+	toolsByOutput            map[int]*streamTool
 }
 
 type streamTool struct {
@@ -64,7 +68,11 @@ func (e *StreamEncoder) StartEvents() []SSEEvent {
 		Type: "message_start",
 		Message: wireMessage{ID: e.MessageID, Type: "message", Role: "assistant",
 			Content: []wireContentBlock{}, Model: e.RequestedModel,
-			Usage: wireUsage{InputTokens: e.InputTokens, OutputTokens: e.OutputTokens}},
+			Usage: wireUsage{
+				InputTokens: e.InputTokens, OutputTokens: e.OutputTokens,
+				CacheCreationInputTokens: e.CacheCreationInputTokens,
+				CacheReadInputTokens:     e.CacheReadInputTokens,
+			}},
 	})}
 }
 
@@ -76,7 +84,7 @@ func (e *StreamEncoder) HandleResponsesEvent(typeName, payload string) []SSEEven
 	if err := upstream.UnmarshalJSON([]byte(payload)); err != nil {
 		return e.Fail("api_error", "invalid upstream stream event")
 	}
-	inT, outT, hasIn, hasOut := extractUsage(payload)
+	inT, outT, cacheCreation, cacheRead, hasIn, hasOut, hasCacheCreation, hasCacheRead := extractUsage(payload)
 	if hasIn {
 		e.InputTokens = inT
 		e.InputTokensKnown = true
@@ -84,6 +92,14 @@ func (e *StreamEncoder) HandleResponsesEvent(typeName, payload string) []SSEEven
 	if hasOut {
 		e.OutputTokens = outT
 		e.OutputTokensKnown = true
+	}
+	if hasCacheCreation {
+		e.CacheCreationInputTokens = cacheCreation
+		e.CacheCreationKnown = true
+	}
+	if hasCacheRead {
+		e.CacheReadInputTokens = cacheRead
+		e.CacheReadKnown = true
 	}
 	switch typeName {
 	case "response.output_text.delta":
@@ -258,6 +274,12 @@ func (e *StreamEncoder) Finish(stopReason string) []SSEEvent {
 	if e.OutputTokensKnown {
 		usage.OutputTokens = &e.OutputTokens
 	}
+	if e.CacheCreationKnown {
+		usage.CacheCreationInputTokens = &e.CacheCreationInputTokens
+	}
+	if e.CacheReadKnown {
+		usage.CacheReadInputTokens = &e.CacheReadInputTokens
+	}
 	out = append(out, event("message_delta", wireMessageDelta{
 		Type: "message_delta", Delta: wireStopDelta{StopReason: stopReason},
 		Usage: usage,
@@ -275,28 +297,36 @@ func (e *StreamEncoder) Fail(errType, message string) []SSEEvent {
 	return []SSEEvent{event("error", wireErrorEvent{Type: "error", Error: wireErrorBody{Type: errType, Message: message}})}
 }
 
-func extractUsage(payload string) (input, output int64, hasInput, hasOutput bool) {
+func extractUsage(payload string) (input, output, cacheCreation, cacheRead int64, hasInput, hasOutput, hasCacheCreation, hasCacheRead bool) {
 	var v struct {
 		Usage *struct {
-			InputTokens  *int64 `json:"input_tokens"`
-			OutputTokens *int64 `json:"output_tokens"`
+			InputTokens        *int64 `json:"input_tokens"`
+			OutputTokens       *int64 `json:"output_tokens"`
+			InputTokensDetails *struct {
+				CachedTokens     *int64 `json:"cached_tokens"`
+				CacheWriteTokens *int64 `json:"cache_write_tokens"`
+			} `json:"input_tokens_details"`
 		} `json:"usage"`
 		Response *struct {
 			Usage *struct {
-				InputTokens  *int64 `json:"input_tokens"`
-				OutputTokens *int64 `json:"output_tokens"`
+				InputTokens        *int64 `json:"input_tokens"`
+				OutputTokens       *int64 `json:"output_tokens"`
+				InputTokensDetails *struct {
+					CachedTokens     *int64 `json:"cached_tokens"`
+					CacheWriteTokens *int64 `json:"cache_write_tokens"`
+				} `json:"input_tokens_details"`
 			} `json:"usage"`
 		} `json:"response"`
 	}
 	if json.Unmarshal([]byte(payload), &v) != nil {
-		return 0, 0, false, false
+		return 0, 0, 0, 0, false, false, false, false
 	}
 	usage := v.Usage
 	if v.Response != nil && v.Response.Usage != nil {
 		usage = v.Response.Usage
 	}
 	if usage == nil {
-		return 0, 0, false, false
+		return 0, 0, 0, 0, false, false, false, false
 	}
 	if usage.InputTokens != nil {
 		input, hasInput = *usage.InputTokens, true
@@ -304,5 +334,19 @@ func extractUsage(payload string) (input, output int64, hasInput, hasOutput bool
 	if usage.OutputTokens != nil {
 		output, hasOutput = *usage.OutputTokens, true
 	}
-	return input, output, hasInput, hasOutput
+	if usage.InputTokensDetails != nil {
+		if usage.InputTokensDetails.CachedTokens != nil {
+			cacheRead, hasCacheRead = *usage.InputTokensDetails.CachedTokens, true
+		}
+		if usage.InputTokensDetails.CacheWriteTokens != nil {
+			cacheCreation, hasCacheCreation = *usage.InputTokensDetails.CacheWriteTokens, true
+		}
+	}
+	if hasInput {
+		input -= cacheRead + cacheCreation
+		if input < 0 {
+			input = 0
+		}
+	}
+	return input, output, cacheCreation, cacheRead, hasInput, hasOutput, hasCacheCreation, hasCacheRead
 }

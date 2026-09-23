@@ -13,7 +13,7 @@ unknown_model_policy = "default_group"
 [timeouts]
 request = "180s"
 first_event = "45s"
-stream_idle = "180s"
+stream_idle = "330s"
 
 [logging]
 level = "info"
@@ -65,8 +65,9 @@ upstream_model = "vendor/model-d"
 # reasoning = true
 
 # Optional per-model upstream defaults (applied only when the client
-# omits them; explicit client values always win):
-# thinking_budget = 1024
+# omits them; explicit client values always win). `thinking_budget` is
+# Anthropic-specific and invalid because all upstream requests use Responses:
+# reasoning_effort = "high"
 # [models."openrouter/model-d".extra]
 # service_tier = "flex"
 
@@ -83,6 +84,6 @@ fast = [
 ]
 
 [aliases]
-"claude-sleepy" = "coding"
-"claude-sleepy-fast" = "fast"
+"sleepy-claude-coding" = "coding"
+"sleepy-claude-fast" = "fast"
 "gpt-sleepy" = "coding"

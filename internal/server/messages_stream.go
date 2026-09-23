@@ -69,7 +69,9 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 			rows = append(rows, usage.Attempt{RequestID: reqID, Index: i + 1, Model: a.Candidate, Provider: a.Provider, DurationMs: a.Duration.Milliseconds(), StatusCode: a.StatusCode, ErrorClass: a.Class.String()})
 		}
 		rows = append(rows, usage.Attempt{RequestID: reqID, Index: len(attempts) + 1, Model: c.LocalModelID, Provider: c.ProviderID, DurationMs: dur.Milliseconds(), Success: res.success, ErrorClass: res.errClass})
-		s.recordUsage(reqID, "anthropic", parsed.RequestedModel, c.LocalModelID, c.ProviderID, res.inTok, res.outTok, len(rows), res.success, res.errClass, time.Since(start).Milliseconds(), parsed.SessionID, snap.Generation, rows)
+		s.recordUsageWithCache(reqID, "anthropic", parsed.RequestedModel, c.LocalModelID, c.ProviderID,
+			res.inTok, res.outTok, res.cachedInputTok, res.cacheWriteInputTok, len(rows), res.success,
+			res.errClass, time.Since(start).Milliseconds(), parsed.SessionID, snap.Generation, rows)
 		if s.deps.Logger != nil {
 			s.deps.Logger.Info("request_completed", "request_id", reqID, "protocol", "anthropic", "routed_model", c.LocalModelID, "success", res.success)
 		}
@@ -181,14 +183,12 @@ collect:
 	setDebugHeaders(w, reqID, c, attemptNo, snap.Generation)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	fl, _ := w.(http.Flusher)
 	enc := anthropic.NewStreamEncoder(parsed.RequestedModel)
 	for _, ev := range enc.StartEvents() {
 		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Event, ev.Data)
 	}
-	var inTok, outTok int64
 	flushEncode := func(typ string, payload []byte) {
 		for _, ev := range enc.HandleResponsesEvent(typ, string(payload)) {
 			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Event, ev.Data)
@@ -215,7 +215,7 @@ collect:
 				errClass = "incomplete"
 			}
 		}
-		return true, streamResult{success: enc.Success, inTok: enc.InputTokens, outTok: enc.OutputTokens, errClass: errClass}
+		return true, anthropicStreamResult(enc, enc.Success, errClass)
 	}
 	// Drain rest post-commit (no failover). The producer above stays the
 	// sole st reader; we drain steps in order.
@@ -225,15 +225,15 @@ collect:
 	idleTimeout := snap.Timeouts.StreamIdle
 	idleTimer := time.NewTimer(idleTimeout)
 	defer idleTimer.Stop()
+	pingTicker := time.NewTicker(anthropicPingInterval(idleTimeout))
+	defer pingTicker.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			success = false
 			errClass = "client"
 			_ = st.Close()
-			inTok = enc.InputTokens
-			outTok = enc.OutputTokens
-			return true, streamResult{success: success, inTok: inTok, outTok: outTok, errClass: errClass}
+			return true, anthropicStreamResult(enc, success, errClass)
 		case stp, ok := <-steps:
 			if ok {
 				flushEncode(stp.typ, stp.payload)
@@ -245,7 +245,7 @@ collect:
 							errClass = "incomplete"
 						}
 					}
-					return true, streamResult{success: enc.Success, inTok: enc.InputTokens, outTok: enc.OutputTokens, errClass: errClass}
+					return true, anthropicStreamResult(enc, enc.Success, errClass)
 				}
 				if !idleTimer.Stop() {
 					select {
@@ -276,9 +276,7 @@ collect:
 			}
 			success = enc.Success && errClass == ""
 			_ = st.Close()
-			inTok = enc.InputTokens
-			outTok = enc.OutputTokens
-			return true, streamResult{success: success, inTok: inTok, outTok: outTok, errClass: errClass}
+			return true, anthropicStreamResult(enc, success, errClass)
 		case <-idleTimer.C:
 			success = false
 			errClass = "timeout"
@@ -291,9 +289,37 @@ collect:
 					fl.Flush()
 				}
 			}
-			inTok = enc.InputTokens
-			outTok = enc.OutputTokens
-			return true, streamResult{success: success, inTok: inTok, outTok: outTok, errClass: errClass}
+			return true, anthropicStreamResult(enc, success, errClass)
+		case <-pingTicker.C:
+			// Keep Claude Code's byte-level watchdog alive without extending
+			// our own no-upstream-event idle ceiling.
+			_, _ = fmt.Fprint(w, "event: ping\ndata: {\"type\":\"ping\"}\n\n")
+			if fl != nil {
+				fl.Flush()
+			}
 		}
+	}
+}
+
+func anthropicPingInterval(idleTimeout time.Duration) time.Duration {
+	const maxInterval = 15 * time.Second
+	interval := idleTimeout / 3
+	if interval <= 0 {
+		interval = time.Millisecond
+	}
+	if interval > maxInterval {
+		return maxInterval
+	}
+	return interval
+}
+
+func anthropicStreamResult(enc *anthropic.StreamEncoder, success bool, errClass string) streamResult {
+	return streamResult{
+		success:            success,
+		inTok:              enc.InputTokens + enc.CacheCreationInputTokens + enc.CacheReadInputTokens,
+		outTok:             enc.OutputTokens,
+		cachedInputTok:     enc.CacheReadInputTokens,
+		cacheWriteInputTok: enc.CacheCreationInputTokens,
+		errClass:           errClass,
 	}
 }

@@ -40,7 +40,7 @@ func TestOfficialClientsReadGatewayStreams(t *testing.T) {
 			{"response.function_call_arguments.delta", `{"type":"response.function_call_arguments.delta","sequence_number":2,"item_id":"fc_1","output_index":0,"delta":"{\"path\":\"a\"}"}`},
 			{"response.function_call_arguments.done", `{"type":"response.function_call_arguments.done","sequence_number":3,"item_id":"fc_1","output_index":0,"arguments":"{\"path\":\"a\"}"}`},
 			{"response.output_item.done", `{"type":"response.output_item.done","sequence_number":4,"output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"read_file","arguments":"{\"path\":\"a\"}"}}`},
-			{"response.completed", `{"type":"response.completed","sequence_number":5,"response":{"id":"resp_1","object":"response","model":"a","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"read_file","arguments":"{\"path\":\"a\"}"}],"usage":{"input_tokens":3,"output_tokens":7,"total_tokens":10}}}`},
+			{"response.completed", `{"type":"response.completed","sequence_number":5,"response":{"id":"resp_1","object":"response","model":"a","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"read_file","arguments":"{\"path\":\"a\"}"}],"usage":{"input_tokens":6,"output_tokens":7,"total_tokens":13,"input_tokens_details":{"cached_tokens":2,"cache_write_tokens":1}}}}`},
 		}
 		for _, frame := range frames {
 			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", frame[0], frame[1])
@@ -92,6 +92,9 @@ func TestOfficialClientsReadGatewayStreams(t *testing.T) {
 	}
 	if message.Usage.InputTokens != 3 || message.Usage.OutputTokens != 7 {
 		t.Fatalf("Anthropic SDK usage: %+v", message.Usage)
+	}
+	if message.Usage.CacheCreationInputTokens != 1 || message.Usage.CacheReadInputTokens != 2 {
+		t.Fatalf("Anthropic SDK cache usage: %+v", message.Usage)
 	}
 	followup, err := anthropicClient.Messages.New(context.Background(), anthropicsdk.MessageNewParams{
 		Model: "coding", MaxTokens: 32,

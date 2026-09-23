@@ -31,6 +31,105 @@ func TestUnknownBlockRejected(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeAdaptiveAndMidConversationSystemMapping(t *testing.T) {
+	raw := []byte(`{
+		"model":"gateway-coding","max_tokens":128,
+		"thinking":{"type":"adaptive"},"output_config":{"effort":"high"},
+		"messages":[
+			{"role":"user","content":"inspect this"},
+			{"role":"assistant","content":[{"type":"text","text":"Working."}]},
+			{"role":"system","content":[{"type":"text","text":"Keep the answer concise."}]},
+			{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}}]}
+		]
+	}`)
+	p, err := anthropic.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !p.Requirements.Reasoning || !p.Requirements.Vision {
+		t.Fatalf("requirements = %+v", p.Requirements)
+	}
+	body, err := anthropic.ToResponses(p, "upstream-model")
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	var converted struct {
+		Input []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"input"`
+		Reasoning struct {
+			Effort string `json:"effort"`
+		} `json:"reasoning"`
+	}
+	if err := json.Unmarshal(body, &converted); err != nil {
+		t.Fatalf("decode converted request: %v", err)
+	}
+	if string(converted.Input[1].Content) != `"Working."` {
+		t.Fatalf("assistant content = %s", converted.Input[1].Content)
+	}
+	if converted.Input[2].Role != "system" || string(converted.Input[2].Content) != `"Keep the answer concise."` {
+		t.Fatalf("mid-conversation system mapping = %+v", converted.Input[2])
+	}
+	if converted.Reasoning.Effort != "high" {
+		t.Fatalf("reasoning effort = %q", converted.Reasoning.Effort)
+	}
+}
+
+func TestToolResultFailureAndMultimodalContentMapping(t *testing.T) {
+	raw := []byte(`{
+		"model":"coding","max_tokens":64,
+		"tools":[{"name":"inspect","input_schema":{"type":"object"},"strict":true}],
+		"tool_choice":{"type":"any","disable_parallel_tool_use":true},
+		"messages":[
+			{"role":"assistant","content":[{"type":"tool_use","id":"toolu_a","name":"inspect","input":{}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_a","is_error":true,"content":[
+				{"type":"text","text":"missing file"},
+				{"type":"image","source":{"type":"url","url":"https://example.invalid/image.png"}},
+				{"type":"document","title":"notes.txt","source":{"type":"base64","media_type":"text/plain","data":"bm90ZXM="}}
+			]}]}
+		]
+	}`)
+	p, err := anthropic.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	body, err := anthropic.ToResponses(p, "upstream-model")
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	for _, want := range []string{
+		`"parallel_tool_calls":false`, `"strict":true`, `"type":"function_call_output"`,
+		`[Tool execution failed]`, `"type":"input_image"`, `"type":"input_file"`,
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("converted request missing %s: %s", want, body)
+		}
+	}
+}
+
+func TestParseRejectsBrokenRequestRelationships(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"zero max tokens", `{"model":"m","max_tokens":0,"messages":[{"role":"user","content":"hi"}]}`},
+		{"orphan tool result", `{"model":"m","max_tokens":1,"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_missing","content":"x"}]}]}`},
+		{"tool result in assistant turn", `{"model":"m","max_tokens":1,"messages":[{"role":"assistant","content":[{"type":"tool_result","tool_use_id":"toolu_a","content":"x"}]}]}`},
+		{"unsupported output format", `{"model":"m","max_tokens":1,"output_config":{"format":{"type":"text","schema":{}}},"messages":[{"role":"user","content":"hi"}]}`},
+		{"unsupported stop sequences", `{"model":"m","max_tokens":1,"stop_sequences":["END"],"messages":[{"role":"user","content":"hi"}]}`},
+		{"unsupported per-message output config", `{"model":"m","max_tokens":1,"messages":[{"role":"system","content":[],"output_config":{"effort":"low"}},{"role":"user","content":"hi"}]}`},
+		{"unrepresentable thinking budget", `{"model":"m","max_tokens":1,"thinking":{"type":"enabled","budget_tokens":4096},"messages":[{"role":"user","content":"hi"}]}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := anthropic.Parse([]byte(test.body)); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
 func TestToolMappingPreservesID(t *testing.T) {
 	raw := []byte(`{
 		"model":"coding","max_tokens":64,
@@ -69,7 +168,7 @@ func TestResponseMapping(t *testing.T) {
 			{"type":"message","content":[{"type":"output_text","text":"hello"}]},
 			{"type":"function_call","call_id":"call_1","name":"read_file","arguments":"{\"p\":1}"}
 		],
-		"usage":{"input_tokens":10,"output_tokens":5}
+		"usage":{"input_tokens":15,"output_tokens":5,"input_tokens_details":{"cached_tokens":3,"cache_write_tokens":2}}
 	}`)
 	out, err := anthropic.ToMessage(responsesRaw, "claude-sleepy")
 	if err != nil {
@@ -84,8 +183,10 @@ func TestResponseMapping(t *testing.T) {
 			ID   string `json:"id"`
 		} `json:"content"`
 		Usage struct {
-			InputTokens  int64 `json:"input_tokens"`
-			OutputTokens int64 `json:"output_tokens"`
+			InputTokens              int64 `json:"input_tokens"`
+			OutputTokens             int64 `json:"output_tokens"`
+			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(out, &v); err != nil {
@@ -100,8 +201,18 @@ func TestResponseMapping(t *testing.T) {
 	if v.StopReason != "tool_use" {
 		t.Fatalf("stop = %q", v.StopReason)
 	}
-	if v.Usage.InputTokens != 10 || v.Usage.OutputTokens != 5 {
+	if v.Usage.InputTokens != 10 || v.Usage.OutputTokens != 5 || v.Usage.CacheCreationInputTokens != 2 || v.Usage.CacheReadInputTokens != 3 {
 		t.Fatalf("usage = %+v", v.Usage)
+	}
+}
+
+func TestResponseRefusalIsNotConvertedToEmptySuccess(t *testing.T) {
+	out, err := anthropic.ToMessage([]byte(`{"status":"completed","output":[{"type":"message","content":[{"type":"refusal","refusal":"I can’t help with that."}]}]}`), "virtual")
+	if err != nil {
+		t.Fatalf("map refusal: %v", err)
+	}
+	if !strings.Contains(string(out), "I can’t help with that.") {
+		t.Fatalf("refusal was lost: %s", out)
 	}
 }
 
@@ -125,6 +236,34 @@ func TestStreamOrdering(t *testing.T) {
 		if order[i] != want[i] {
 			t.Fatalf("order = %v, want %v", order, want)
 		}
+	}
+}
+
+func TestStreamReportsCachedAndCacheCreationTokens(t *testing.T) {
+	enc := anthropic.NewStreamEncoder("virtual")
+	events := enc.StartEvents()
+	events = append(events, enc.HandleResponsesEvent("response.completed", `{"response":{"usage":{"input_tokens":15,"output_tokens":4,"input_tokens_details":{"cached_tokens":3,"cache_write_tokens":2}}}}`)...)
+	var usage struct {
+		InputTokens              *int64 `json:"input_tokens"`
+		OutputTokens             *int64 `json:"output_tokens"`
+		CacheCreationInputTokens *int64 `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     *int64 `json:"cache_read_input_tokens"`
+	}
+	for _, event := range events {
+		if event.Event == "message_delta" {
+			var messageDelta struct {
+				Usage json.RawMessage `json:"usage"`
+			}
+			if err := json.Unmarshal([]byte(event.Data), &messageDelta); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(messageDelta.Usage, &usage); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if usage.InputTokens == nil || *usage.InputTokens != 10 || usage.OutputTokens == nil || *usage.OutputTokens != 4 || usage.CacheCreationInputTokens == nil || *usage.CacheCreationInputTokens != 2 || usage.CacheReadInputTokens == nil || *usage.CacheReadInputTokens != 3 {
+		t.Fatalf("message_delta usage = %+v", usage)
 	}
 }
 

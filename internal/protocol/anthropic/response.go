@@ -14,8 +14,12 @@ func ToMessage(responsesRaw []byte, requestedModel string) ([]byte, error) {
 		Status string            `json:"status"`
 		Output []json.RawMessage `json:"output"`
 		Usage  *struct {
-			InputTokens  int64 `json:"input_tokens"`
-			OutputTokens int64 `json:"output_tokens"`
+			InputTokens        int64 `json:"input_tokens"`
+			OutputTokens       int64 `json:"output_tokens"`
+			InputTokensDetails *struct {
+				CachedTokens     int64 `json:"cached_tokens"`
+				CacheWriteTokens int64 `json:"cache_write_tokens"`
+			} `json:"input_tokens_details"`
 		} `json:"usage"`
 		IncompleteDetails *struct {
 			Reason string `json:"reason"`
@@ -43,8 +47,9 @@ func ToMessage(responsesRaw []byte, requestedModel string) ([]byte, error) {
 			Name      string `json:"name"`
 			Arguments string `json:"arguments"`
 			Content   []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
+				Type    string `json:"type"`
+				Text    string `json:"text"`
+				Refusal string `json:"refusal"`
 			} `json:"content"`
 			Text string `json:"text"`
 		}
@@ -56,6 +61,10 @@ func ToMessage(responsesRaw []byte, requestedModel string) ([]byte, error) {
 			for _, c := range probe.Content {
 				if c.Type == "output_text" && c.Text != "" {
 					content = append(content, wireContentBlock{Type: "text", Text: wireString(c.Text)})
+				} else if c.Type == "refusal" && c.Refusal != "" {
+					// A Responses refusal is user-visible text. Dropping it would
+					// turn a valid refusal into an empty, apparently successful turn.
+					content = append(content, wireContentBlock{Type: "text", Text: wireString(c.Refusal)})
 				}
 			}
 			if probe.Text != "" {
@@ -93,15 +102,23 @@ func ToMessage(responsesRaw []byte, requestedModel string) ([]byte, error) {
 	} else if toolCount > 0 {
 		stop = "tool_use"
 	}
-	var inTok, outTok int64
+	var inTok, outTok, cacheRead, cacheWrite int64
 	if v.Usage != nil {
 		inTok = v.Usage.InputTokens
 		outTok = v.Usage.OutputTokens
+		if v.Usage.InputTokensDetails != nil {
+			cacheRead = v.Usage.InputTokensDetails.CachedTokens
+			cacheWrite = v.Usage.InputTokensDetails.CacheWriteTokens
+			inTok -= cacheRead + cacheWrite
+			if inTok < 0 {
+				inTok = 0
+			}
+		}
 	}
 	msg := wireMessage{
 		ID: "msg_sr_" + uuid.NewString(), Type: "message", Role: "assistant",
 		Content: content, Model: requestedModel, StopReason: wireString(stop),
-		Usage: wireUsage{InputTokens: inTok, OutputTokens: outTok},
+		Usage: wireUsage{InputTokens: inTok, OutputTokens: outTok, CacheCreationInputTokens: cacheWrite, CacheReadInputTokens: cacheRead},
 	}
 	return json.Marshal(msg)
 }

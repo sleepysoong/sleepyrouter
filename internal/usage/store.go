@@ -73,10 +73,10 @@ func (s *Store) insert(r Record, attempts []Attempt) {
 		success = 1
 	}
 	_, _ = s.db.Exec(`INSERT OR REPLACE INTO requests
-		(request_id, started_at, completed_at, protocol, requested_model, routed_model, provider, attempts, input_tokens, output_tokens, success, error_class, duration_ms, claude_session_id, config_generation)
-		VALUES (?, datetime('now'), datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(request_id, started_at, completed_at, protocol, requested_model, routed_model, provider, attempts, input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens, success, error_class, duration_ms, claude_session_id, config_generation)
+		VALUES (?, datetime('now'), datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.RequestID, r.Protocol, r.RequestedModel, r.RoutedModel, r.Provider, r.Attempts,
-		r.InputTokens, r.OutputTokens, success, r.ErrorClass, r.DurationMs, r.SessionID, r.ConfigGen)
+		r.InputTokens, r.CachedInputTokens, r.CacheWriteInputTokens, r.OutputTokens, success, r.ErrorClass, r.DurationMs, r.SessionID, r.ConfigGen)
 	for _, a := range attempts {
 		as := 0
 		if a.Success {
@@ -91,20 +91,24 @@ func (s *Store) insert(r Record, attempts []Attempt) {
 
 // Summary aggregates for CLI.
 type Summary struct {
-	Requests     int64
-	Failed       int64
-	InputTokens  int64
-	OutputTokens int64
-	ByModel      []ModelRow
+	Requests              int64
+	Failed                int64
+	InputTokens           int64
+	CachedInputTokens     int64
+	CacheWriteInputTokens int64
+	OutputTokens          int64
+	ByModel               []ModelRow
 }
 
 // ModelRow is per-model aggregate.
 type ModelRow struct {
-	Model        string
-	Requests     int64
-	Failed       int64
-	InputTokens  int64
-	OutputTokens int64
+	Model                 string
+	Requests              int64
+	Failed                int64
+	InputTokens           int64
+	CachedInputTokens     int64
+	CacheWriteInputTokens int64
+	OutputTokens          int64
 }
 
 func (s *Store) Summary() Summary { return s.SummaryFiltered("", time.Time{}, time.Time{}) }
@@ -118,15 +122,15 @@ func (s *Store) SummaryFiltered(model string, since, until time.Time) Summary {
 		return out
 	}
 	where, args := filteredWhere(model, since, until)
-	_ = s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM requests`+where, args...).Scan(&out.Requests, &out.Failed, &out.InputTokens, &out.OutputTokens)
-	rows, err := s.db.Query(`SELECT COALESCE(NULLIF(routed_model,''), requested_model), COUNT(*), COALESCE(SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM requests`+where+` GROUP BY COALESCE(NULLIF(routed_model,''), requested_model) ORDER BY COUNT(*) DESC`, args...)
+	_ = s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(cached_input_tokens),0), COALESCE(SUM(cache_write_input_tokens),0), COALESCE(SUM(output_tokens),0) FROM requests`+where, args...).Scan(&out.Requests, &out.Failed, &out.InputTokens, &out.CachedInputTokens, &out.CacheWriteInputTokens, &out.OutputTokens)
+	rows, err := s.db.Query(`SELECT COALESCE(NULLIF(routed_model,''), requested_model), COUNT(*), COALESCE(SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(cached_input_tokens),0), COALESCE(SUM(cache_write_input_tokens),0), COALESCE(SUM(output_tokens),0) FROM requests`+where+` GROUP BY COALESCE(NULLIF(routed_model,''), requested_model) ORDER BY COUNT(*) DESC`, args...)
 	if err != nil {
 		return out
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var m ModelRow
-		if err := rows.Scan(&m.Model, &m.Requests, &m.Failed, &m.InputTokens, &m.OutputTokens); err == nil {
+		if err := rows.Scan(&m.Model, &m.Requests, &m.Failed, &m.InputTokens, &m.CachedInputTokens, &m.CacheWriteInputTokens, &m.OutputTokens); err == nil {
 			out.ByModel = append(out.ByModel, m)
 		}
 	}

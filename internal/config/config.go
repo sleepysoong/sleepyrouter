@@ -157,7 +157,10 @@ func Defaults() Config {
 		Timeouts: TimeoutsConfig{
 			Request:    180 * time.Second,
 			FirstEvent: 45 * time.Second,
-			StreamIdle: 180 * time.Second,
+			// Claude Code's default byte-level stream watchdog is 300s. Keep
+			// the gateway idle ceiling slightly beyond it and send SSE pings
+			// while waiting for a quiet Responses upstream.
+			StreamIdle: 330 * time.Second,
 		},
 		Logging:   LoggingConfig{Level: "info", Format: "text"},
 		Usage:     UsageConfig{Enabled: true},

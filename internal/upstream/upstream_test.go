@@ -56,15 +56,14 @@ func contains(s, sub string) bool {
 }
 
 func TestApplyProviderDefaults(t *testing.T) {
-	budget := 1024
 	c := routing.Candidate{Model: config.RuntimeModel{
-		ThinkingBudget: &budget, Extra: map[string]any{"service_tier": "flex"},
+		Extra: map[string]any{"service_tier": "flex"},
 	}}
 	out, err := upstream.ApplyProviderDefaults([]byte(`{"model":"m","input":"hi"}`), c)
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	for _, want := range []string{`"budget_tokens":1024`, `"service_tier":"flex"`} {
+	for _, want := range []string{`"service_tier":"flex"`} {
 		if !contains(string(out), want) {
 			t.Fatalf("missing %s in %s", want, out)
 		}
@@ -74,7 +73,7 @@ func TestApplyProviderDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if !contains(string(out2), `"service_tier":"auto"`) || contains(string(out2), "flex") || contains(string(out2), "1024") {
+	if !contains(string(out2), `"service_tier":"auto"`) || contains(string(out2), "flex") || contains(string(out2), `"type":"disabled"`) == false || contains(string(out2), "1024") {
 		t.Fatalf("client value overridden: %s", out2)
 	}
 }

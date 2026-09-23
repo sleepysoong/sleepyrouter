@@ -85,7 +85,9 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 		if result.success && result.responseID != "" {
 			s.deps.Affinity.Set(state.ResponseAffinity{ResponseID: result.responseID, ProviderID: c.ProviderID, LocalModelID: c.LocalModelID, UpstreamModel: c.UpstreamModel, CreatedAt: time.Now()})
 		}
-		s.recordUsage(reqID, "openai", parsed.RequestedModel, c.LocalModelID, c.ProviderID, result.inTok, result.outTok, len(attemptRows), result.success, result.errClass, time.Since(start).Milliseconds(), "", snap.Generation, attemptRows)
+		s.recordUsageWithCache(reqID, "openai", parsed.RequestedModel, c.LocalModelID, c.ProviderID,
+			result.inTok, result.outTok, result.cachedInputTok, result.cacheWriteInputTok,
+			len(attemptRows), result.success, result.errClass, time.Since(start).Milliseconds(), "", snap.Generation, attemptRows)
 		if s.deps.Logger != nil {
 			s.deps.Logger.Info("request_completed", "request_id", reqID, "protocol", "openai", "routed_model", c.LocalModelID, "success", result.success)
 		}
@@ -110,13 +112,15 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 }
 
 type streamResult struct {
-	success    bool
-	inTok      int64
-	outTok     int64
-	responseID string
-	statusCode int
-	errClass   string
-	failErr    routing.AttemptError
+	success            bool
+	inTok              int64
+	cachedInputTok     int64
+	cacheWriteInputTok int64
+	outTok             int64
+	responseID         string
+	statusCode         int
+	errClass           string
+	failErr            routing.AttemptError
 }
 
 // precommitAndStreamOpenAI buffers until meaningful event, then commits and streams rest.
@@ -229,10 +233,10 @@ COMMIT:
 	setDebugHeaders(w, reqID, c, attemptNo, snap.Generation)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	fl, _ := w.(http.Flusher)
 	var inTok, outTok int64
+	var cachedInputTok, cacheWriteInputTok int64
 	var respID string
 	var lastSequence int64 = -1
 	terminal := false
@@ -254,9 +258,11 @@ COMMIT:
 	}
 	for _, b := range buf {
 		observe(b.typ, b.payload)
-		inT, outT, rid := parseOpenAIEventMeta(string(b.payload))
+		inT, outT, cachedT, cacheWriteT, rid := parseOpenAIEventMeta(string(b.payload))
 		inTok = max64(inTok, inT)
 		outTok = max64(outTok, outT)
+		cachedInputTok = max64(cachedInputTok, cachedT)
+		cacheWriteInputTok = max64(cacheWriteInputTok, cacheWriteT)
 		if rid != "" {
 			respID = rid
 		}
@@ -275,20 +281,18 @@ COMMIT:
 	}
 	if terminal {
 		_ = st.Close()
-		return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, errClass: errClass}
+		return true, streamResult{success: success, inTok: inTok, outTok: outTok, cachedInputTok: cachedInputTok, cacheWriteInputTok: cacheWriteInputTok, responseID: respID, errClass: errClass}
 	}
 	// Continue streaming rest (post-commit: no failover).
 	// The producer above stays the sole st reader; we drain steps in order.
 	statusCode := 0
 	forward := func(typ string, payload []byte) {
 		observe(typ, payload)
-		inT, outT, rid := parseOpenAIEventMeta(string(payload))
-		if inT > 0 {
-			inTok = inT
-		}
-		if outT > 0 {
-			outTok = outT
-		}
+		inT, outT, cachedT, cacheWriteT, rid := parseOpenAIEventMeta(string(payload))
+		inTok = max64(inTok, inT)
+		outTok = max64(outTok, outT)
+		cachedInputTok = max64(cachedInputTok, cachedT)
+		cacheWriteInputTok = max64(cacheWriteInputTok, cacheWriteT)
 		if rid != "" {
 			respID = rid
 		}
@@ -313,13 +317,13 @@ COMMIT:
 			success = false
 			errClass = "client"
 			_ = st.Close()
-			return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
+			return true, streamResult{success: success, inTok: inTok, outTok: outTok, cachedInputTok: cachedInputTok, cacheWriteInputTok: cacheWriteInputTok, responseID: respID, statusCode: statusCode, errClass: errClass}
 		case stp, ok := <-steps:
 			if ok {
 				forward(stp.typ, stp.payload)
 				if terminal {
 					_ = st.Close()
-					return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
+					return true, streamResult{success: success, inTok: inTok, outTok: outTok, cachedInputTok: cachedInputTok, cacheWriteInputTok: cacheWriteInputTok, responseID: respID, statusCode: statusCode, errClass: errClass}
 				}
 				if !idleTimer.Stop() {
 					select {
@@ -344,7 +348,7 @@ COMMIT:
 				}
 			}
 			_ = st.Close()
-			return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
+			return true, streamResult{success: success, inTok: inTok, outTok: outTok, cachedInputTok: cachedInputTok, cacheWriteInputTok: cacheWriteInputTok, responseID: respID, statusCode: statusCode, errClass: errClass}
 		case <-idleTimer.C:
 			success = false
 			errClass = "timeout"
@@ -355,46 +359,49 @@ COMMIT:
 					fl.Flush()
 				}
 			}
-			return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
+			return true, streamResult{success: success, inTok: inTok, outTok: outTok, cachedInputTok: cachedInputTok, cacheWriteInputTok: cacheWriteInputTok, responseID: respID, statusCode: statusCode, errClass: errClass}
 		}
 	}
 }
 
-func parseOpenAIEventMeta(payload string) (inT, outT int64, respID string) {
-	var v struct {
-		Usage *struct {
-			InputTokens  int64 `json:"input_tokens"`
-			OutputTokens int64 `json:"output_tokens"`
-		} `json:"usage"`
-		Response *struct {
-			ID    string `json:"id"`
-			Usage *struct {
-				InputTokens  int64 `json:"input_tokens"`
-				OutputTokens int64 `json:"output_tokens"`
-			} `json:"usage"`
-		} `json:"response"`
-		Type string `json:"type"`
-	}
+func parseOpenAIEventMeta(payload string) (inT, outT, cachedT, cacheWriteT int64, respID string) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(payload), &raw); err != nil {
-		return 0, 0, ""
+		return 0, 0, 0, 0, ""
 	}
 	if u, ok := raw["usage"]; ok {
 		var uu struct {
-			InputTokens  int64 `json:"input_tokens"`
-			OutputTokens int64 `json:"output_tokens"`
+			InputTokens        int64 `json:"input_tokens"`
+			OutputTokens       int64 `json:"output_tokens"`
+			InputTokensDetails struct {
+				CachedTokens     int64 `json:"cached_tokens"`
+				CacheWriteTokens int64 `json:"cache_write_tokens"`
+			} `json:"input_tokens_details"`
 		}
 		if err := json.Unmarshal(u, &uu); err == nil {
 			inT, outT = uu.InputTokens, uu.OutputTokens
+			cachedT, cacheWriteT = uu.InputTokensDetails.CachedTokens, uu.InputTokensDetails.CacheWriteTokens
 		}
 	}
-	_ = v
 	if r, ok := raw["response"]; ok {
 		var rr struct {
-			ID string `json:"id"`
+			ID    string `json:"id"`
+			Usage *struct {
+				InputTokens        int64 `json:"input_tokens"`
+				OutputTokens       int64 `json:"output_tokens"`
+				InputTokensDetails struct {
+					CachedTokens     int64 `json:"cached_tokens"`
+					CacheWriteTokens int64 `json:"cache_write_tokens"`
+				} `json:"input_tokens_details"`
+			} `json:"usage"`
 		}
 		if err := json.Unmarshal(r, &rr); err == nil {
 			respID = rr.ID
+			if rr.Usage != nil {
+				inT, outT = rr.Usage.InputTokens, rr.Usage.OutputTokens
+				cachedT = rr.Usage.InputTokensDetails.CachedTokens
+				cacheWriteT = rr.Usage.InputTokensDetails.CacheWriteTokens
+			}
 		}
 	}
 	if id, ok := raw["id"]; ok {
@@ -406,7 +413,7 @@ func parseOpenAIEventMeta(payload string) (inT, outT int64, respID string) {
 			}
 		}
 	}
-	return inT, outT, respID
+	return inT, outT, cachedT, cacheWriteT, respID
 }
 
 func max64(a, b int64) int64 {

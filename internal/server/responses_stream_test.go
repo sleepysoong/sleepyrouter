@@ -229,8 +229,21 @@ func TestCommittedStreamIdleAndClientCancellation(t *testing.T) {
 				if scenario == "idle" && !strings.Contains(writer.Body.String(), "event: error\n") {
 					t.Fatalf("missing error: %s", writer.Body.String())
 				}
+				if scenario == "idle" && protocol == "anthropic" && !strings.Contains(writer.Body.String(), "event: ping\ndata: {\"type\":\"ping\"}") {
+					t.Fatalf("Anthropic idle stream did not emit a keepalive ping: %s", writer.Body.String())
+				}
+				if protocol == "openai" && strings.Contains(writer.Body.String(), "event: ping\n") {
+					t.Fatalf("Anthropic ping leaked into OpenAI stream: %s", writer.Body.String())
+				}
 			})
 		}
+	}
+}
+
+func TestParseOpenAIEventMetaIncludesCacheUsage(t *testing.T) {
+	in, out, cached, written, id := parseOpenAIEventMeta(`{"response":{"id":"resp_cache","usage":{"input_tokens":15000,"output_tokens":7,"input_tokens_details":{"cached_tokens":12000,"cache_write_tokens":3000}}}}`)
+	if in != 15000 || out != 7 || cached != 12000 || written != 3000 || id != "resp_cache" {
+		t.Fatalf("parsed usage = in:%d out:%d cached:%d write:%d id:%q", in, out, cached, written, id)
 	}
 }
 

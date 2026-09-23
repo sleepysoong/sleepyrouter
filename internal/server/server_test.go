@@ -103,6 +103,8 @@ provider = "gemini"
 upstream_model = "d"
 [groups]
 coding = ["zen/a", "nvidia/b", "openrouter/c", "gemini/d"]
+[aliases]
+"sleepy-claude-coding" = "coding"
 `
 	cfg, err := config.Parse([]byte(toml))
 	if err != nil {
@@ -322,5 +324,8 @@ func TestHealthAndModels(t *testing.T) {
 	srv.Handler().ServeHTTP(rec2, req2)
 	if rec2.Code != 200 {
 		t.Fatalf("models %d", rec2.Code)
+	}
+	if !strings.Contains(rec2.Body.String(), `"id":"sleepy-claude-coding"`) {
+		t.Fatalf("Claude Code discoverable alias missing from model list: %s", rec2.Body.String())
 	}
 }
