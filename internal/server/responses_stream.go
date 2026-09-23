@@ -82,7 +82,7 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 			attemptRows = append(attemptRows, usage.Attempt{RequestID: reqID, Index: i + 1, Model: a.Candidate, Provider: a.Provider, DurationMs: a.Duration.Milliseconds(), StatusCode: a.StatusCode, ErrorClass: a.Class.String()})
 		}
 		attemptRows = append(attemptRows, usage.Attempt{RequestID: reqID, Index: len(attempts) + 1, Model: c.LocalModelID, Provider: c.ProviderID, DurationMs: dur.Milliseconds(), Success: result.success, StatusCode: result.statusCode, ErrorClass: result.errClass})
-		if result.responseID != "" {
+		if result.success && result.responseID != "" {
 			s.deps.Affinity.Set(state.ResponseAffinity{ResponseID: result.responseID, ProviderID: c.ProviderID, LocalModelID: c.LocalModelID, UpstreamModel: c.UpstreamModel, CreatedAt: time.Now()})
 		}
 		s.recordUsage(reqID, "openai", parsed.RequestedModel, c.LocalModelID, c.ProviderID, result.inTok, result.outTok, len(attemptRows), result.success, result.errClass, time.Since(start).Milliseconds(), "", snap.Generation, attemptRows)
@@ -136,25 +136,27 @@ func (s *Server) precommitAndStreamOpenAI(w http.ResponseWriter, r *http.Request
 	var precommitTimer *time.Timer
 	var precommitCh <-chan time.Time
 
-	nextResult := make(chan bool, 1)
-	doneRead := make(chan bool, 1)
 	type step struct {
 		ok      bool
 		typ     string
 		payload []byte
 	}
 	steps := make(chan step, 1)
+	stopReader := make(chan struct{})
+	defer close(stopReader)
 	// Single producer: the ONLY reader of st. Post-commit draining also
 	// goes through steps, so events are never split or lost.
 	go func() {
+		defer close(steps)
 		for st.Next() {
 			t, p := st.Event()
 			cp := append([]byte{}, p...)
-			steps <- step{ok: true, typ: t, payload: cp}
+			select {
+			case steps <- step{ok: true, typ: t, payload: cp}:
+			case <-stopReader:
+				return
+			}
 		}
-		nextResult <- false
-		doneRead <- false
-		close(steps)
 	}()
 
 	var firstEventAt time.Time
@@ -193,10 +195,6 @@ func (s *Server) precommitAndStreamOpenAI(w http.ResponseWriter, r *http.Request
 			idleTimer.Stop()
 			if !ok {
 				// Stream ended. Check SDK error.
-				select {
-				case <-nextResult:
-				default:
-				}
 				if err := st.Err(); err != nil {
 					return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: trunc(err.Error(), 300)}}
 				}
@@ -210,6 +208,9 @@ func (s *Server) precommitAndStreamOpenAI(w http.ResponseWriter, r *http.Request
 			}
 			buf = append(buf, buffered{typ: stp.typ, payload: stp.payload})
 			bufBytes += len(stp.payload)
+			if stp.typ == "response.failed" || stp.typ == "error" {
+				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: "upstream response failed before output"}}
+			}
 			if upstream.IsMeaningfulEvent(stp.typ, string(stp.payload)) {
 				meaningful = true
 			}
@@ -233,7 +234,26 @@ COMMIT:
 	fl, _ := w.(http.Flusher)
 	var inTok, outTok int64
 	var respID string
+	var lastSequence int64 = -1
+	terminal := false
+	success := false
+	errClass := ""
+	observe := func(typ string, payload []byte) {
+		var meta struct {
+			SequenceNumber *int64 `json:"sequence_number"`
+		}
+		if json.Unmarshal(payload, &meta) == nil && meta.SequenceNumber != nil {
+			lastSequence = *meta.SequenceNumber
+		}
+		switch typ {
+		case "response.completed":
+			terminal, success = true, true
+		case "response.failed", "response.incomplete", "error":
+			terminal, success, errClass = true, false, typ
+		}
+	}
 	for _, b := range buf {
+		observe(b.typ, b.payload)
 		inT, outT, rid := parseOpenAIEventMeta(string(b.payload))
 		inTok = max64(inTok, inT)
 		outTok = max64(outTok, outT)
@@ -253,20 +273,15 @@ COMMIT:
 	if s.deps.Logger != nil {
 		s.deps.Logger.Info("stream_committed", "request_id", reqID, "candidate", c.LocalModelID)
 	}
+	if terminal {
+		_ = st.Close()
+		return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, errClass: errClass}
+	}
 	// Continue streaming rest (post-commit: no failover).
 	// The producer above stays the sole st reader; we drain steps in order.
-	success := true
-	errClass := ""
 	statusCode := 0
-	restDone := make(chan struct{})
-	activity := make(chan struct{}, 1)
-	markActivity := func() {
-		select {
-		case activity <- struct{}{}:
-		default:
-		}
-	}
 	forward := func(typ string, payload []byte) {
+		observe(typ, payload)
 		inT, outT, rid := parseOpenAIEventMeta(string(payload))
 		if inT > 0 {
 			inTok = inT
@@ -286,22 +301,7 @@ COMMIT:
 		if fl != nil {
 			fl.Flush()
 		}
-		markActivity()
 	}
-	go func() {
-		defer close(restDone)
-		for {
-			select {
-			case stp, ok := <-steps:
-				if !ok {
-					return
-				}
-				forward(stp.typ, stp.payload)
-			case <-doneRead:
-				return
-			}
-		}
-	}()
 	// Idle means "no event for stream_idle", not total elapsed: the timer
 	// resets on every forwarded event.
 	idleTimeout := snap.Timeouts.StreamIdle
@@ -314,37 +314,47 @@ COMMIT:
 			errClass = "client"
 			_ = st.Close()
 			return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
-		case <-restDone:
+		case stp, ok := <-steps:
+			if ok {
+				forward(stp.typ, stp.payload)
+				if terminal {
+					_ = st.Close()
+					return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
+				}
+				if !idleTimer.Stop() {
+					select {
+					case <-idleTimer.C:
+					default:
+					}
+				}
+				idleTimer.Reset(idleTimeout)
+				continue
+			}
 			if err := st.Err(); err != nil {
 				success = false
 				errClass = "upstream"
-				// Post-commit: terminate, do not failover.
-				_, _ = fmt.Fprintf(w, "event: response.failed\ndata: %s\n\n", `{"type":"response.failed"}`)
+			} else if !terminal {
+				success = false
+				errClass = "upstream_eof"
+			}
+			if !terminal {
+				_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", openai.StreamErrorEvent("upstream stream ended before completion", lastSequence+1))
 				if fl != nil {
 					fl.Flush()
 				}
 			}
 			_ = st.Close()
 			return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
-		case <-activity:
-			if !idleTimer.Stop() {
-				select {
-				case <-idleTimer.C:
-				default:
-				}
-			}
-			idleTimer.Reset(idleTimeout)
 		case <-idleTimer.C:
-			// A racing event may have arrived concurrently; re-check.
-			select {
-			case <-activity:
-				idleTimer.Reset(idleTimeout)
-				continue
-			default:
-			}
 			success = false
 			errClass = "timeout"
 			_ = st.Close()
+			if !terminal {
+				_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", openai.StreamErrorEvent("upstream stream idle timeout", lastSequence+1))
+				if fl != nil {
+					fl.Flush()
+				}
+			}
 			return true, streamResult{success: success, inTok: inTok, outTok: outTok, responseID: respID, statusCode: statusCode, errClass: errClass}
 		}
 	}

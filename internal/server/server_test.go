@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/sleepysoong/sleepyrouter/internal/config"
 	"github.com/sleepysoong/sleepyrouter/internal/provider"
@@ -55,6 +56,11 @@ func errBody(code, msg string) string {
 }
 
 func testServer(t *testing.T, baseA, baseB, baseC, baseD string) *server.Server {
+	srv, _, _ := testServerWithStores(t, baseA, baseB, baseC, baseD)
+	return srv
+}
+
+func testServerWithStores(t *testing.T, baseA, baseB, baseC, baseD string) (*server.Server, *usage.Store, *state.Affinity) {
 	t.Helper()
 	toml := `
 version = 1
@@ -111,7 +117,8 @@ coding = ["zen/a", "nvidia/b", "openrouter/c", "gemini/d"]
 	}
 	ustore := usage.Open(t.TempDir()+"/usage.db", true)
 	t.Cleanup(func() { ustore.Close() })
-	return server.New(server.Deps{Store: store, Usage: ustore, Affinity: state.New(nil), Registry: provider.DefaultRegistry()})
+	affinity := state.New(nil)
+	return server.New(server.Deps{Store: store, Usage: ustore, Affinity: affinity, Registry: provider.DefaultRegistry()}), ustore, affinity
 }
 
 func doResponses(t *testing.T, srv *server.Server, model string) (int, []byte, http.Header) {
@@ -237,6 +244,69 @@ func TestAnthropicNonStream(t *testing.T) {
 	if v.Model != "coding" || v.StopReason != "end_turn" {
 		t.Fatalf("got %+v", v)
 	}
+}
+
+func TestFailedOpenAIResponseIsRecordedAndNotAffined(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp_failed","object":"response","created_at":1,"model":"a","status":"failed","output":[],"error":{"code":"server_error","message":"boom"},"usage":{"input_tokens":2,"output_tokens":0,"total_tokens":2}}`))
+	}))
+	defer upstream.Close()
+	srv, store, affinity := testServerWithStores(t, upstream.URL+"/v1", upstream.URL+"/v1", upstream.URL+"/v1", upstream.URL+"/v1")
+	status, body, _ := doResponses(t, srv, "coding")
+	if status != http.StatusOK || !strings.Contains(string(body), `"status":"failed"`) {
+		t.Fatalf("status=%d body=%s", status, body)
+	}
+	if _, ok := affinity.Get("resp_failed"); ok {
+		t.Fatal("failed response affined")
+	}
+	for i := 0; i < 100; i++ {
+		summary := store.Summary()
+		if summary.Requests == 1 {
+			if summary.Failed != 1 {
+				t.Fatalf("usage=%+v", summary)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("failed response usage not recorded")
+}
+
+func TestFailedOpenAIStreamIsRecordedAndNotAffined(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		frames := [][2]string{
+			{"response.created", `{"type":"response.created","sequence_number":0,"response":{"id":"resp_stream_failed","model":"a"}}`},
+			{"response.output_text.delta", `{"type":"response.output_text.delta","sequence_number":1,"delta":"partial"}`},
+			{"response.failed", `{"type":"response.failed","sequence_number":2,"response":{"id":"resp_stream_failed","model":"a","status":"failed"}}`},
+		}
+		for _, frame := range frames {
+			_, _ = w.Write([]byte("event: " + frame[0] + "\ndata: " + frame[1] + "\n\n"))
+		}
+	}))
+	defer upstream.Close()
+	srv, store, affinity := testServerWithStores(t, upstream.URL+"/v1", upstream.URL+"/v1", upstream.URL+"/v1", upstream.URL+"/v1")
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"coding","input":"hi","stream":true}`))
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "event: response.failed\n") {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if _, ok := affinity.Get("resp_stream_failed"); ok {
+		t.Fatal("failed stream affined")
+	}
+	for i := 0; i < 100; i++ {
+		summary := store.Summary()
+		if summary.Requests == 1 {
+			if summary.Failed != 1 {
+				t.Fatalf("usage=%+v", summary)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("failed stream usage not recorded")
 }
 
 func TestHealthAndModels(t *testing.T) {

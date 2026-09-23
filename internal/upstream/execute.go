@@ -22,6 +22,7 @@ type Result struct {
 	InputTokens  int64
 	OutputTokens int64
 	Model        string
+	Status       responses.ResponseStatus
 }
 
 // RewriteModel replaces top-level "model" without touching other fields.
@@ -107,10 +108,10 @@ func ExecuteNonStream(ctx context.Context, client openai.Client, c routing.Candi
 	}
 	respID = resp.ID
 	model = string(resp.Model)
-	if isEmptyResponse(resp) {
+	if (resp.Status == responses.ResponseStatusCompleted || resp.Status == "") && isEmptyResponse(resp) {
 		return Result{}, &emptyResponseError{status: http.StatusOK}
 	}
-	return Result{RawBody: out, ResponseID: respID, InputTokens: usageIn, OutputTokens: usageOut, Model: model}, nil
+	return Result{RawBody: out, ResponseID: respID, InputTokens: usageIn, OutputTokens: usageOut, Model: model, Status: resp.Status}, nil
 }
 
 type emptyResponseError struct{ status int }

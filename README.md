@@ -135,6 +135,30 @@ export ANTHROPIC_API_KEY="local-dummy"   # auth mode none이면 무시됨
 - tool_use id ↔ tool_result tool_use_id 연결 보존. stream에서는 partial JSON을
   파싱하려 하지 않고 완료 시점에만 검증.
 
+## 프로토콜 호환성과 한계
+
+이 게이트웨이는 공식 Anthropic 서버가 아니다. Claude Code 요청도 모두
+OpenAI Responses 호환 업스트림으로 변환하므로 **Anthropic API 전체와 동등하지
+않다**. 아래 상태는 라우터의 변환 동작을 뜻하며, 실제 생성 가능 여부는 선택된
+업스트림 모델의 기능에 달려 있다.
+
+| 기능 | 상태 | 동작·한계 |
+| --- | --- | --- |
+| OpenAI Responses 텍스트·함수 호출 출력 | 지원 | SDK 응답을 기반으로 반환하고 요청한 가상 모델명을 표시한다. |
+| OpenAI Responses SSE·오류 | 지원 | 정상 이벤트를 전달한다. 커밋 후 전송 중단은 `error` 이벤트로 알리며 다른 모델 출력을 이어 붙이지 않는다. |
+| Anthropic Messages 텍스트·클라이언트 도구 사용 | 지원 | `text`/`tool_use`로 변환한다. 스트림의 도구 인자는 Responses `item_id`별로 연결한다. |
+| Anthropic 이미지 입력 | 업스트림 의존 | base64/URL 이미지를 Responses 이미지 입력으로 변환한다. 모델이 vision을 지원해야 한다. |
+| Anthropic thinking·redacted thinking | 손실 있는 최선 변환 | 입력 블록을 업스트림에 재전송하지 않으며 OpenAI reasoning 요약은 출력에서 생략한다. Anthropic 서명을 생성하거나 검증할 수 없다. |
+| Anthropic prompt caching·`cache_control`·베타 필드 | 미지원 | Anthropic 고유 캐시 제어와 베타 의미를 업스트림에 보존하지 않는다. 헤더는 로깅/관찰용일 뿐 동일 기능 보장이 아니다. |
+| 멀티모달 `tool_result`·Anthropic 서버 도구 | 손실/미지원 | 도구 결과의 블록 목록은 JSON 문자열로 전달하므로 이미지·파일 등의 의미가 보존되지 않는다. Anthropic 전용 서버 도구를 동등하게 실행하지 않는다. |
+| Anthropic `stop_sequences`·출력 특수 블록/확장 이벤트 | 손실 있는 최선 변환 | 일부 요청 옵션과 Anthropic 전용 출력 형식은 Responses에 대응되지 않아 생략될 수 있다. 새 이벤트의 자동 변환은 보장하지 않는다. |
+| `/v1/messages/count_tokens` | 추정치 | 로컬 추정기(`×1.2`)이며 공식 Anthropic 토크나이저의 정확한 사용량이 아니다. 컨텍스트 한계 근처에서는 여유를 둬야 한다. |
+
+스트리밍 `response.incomplete`의 `max_output_tokens`는 Anthropic
+`stop_reason=max_tokens`로 표시한다. 그 외 upstream 실패·중단은 정상
+`end_turn`으로 위장하지 않고 스트림 오류로 알린다. 실제 Claude Code/Codex
+버전과 업스트림이 사용하는 확장 기능까지 모두 검증했다는 뜻은 아니다.
+
 ## Routing behavior
 
 - 동일 snapshot + 동일 model + 동일 capability → 동일 ordered list (deterministic).
@@ -167,7 +191,8 @@ export ANTHROPIC_API_KEY="local-dummy"   # auth mode none이면 무시됨
 `previous_response_id` 는 upstream server state와 연결될 수 있다.
 `resp_123` 을 zen에서 받았는데 다음 요청을 nvidia로 보내면 nvidia는 모른다.
 
-- 성공 시 `response_id → provider/model` affinity 저장 (memory + SQLite, TTL 30d).
+- 완료된 응답의 `response_id → provider/model` affinity를 프로세스 메모리에만 저장한다.
+  재시작 시 사라지며 SQLite 영속성/TTL은 현재 구현되어 있지 않다.
 - `previous_response_id`가 있으면 해당 provider/model에 sticky.
   실패해도 다른 provider로 blind failover하지 않는다.
 - affinity에 없는 ID는 첫 candidate에만 전달하고 upstream 판정에 맡긴다.

@@ -126,7 +126,12 @@ func (s *Server) resolveWithAffinity(snap *config.RuntimeSnapshot, requested str
 }
 
 func (s *Server) onOpenAISuccess(snap *config.RuntimeSnapshot, reqID string, parsed openai.ParsedRequest, c routing.Candidate, res upstream.Result, dur time.Duration, attempts []routing.AttemptError) {
-	if res.ResponseID != "" {
+	success := res.Status == "completed" || res.Status == ""
+	errClass := ""
+	if !success {
+		errClass = string(res.Status)
+	}
+	if success && res.ResponseID != "" {
 		s.deps.Affinity.Set(state.ResponseAffinity{
 			ResponseID: res.ResponseID, ProviderID: c.ProviderID,
 			LocalModelID: c.LocalModelID, UpstreamModel: c.UpstreamModel, CreatedAt: time.Now(),
@@ -136,11 +141,11 @@ func (s *Server) onOpenAISuccess(snap *config.RuntimeSnapshot, reqID string, par
 	for i, a := range attempts {
 		atts = append(atts, usage.Attempt{RequestID: reqID, Index: i + 1, Model: a.Candidate, Provider: a.Provider, DurationMs: a.Duration.Milliseconds(), StatusCode: a.StatusCode, ErrorClass: a.Class.String()})
 	}
-	atts = append(atts, usage.Attempt{RequestID: reqID, Index: len(attempts) + 1, Model: c.LocalModelID, Provider: c.ProviderID, DurationMs: dur.Milliseconds(), Success: true})
-	s.recordUsage(reqID, "openai", parsed.RequestedModel, c.LocalModelID, c.ProviderID, res.InputTokens, res.OutputTokens, len(atts), true, "", dur.Milliseconds(), "", snap.Generation, atts)
+	atts = append(atts, usage.Attempt{RequestID: reqID, Index: len(attempts) + 1, Model: c.LocalModelID, Provider: c.ProviderID, DurationMs: dur.Milliseconds(), Success: success, ErrorClass: errClass})
+	s.recordUsage(reqID, "openai", parsed.RequestedModel, c.LocalModelID, c.ProviderID, res.InputTokens, res.OutputTokens, len(atts), success, errClass, dur.Milliseconds(), "", snap.Generation, atts)
 	if s.deps.Logger != nil {
-		s.deps.Logger.Info("candidate_success", "request_id", reqID, "candidate", c.LocalModelID, "attempt", len(atts), "duration_ms", dur.Milliseconds())
-		s.deps.Logger.Info("request_completed", "request_id", reqID, "protocol", "openai", "routed_model", c.LocalModelID)
+		s.deps.Logger.Info("candidate_result", "request_id", reqID, "candidate", c.LocalModelID, "attempt", len(atts), "duration_ms", dur.Milliseconds(), "success", success)
+		s.deps.Logger.Info("request_completed", "request_id", reqID, "protocol", "openai", "routed_model", c.LocalModelID, "success", success)
 	}
 	s.logAttempts(reqID, attempts)
 }

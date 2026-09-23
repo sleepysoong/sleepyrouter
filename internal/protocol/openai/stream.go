@@ -3,7 +3,6 @@ package openai
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
@@ -30,22 +29,14 @@ func (s *sdkEventStream) Err() error   { return s.inner.Err() }
 func (s *sdkEventStream) Close() error { return s.inner.Close() }
 func (s *sdkEventStream) Event() (string, []byte) {
 	ev := s.inner.Current()
+	if raw := ev.RawJSON(); raw != "" {
+		return ev.Type, []byte(raw)
+	}
 	b, err := json.Marshal(ev)
 	if err != nil {
 		return "", nil
 	}
-	typ := extractType(b)
-	return typ, b
-}
-
-func extractType(b []byte) string {
-	var v struct {
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal(b, &v); err != nil {
-		return ""
-	}
-	return v.Type
+	return ev.Type, b
 }
 
 func openStream(ctx context.Context, cl openai.Client, c routing.Candidate, rawBody []byte) (EventStream, error) {
@@ -55,7 +46,6 @@ func openStream(ctx context.Context, cl openai.Client, c routing.Candidate, rawB
 	}
 	params.Model = c.UpstreamModel
 	upstream.ApplyModelDefaultsForTest(&params, c)
-	_ = time.Now
 	st := cl.Responses.NewStreaming(ctx, params)
 	return &sdkEventStream{inner: st}, nil
 }

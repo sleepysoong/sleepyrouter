@@ -107,15 +107,19 @@ func (s *Server) precommitAndStreamAnthropic(w http.ResponseWriter, r *http.Requ
 		payload []byte
 	}
 	steps := make(chan step, 1)
-	doneRead := make(chan bool, 1)
+	stopReader := make(chan struct{})
+	defer close(stopReader)
 	go func() {
+		defer close(steps)
 		for st.Next() {
 			t, p := st.Event()
 			cp := append([]byte{}, p...)
-			steps <- step{ok: true, typ: t, payload: cp}
+			select {
+			case steps <- step{ok: true, typ: t, payload: cp}:
+			case <-stopReader:
+				return
+			}
 		}
-		doneRead <- false
-		close(steps)
 	}()
 
 	meaningful := false
@@ -163,6 +167,9 @@ collect:
 			}
 			buf = append(buf, buffered{typ: stp.typ, payload: stp.payload})
 			bufBytes += len(stp.payload)
+			if stp.typ == "response.failed" || stp.typ == "error" {
+				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: "upstream response failed before output"}}
+			}
 			if upstream.IsMeaningfulEvent(stp.typ, string(stp.payload)) {
 				meaningful = true
 				break collect
@@ -199,30 +206,21 @@ collect:
 	if s.deps.Logger != nil {
 		s.deps.Logger.Info("stream_committed", "request_id", reqID, "candidate", c.LocalModelID, "protocol", "anthropic")
 	}
-	// Drain rest post-commit (no failover). The producer above stays the
-	// sole st reader; we drain steps in order.
-	success := true
-	errClass := ""
-	restDone := make(chan struct{})
-	activity := make(chan struct{}, 1)
-	go func() {
-		defer close(restDone)
-		for {
-			select {
-			case stp, ok := <-steps:
-				if !ok {
-					return
-				}
-				flushEncode(stp.typ, stp.payload)
-				select {
-				case activity <- struct{}{}:
-				default:
-				}
-			case <-doneRead:
-				return
+	if enc.Terminal {
+		_ = st.Close()
+		errClass := ""
+		if !enc.Success {
+			errClass = "upstream"
+			if enc.StopReason == "max_tokens" {
+				errClass = "incomplete"
 			}
 		}
-	}()
+		return true, streamResult{success: enc.Success, inTok: enc.InputTokens, outTok: enc.OutputTokens, errClass: errClass}
+	}
+	// Drain rest post-commit (no failover). The producer above stays the
+	// sole st reader; we drain steps in order.
+	success := false
+	errClass := ""
 	// Idle means "no event for stream_idle", not total elapsed.
 	idleTimeout := snap.Timeouts.StreamIdle
 	idleTimer := time.NewTimer(idleTimeout)
@@ -236,33 +234,63 @@ collect:
 			inTok = enc.InputTokens
 			outTok = enc.OutputTokens
 			return true, streamResult{success: success, inTok: inTok, outTok: outTok, errClass: errClass}
-		case <-restDone:
-			if err := st.Err(); err != nil {
-				success = false
-				errClass = "upstream"
+		case stp, ok := <-steps:
+			if ok {
+				flushEncode(stp.typ, stp.payload)
+				if enc.Terminal {
+					_ = st.Close()
+					if !enc.Success {
+						errClass = "upstream"
+						if enc.StopReason == "max_tokens" {
+							errClass = "incomplete"
+						}
+					}
+					return true, streamResult{success: enc.Success, inTok: enc.InputTokens, outTok: enc.OutputTokens, errClass: errClass}
+				}
+				if !idleTimer.Stop() {
+					select {
+					case <-idleTimer.C:
+					default:
+					}
+				}
+				idleTimer.Reset(idleTimeout)
+				continue
 			}
+			if err := st.Err(); err != nil {
+				errClass = "upstream"
+			} else if !enc.Terminal {
+				errClass = "upstream_eof"
+			} else if !enc.Success {
+				errClass = "upstream"
+				if enc.StopReason == "max_tokens" {
+					errClass = "incomplete"
+				}
+			}
+			if !enc.Terminal {
+				for _, ev := range enc.Fail("api_error", "upstream stream ended before completion") {
+					_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Event, ev.Data)
+				}
+				if fl != nil {
+					fl.Flush()
+				}
+			}
+			success = enc.Success && errClass == ""
 			_ = st.Close()
 			inTok = enc.InputTokens
 			outTok = enc.OutputTokens
 			return true, streamResult{success: success, inTok: inTok, outTok: outTok, errClass: errClass}
-		case <-activity:
-			if !idleTimer.Stop() {
-				select {
-				case <-idleTimer.C:
-				default:
-				}
-			}
-			idleTimer.Reset(idleTimeout)
 		case <-idleTimer.C:
-			select {
-			case <-activity:
-				idleTimer.Reset(idleTimeout)
-				continue
-			default:
-			}
 			success = false
 			errClass = "timeout"
 			_ = st.Close()
+			if !enc.Terminal {
+				for _, ev := range enc.Fail("api_error", "upstream stream idle timeout") {
+					_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Event, ev.Data)
+				}
+				if fl != nil {
+					fl.Flush()
+				}
+			}
 			inTok = enc.InputTokens
 			outTok = enc.OutputTokens
 			return true, streamResult{success: success, inTok: inTok, outTok: outTok, errClass: errClass}
