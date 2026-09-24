@@ -121,7 +121,6 @@ func ExecuteNonStream(ctx context.Context, client openai.Client, c routing.Candi
 		return Result{}, err
 	}
 	params.Model = c.UpstreamModel
-	applyModelDefaults(&params, c)
 	resp, err := client.Responses.New(ctx, params)
 	if err != nil {
 		return Result{}, err

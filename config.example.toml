@@ -66,9 +66,8 @@ upstream_model = "vendor/model-d"
 # reasoning = true
 
 # Optional per-model upstream defaults (applied only when the client
-# omits them; explicit client values always win). `thinking_budget` is
-# Anthropic-specific and invalid because all upstream requests use Responses:
-# reasoning_effort = "high"
+# omits them; explicit client values always win). Verify support for the
+# specific upstream model; provider identity alone does not imply support.
 # [models."openrouter/model-d".extra]
 # service_tier = "flex"
 

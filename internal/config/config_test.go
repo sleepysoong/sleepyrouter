@@ -95,12 +95,13 @@ upstream_model = "a"
 coding = ["zen/a"]
 `
 	cases := map[string]string{
-		"aliases":              base + "[aliases]\nold = \"coding\"\n",
-		"unknown_model_policy": strings.Replace(base, "default_group = \"coding\"", "default_group = \"coding\"\nunknown_model_policy = \"error\"", 1),
-		"request_body_limit":   "version = 1\n[server]\nrequest_body_limit_mb = 32\n" + strings.TrimPrefix(base, "version = 1\n"),
-		"shutdown_grace":       "version = 1\n[server]\nshutdown_grace = \"20s\"\n" + strings.TrimPrefix(base, "version = 1\n"),
-		"provider_enabled":     strings.Replace(base, "[providers.zen]", "[providers.zen]\nenabled = false", 1),
-		"model_enabled":        strings.Replace(base, "upstream_model = \"a\"", "upstream_model = \"a\"\nenabled = false", 1),
+		"model_reasoning_effort": strings.Replace(base, "upstream_model = \"a\"", "upstream_model = \"a\"\nreasoning_effort = \"high\"", 1),
+		"aliases":                base + "[aliases]\nold = \"coding\"\n",
+		"unknown_model_policy":   strings.Replace(base, "default_group = \"coding\"", "default_group = \"coding\"\nunknown_model_policy = \"error\"", 1),
+		"request_body_limit":     "version = 1\n[server]\nrequest_body_limit_mb = 32\n" + strings.TrimPrefix(base, "version = 1\n"),
+		"shutdown_grace":         "version = 1\n[server]\nshutdown_grace = \"20s\"\n" + strings.TrimPrefix(base, "version = 1\n"),
+		"provider_enabled":       strings.Replace(base, "[providers.zen]", "[providers.zen]\nenabled = false", 1),
+		"model_enabled":          strings.Replace(base, "upstream_model = \"a\"", "upstream_model = \"a\"\nenabled = false", 1),
 	}
 	for name, data := range cases {
 		t.Run(name, func(t *testing.T) {

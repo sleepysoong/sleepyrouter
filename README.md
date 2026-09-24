@@ -89,7 +89,8 @@ parent directory를 watch, 300ms debounce, 전체 validate 성공 시에만 atom
 
 기존 설정에서 업그레이드할 때는 `[aliases]`, `routing.unknown_model_policy`,
 `server.request_body_limit_mb`, `server.shutdown_grace`, provider/model별 `enabled`를
-삭제한다. 더 이상 쓰지 않는 provider/model은 해당 TOML 테이블과 그룹 참조를
+삭제한다. 모델 설정의 `reasoning_effort`도 제거되었으므로 삭제한다.
+더 이상 쓰지 않는 provider/model은 해당 TOML 테이블과 그룹 참조를
 삭제한다. 모르는 `model`은 항상 `routing.default_group`으로 라우팅된다.
 삭제된 설정 키는 조용히 무시하지 않고 parse 오류로 처리하므로 변경 후
 `sleepyrouter validate`를 실행한다. `[usage].enabled`는 사용량 기록 스위치로
@@ -155,7 +156,6 @@ retry/failover는 sleepyrouter가 소유한다 (같은 endpoint가 SDK 때문에
 [models."zen/model-a"]
 provider = "zen"
 upstream_model = "model-a"
-reasoning_effort = "high"   # optional; client 명시값이 우선
 
 [groups]
 coding = ["zen/model-a", "nvidia/model-b"]
@@ -164,6 +164,11 @@ coding = ["zen/model-a", "nvidia/model-b"]
 요청 `model` 해석 순서: exact group → exact model → 기본 그룹.
 capabilities는 3-state (`tools/vision/reasoning`):
 explicit `false`만 제외, 생략(unknown)은 허용.
+
+전용 `reasoning_effort` 모델 기본값은 제공하지 않는다. 클라이언트가 요청한
+reasoning/thinking의 전달·변환은 유지하지만, 동일 provider 안에서도 모델별
+지원 값과 의미를 같다고 가정하지 않는다. `extra`는 별도의 일반 확장 기본값이며,
+이를 사용한다면 대상 모델의 지원 여부를 직접 확인해야 한다.
 
 ## Codex / OpenAI setup
 
@@ -245,8 +250,8 @@ Completions 형식으로 변환하므로 **Anthropic API 전체와 동등하지 
 | Anthropic 전용 옵션·server MCP/tool search | 부분 거부/미지원 | `context_management`, `container`, Anthropic 서버 측 `mcp_servers`, `defer_loading=true`, `tool_reference`, `output_config.task_budget` 등 알려진 비호환 필드는 로컬 400이다. 로컬 MCP 도구는 eager-loaded custom tools 경로를 사용한다. `metadata`는 `user_id`만 Responses `metadata`에 매핑한다. 미지 필드의 전면 거부/보존은 보장하지 않는다. |
 | `/v1/messages/count_tokens` | 추정치 | 로컬 추정기(`×1.2`)이며 공식 Anthropic 토크나이저의 정확한 사용량이 아니다. 컨텍스트 한계 근처에서는 여유를 둬야 한다. |
 
-`thinking.type=disabled`는 upstream reasoning을 강제로 끄지 않으며, 모델 설정의
-`reasoning_effort`가 적용될 수 있다. `adaptive`와 `enabled`의 변환은 reasoning effort의
+`thinking.type=disabled`는 upstream reasoning을 강제로 끄지 않으며,
+reasoning override를 생성하지 않는다. `adaptive`와 `enabled`의 변환은 reasoning effort의
 근사치이며 Anthropic thinking과 의미상 동일하지 않다. eager-loaded MCP 도구 schema는
 128개까지 변환하는 테스트가 있지만, 실제 허용량은 provider의 요청 크기·context 제한에
 달려 있다. JSON schema 변환은 provider가 지원하는 strict subset에 의존한다.

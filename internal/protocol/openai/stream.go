@@ -7,7 +7,6 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
-	"github.com/sleepysoong/sleepyrouter/internal/upstream"
 )
 
 // sdkEventStream adapts the official SDK stream to EventStream.
@@ -45,7 +44,6 @@ func openStream(ctx context.Context, cl openai.Client, c routing.Candidate, rawB
 		return nil, err
 	}
 	params.Model = c.UpstreamModel
-	upstream.ApplyModelDefaultsForTest(&params, c)
 	st := cl.Responses.NewStreaming(ctx, params)
 	return &sdkEventStream{inner: st}, nil
 }

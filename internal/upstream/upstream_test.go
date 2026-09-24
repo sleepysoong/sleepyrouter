@@ -500,19 +500,15 @@ func TestApplyProviderDefaults(t *testing.T) {
 		t.Fatalf("client value overridden: %s", out2)
 	}
 
-	defaulted, err := upstream.ApplyProviderDefaults([]byte(`{"model":"m","input":"hi"}`), routing.Candidate{
-		Model: config.RuntimeModel{ReasoningEffort: "high"},
-	})
+	defaulted, err := upstream.ApplyProviderDefaults([]byte(`{"model":"m","input":"hi"}`), c)
 	if err != nil {
 		t.Fatalf("reasoning default: %v", err)
 	}
-	if !contains(string(defaulted), `"reasoning":{"effort":"high"}`) {
-		t.Fatalf("reasoning default missing: %s", defaulted)
+	if contains(string(defaulted), `"reasoning"`) {
+		t.Fatalf("unsolicited reasoning default: %s", defaulted)
 	}
 
-	explicit, err := upstream.ApplyProviderDefaults([]byte(`{"model":"m","input":"hi","reasoning":{"effort":"low"}}`), routing.Candidate{
-		Model: config.RuntimeModel{ReasoningEffort: "high"},
-	})
+	explicit, err := upstream.ApplyProviderDefaults([]byte(`{"model":"m","input":"hi","reasoning":{"effort":"low"}}`), c)
 	if err != nil {
 		t.Fatalf("explicit reasoning: %v", err)
 	}

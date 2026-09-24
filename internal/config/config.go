@@ -73,12 +73,11 @@ type ModelCapabilities struct {
 }
 
 type ModelConfig struct {
-	Provider        string
-	UpstreamModel   string
-	ReasoningEffort string
-	ThinkingBudget  *int
-	Capabilities    ModelCapabilities
-	Extra           map[string]any
+	Provider       string
+	UpstreamModel  string
+	ThinkingBudget *int
+	Capabilities   ModelCapabilities
+	Extra          map[string]any
 
 	// Optional pricing for usage estimates.
 	InputPricePerMillion  float64
@@ -114,7 +113,6 @@ type RuntimeModel struct {
 	LocalID               string
 	ProviderID            string
 	UpstreamModel         string
-	ReasoningEffort       string
 	ThinkingBudget        *int
 	Capabilities          ModelCapabilities
 	Extra                 map[string]any

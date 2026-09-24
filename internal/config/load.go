@@ -25,7 +25,6 @@ type tomlProvider struct {
 type tomlModel struct {
 	Provider              string            `toml:"provider"`
 	UpstreamModel         string            `toml:"upstream_model"`
-	ReasoningEffort       string            `toml:"reasoning_effort"`
 	ThinkingBudget        *int              `toml:"thinking_budget"`
 	Capabilities          *tomlCapabilities `toml:"capabilities"`
 	Extra                 map[string]any    `toml:"extra"`
@@ -237,7 +236,6 @@ func Parse(data []byte) (Config, error) {
 			mc := ModelConfig{Extra: map[string]any{}}
 			mc.Provider = m.Provider
 			mc.UpstreamModel = m.UpstreamModel
-			mc.ReasoningEffort = m.ReasoningEffort
 			mc.ThinkingBudget = m.ThinkingBudget
 			if m.Capabilities != nil {
 				mc.Capabilities = ModelCapabilities{

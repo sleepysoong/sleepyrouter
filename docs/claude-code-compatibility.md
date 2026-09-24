@@ -30,7 +30,7 @@ upstream. NVIDIA's hosted DeepSeek-V4.1-Flash endpoint currently documents
 | Per-message `output_config` (beta) | Rejected | Responses has no general equivalent for changing Anthropic effort mid-history; silently dropping it would change the requested turn behavior. |
 | `output_config.format` JSON schema | Responses strict `text.format` JSON schema | Generated format name is `anthropic_output`; unsupported format shapes fail validation. |
 | `thinking.type=adaptive` | Mapped to Responses `reasoning.effort=medium` unless `output_config.effort` is supplied | Responses has no adaptive mode; medium is a bridge fallback, not an equivalent policy. |
-| `thinking.type=disabled` | No upstream `reasoning` override | It does not disable a `reasoning_effort` default configured on the selected model. |
+| `thinking.type=disabled` | No upstream `reasoning` override | This does not force the upstream model to stop reasoning. There is no dedicated model-config `reasoning_effort` default. |
 | `thinking.type=enabled` with token budget | Mapped to categorical Responses reasoning effort | `budget_tokens <=4096` → `low`, `<=8192` → `medium`, `<=32768` → `high`, otherwise `xhigh`; explicit `output_config.effort` overrides this fallback. The configured budget must be at least 1024 and less than `max_tokens`. This is not a token-for-token budget mapping. |
 | OpenAI usage `cached_tokens` / `cache_write_tokens` | Stored as cache-read/cache-write counters | Counters appear only if the selected provider reports them. `input_tokens` remains the total input count in local usage storage. |
 

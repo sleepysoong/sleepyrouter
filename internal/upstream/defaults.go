@@ -4,25 +4,10 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/openai/openai-go/v3/responses"
-	"github.com/openai/openai-go/v3/shared"
 	"github.com/sleepysoong/sleepyrouter/internal/routing"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
-
-// applyModelDefaults fills omitted reasoning options from model config.
-// Explicit client values always win.
-func applyModelDefaults(params *responses.ResponseNewParams, c routing.Candidate) {
-	if c.Model.ReasoningEffort != "" && params.Reasoning.Effort == "" {
-		params.Reasoning.Effort = shared.ReasoningEffort(c.Model.ReasoningEffort)
-	}
-}
-
-// ApplyModelDefaultsForTest is the exported form for protocol packages.
-func ApplyModelDefaultsForTest(params *responses.ResponseNewParams, c routing.Candidate) {
-	applyModelDefaults(params, c)
-}
 
 // ApplyProviderDefaults fills omitted top-level fields from model config on
 // the raw body. Explicit client values always win (spec: model defaults only
@@ -35,12 +20,6 @@ func ApplyProviderDefaults(raw []byte, c routing.Candidate) ([]byte, error) {
 			continue
 		}
 		out, err = sjson.SetBytes(out, k, v)
-		if err != nil {
-			return raw, err
-		}
-	}
-	if c.Model.ReasoningEffort != "" && !gjson.GetBytes(out, "reasoning.effort").Exists() {
-		out, err = sjson.SetBytes(out, "reasoning.effort", c.Model.ReasoningEffort)
 		if err != nil {
 			return raw, err
 		}

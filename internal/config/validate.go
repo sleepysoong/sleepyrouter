@@ -47,7 +47,7 @@ func Validate(cfg *Config) error {
 			return fmt.Errorf("models.%q: upstream_model is empty", id)
 		}
 		if m.ThinkingBudget != nil {
-			return fmt.Errorf("models.%q: thinking_budget is Anthropic-specific and cannot be represented by the Responses upstream; use reasoning_effort", id)
+			return fmt.Errorf("models.%q: thinking_budget is not supported as a model config default", id)
 		}
 	}
 	// Group and model names must be disjoint.

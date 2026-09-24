@@ -73,8 +73,7 @@ func BuildSnapshot(cfg Config, dotenv map[string]string, generation uint64) *Run
 	for id, m := range cfg.Models {
 		snap.Models[id] = RuntimeModel{
 			LocalID: id, ProviderID: m.Provider, UpstreamModel: m.UpstreamModel,
-			ReasoningEffort: m.ReasoningEffort,
-			ThinkingBudget:  m.ThinkingBudget, Capabilities: m.Capabilities,
+			ThinkingBudget: m.ThinkingBudget, Capabilities: m.Capabilities,
 			Extra:                m.Extra,
 			InputPricePerMillion: m.InputPricePerMillion, OutputPricePerMillion: m.OutputPricePerMillion,
 		}
