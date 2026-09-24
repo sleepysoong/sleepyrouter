@@ -14,7 +14,7 @@ type Pool struct {
 func NewPool(snap *config.RuntimeSnapshot) *Pool {
 	p := &Pool{clients: map[string]openai.Client{}}
 	for id, rp := range snap.Providers {
-		if rp == nil || !rp.Enabled || rp.APIKey == "" || rp.BaseURL == "" {
+		if rp == nil || rp.APIKey == "" || rp.BaseURL == "" {
 			continue
 		}
 		p.clients[id] = NewClient(rp)

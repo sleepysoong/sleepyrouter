@@ -5,7 +5,7 @@ import (
 	"sort"
 )
 
-// handleModels returns a superset for OpenAI + Claude discovery.
+// handleModels returns configured groups and models for discovery.
 // Claude Code currently filters discovered model IDs to those containing
 // "claude" or "anthropic"; the gateway returns all IDs and lets clients filter.
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +31,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		seen[id] = true
 		data = append(data, item{ID: id, Object: "model", Type: "model", OwnedBy: owner, DisplayName: id})
 	}
-	// Groups first (ordered), then models, then aliases.
+	// Groups first (ordered), then models.
 	for _, g := range snap.GroupOrder {
 		add(g, "sleepyrouter")
 	}
@@ -60,14 +60,6 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	for _, id := range modelIDs {
 		m := snap.Models[id]
 		add(id, m.ProviderID)
-	}
-	var aliases []string
-	for a := range snap.Aliases {
-		aliases = append(aliases, a)
-	}
-	sort.Strings(aliases)
-	for _, a := range aliases {
-		add(a, "sleepyrouter")
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
 }

@@ -12,7 +12,7 @@
   `thinking.type=adaptive` 는 `Reasoning=true` 라우팅 요구에만 사용하고,
   고정 budget thinking은 거부한다.
 - `ToMessage`: upstream output → `msg_sr_*` + 요청 model echo +
-  stop_reason (`tool_use`/`max_tokens`/`end_turn`) + usage 및 cache counters
+  stop_reason (`tool_use`/`max_tokens`/`refusal`/`end_turn`) + usage 및 cache counters
   (fabrication 금지). refusal text는 텍스트 block으로 유지한다. OpenAI reasoning
   summary를 서명 없는 Anthropic thinking으로 만들지 않는다.
 - `StreamEncoder`: stateful. `message_start → content_block_* →
@@ -22,7 +22,7 @@
   `max_output_tokens`는 `stop_reason=max_tokens`. Messages SSE의 무응답 구간에는
   synthetic `ping`을 보내되 ping으로 stream idle timeout을 연장하지 않는다.
 - `count_tokens`: local conservative estimator (`×1.2`, overcount 선호).
-- `GET /v1/models`: group/model/alias superset. Claude Code gateway model discovery 지원.
+- `GET /v1/models`: configured group/model list. Claude Code gateway model discovery 지원.
 
 지원 경계: 일반 텍스트·클라이언트 함수 도구는 변환한다. image/document 입력과
 멀티모달 tool_result는 Responses content item으로 변환하며, `is_error`만 텍스트
@@ -43,9 +43,9 @@ caching/cache_control, beta 헤더, Anthropic 전용 server/MCP tools는 동등�
 | `thinking` / `redacted_thinking` history | 손실 있는 최선 변환 | 입력 block은 생략. adaptive는 reasoning route 요건만, `output_config.effort`는 upstream setting으로 변환. |
 | `output_config.format` | 변환 지원 | JSON schema를 Responses strict structured output으로 매핑. 선택한 provider가 지원해야 함. |
 | Anthropic `cache_control`, beta | 미지원 | Anthropic marker/TTL/header 의미는 전달하지 않는다. provider 자체 implicit caching은 별개로 가능. |
-| Responses 출력 refusal | 부분 지원 | refusal 문구를 Anthropic text block으로 유지. |
+| Responses 출력 refusal | 변환 지원 | refusal 문구를 Anthropic text block으로 유지하고 `stop_reason=refusal`을 반환. Chat Completions refusal delta도 Responses refusal 이벤트로 변환. |
 | Responses citations/annotations/reasoning/hosted tool output | 손실/미지원 | Anthropic 동등 block이 없는 출력은 생략. |
-| Responses 완료 / 토큰 한도 / 실패·전송 중단 | 지원 | `end_turn` 또는 `tool_use` / `max_tokens` / `event: error`로 구분. |
+| Responses 완료 / 토큰 한도 / 거절 / 실패·전송 중단 | 지원 | `end_turn`·`tool_use`·`refusal` / `max_tokens` / `event: error`로 구분. |
 | usage / `count_tokens` | 부분 지원 | 실제 응답 usage는 업스트림 값을 사용. 사전 count는 로컬 추정치. |
 
 새 Responses 이벤트나 Anthropic 베타 블록은 자동 변환되지 않는다. 기능이

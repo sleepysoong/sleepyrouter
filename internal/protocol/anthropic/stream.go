@@ -30,6 +30,7 @@ type StreamEncoder struct {
 	OutputTokensKnown        bool
 	CacheCreationKnown       bool
 	CacheReadKnown           bool
+	RefusalText              string
 	StopReason               string
 	Started                  bool
 	Terminal                 bool
@@ -103,23 +104,21 @@ func (e *StreamEncoder) HandleResponsesEvent(typeName, payload string) []SSEEven
 	}
 	switch typeName {
 	case "response.output_text.delta":
-		if upstream.Delta == "" {
-			return nil
+		return e.textDelta(upstream.Delta)
+	case "response.refusal.delta":
+		e.StopReason = "refusal"
+		e.RefusalText += upstream.Delta
+		return e.textDelta(upstream.Delta)
+	case "response.refusal.done":
+		e.StopReason = "refusal"
+		if upstream.Refusal != e.RefusalText {
+			if e.RefusalText == "" && upstream.Refusal != "" {
+				e.RefusalText = upstream.Refusal
+				return e.textDelta(upstream.Refusal)
+			}
+			return e.Fail("api_error", "upstream refusal text mismatch")
 		}
-		var out []SSEEvent
-		if !e.TextOpen {
-			e.TextIndex = e.NextIndex
-			e.NextIndex++
-			e.TextOpen = true
-			out = append(out, event("content_block_start", wireBlockStart{
-				Type: "content_block_start", Index: e.TextIndex,
-				ContentBlock: wireContentBlock{Type: "text", Text: wireString("")},
-			}))
-		}
-		return append(out, event("content_block_delta", wireBlockDelta{
-			Type: "content_block_delta", Index: e.TextIndex,
-			Delta: wireTextDelta{Type: "text_delta", Text: upstream.Delta},
-		}))
+		return e.closeText()
 	case "response.output_text.done", "response.content_part.done":
 		return e.closeText()
 	case "response.output_item.added":
@@ -186,6 +185,26 @@ func (e *StreamEncoder) HandleResponsesEvent(typeName, payload string) []SSEEven
 		return e.Fail("api_error", "upstream response failed")
 	}
 	return nil
+}
+
+func (e *StreamEncoder) textDelta(delta string) []SSEEvent {
+	if delta == "" {
+		return nil
+	}
+	var out []SSEEvent
+	if !e.TextOpen {
+		e.TextIndex = e.NextIndex
+		e.NextIndex++
+		e.TextOpen = true
+		out = append(out, event("content_block_start", wireBlockStart{
+			Type: "content_block_start", Index: e.TextIndex,
+			ContentBlock: wireContentBlock{Type: "text", Text: wireString("")},
+		}))
+	}
+	return append(out, event("content_block_delta", wireBlockDelta{
+		Type: "content_block_delta", Index: e.TextIndex,
+		Delta: wireTextDelta{Type: "text_delta", Text: delta},
+	}))
 }
 
 func (e *StreamEncoder) closeText() []SSEEvent {

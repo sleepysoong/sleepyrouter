@@ -12,6 +12,10 @@ func testSnapshot() *config.RuntimeSnapshot {
 version = 1
 [routing]
 default_group = "coding"
+[providers.zen]
+[providers.nvidia]
+[providers.openrouter]
+[providers.gemini]
 [models."zen/a"]
 provider = "zen"
 upstream_model = "a"
@@ -26,16 +30,9 @@ provider = "gemini"
 upstream_model = "nv"
 [models."gemini/novision".capabilities]
 vision = false
-[models."zen/disabled"]
-provider = "zen"
-upstream_model = "d"
-enabled = false
 [groups]
 coding = ["zen/a", "nvidia/b", "openrouter/c"]
 fast = ["nvidia/b"]
-[aliases]
-"claude-sleepy" = "coding"
-"single" = "zen/a"
 `))
 	return config.BuildSnapshot(cfg, map[string]string{
 		"OPENCODE_API_KEY": "x", "NVIDIA_API_KEY": "x", "OPENROUTER_API_KEY": "x", "GEMINI_API_KEY": "x",
@@ -56,17 +53,10 @@ func TestDirectModel(t *testing.T) {
 	}
 }
 
-func TestAliasGroup(t *testing.T) {
+func TestUnknownNameUsesDefaultGroup(t *testing.T) {
 	ids, reason, err := routing.Resolve(testSnapshot(), "claude-sleepy")
-	if err != nil || reason != routing.ReasonAlias || len(ids) != 3 {
+	if err != nil || reason != routing.ReasonDefault || len(ids) != 3 {
 		t.Fatalf("got %v %v %v", ids, reason, err)
-	}
-}
-
-func TestAliasModel(t *testing.T) {
-	ids, _, err := routing.Resolve(testSnapshot(), "single")
-	if err != nil || len(ids) != 1 || ids[0] != "zen/a" {
-		t.Fatalf("got %v %v", ids, err)
 	}
 }
 
@@ -74,14 +64,6 @@ func TestDefaultFallback(t *testing.T) {
 	ids, reason, err := routing.Resolve(testSnapshot(), "gpt-unknown-xyz")
 	if err != nil || reason != routing.ReasonDefault || len(ids) != 3 {
 		t.Fatalf("got %v %v %v", ids, reason, err)
-	}
-}
-
-func TestUnknownErrorPolicy(t *testing.T) {
-	snap := testSnapshot()
-	snap.Routing.UnknownModelPolicy = "error"
-	if _, _, err := routing.Resolve(snap, "nope"); err == nil {
-		t.Fatal("expected unknown model error")
 	}
 }
 
@@ -95,9 +77,10 @@ func TestCapabilitySkip(t *testing.T) {
 	}
 }
 
-func TestDisabledSkip(t *testing.T) {
+func TestMissingModelAndProviderSkip(t *testing.T) {
 	snap := testSnapshot()
-	cands := routing.FilterCandidates(snap, []string{"zen/disabled", "zen/a"}, routing.Requirements{})
+	snap.Models["missing-provider/model"] = config.RuntimeModel{ProviderID: "missing-provider", UpstreamModel: "model"}
+	cands := routing.FilterCandidates(snap, []string{"missing/model", "missing-provider/model", "zen/a"}, routing.Requirements{})
 	if len(cands) != 1 || cands[0].LocalModelID != "zen/a" {
 		t.Fatalf("got %+v", cands)
 	}

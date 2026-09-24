@@ -3,12 +3,9 @@ version = 1
 [server]
 host = "127.0.0.1"
 port = 4567
-request_body_limit_mb = 32
-shutdown_grace = "10s"
 
 [routing]
 default_group = "coding"
-unknown_model_policy = "default_group"
 
 [timeouts]
 request = "180s"
@@ -23,22 +20,25 @@ format = "text"
 enabled = true
 
 [providers.zen]
-enabled = true
 base_url = "https://opencode.ai/zen/v1"
 api_key_env = "OPENCODE_API_KEY"
 
 [providers.nvidia]
-enabled = true
 base_url = "https://integrate.api.nvidia.com/v1"
 api_key_env = "NVIDIA_API_KEY"
 
+# Optional separate NVIDIA hosted provider for endpoints documented as
+# Chat Completions only. The existing `nvidia` provider above stays on Responses.
+# [providers.nvidia-nim]
+# base_url = "https://integrate.api.nvidia.com/v1"
+# api_key_env = "NVIDIA_NIM_API_KEY"
+# wire_api = "chat_completions"
+
 [providers.gemini]
-enabled = true
 base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
 api_key_env = "GEMINI_API_KEY"
 
 [providers.openrouter]
-enabled = true
 base_url = "https://openrouter.ai/api/v1"
 api_key_env = "OPENROUTER_API_KEY"
 
@@ -54,6 +54,7 @@ upstream_model = "vendor/model-b"
 provider = "gemini"
 upstream_model = "model-c"
 
+# A model ID containing "/" must be quoted as one TOML key.
 [models."openrouter/model-d"]
 provider = "openrouter"
 upstream_model = "vendor/model-d"
@@ -82,8 +83,3 @@ fast = [
   "gemini/model-c",
   "nvidia/model-b",
 ]
-
-[aliases]
-"sleepy-claude-coding" = "coding"
-"sleepy-claude-fast" = "fast"
-"gpt-sleepy" = "coding"

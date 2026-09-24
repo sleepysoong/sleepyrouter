@@ -14,14 +14,8 @@ func Validate(cfg *Config) error {
 	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
 		return fmt.Errorf("server.port %d out of range 1-65535", cfg.Server.Port)
 	}
-	if cfg.Server.RequestBodyLimitMB <= 0 {
-		cfg.Server.RequestBodyLimitMB = 32
-	}
 	if cfg.Timeouts.Request <= 0 || cfg.Timeouts.FirstEvent <= 0 || cfg.Timeouts.StreamIdle <= 0 {
 		return fmt.Errorf("timeouts must be positive durations")
-	}
-	if cfg.Routing.UnknownModelPolicy != "" && cfg.Routing.UnknownModelPolicy != "default_group" && cfg.Routing.UnknownModelPolicy != "error" {
-		return fmt.Errorf("routing.unknown_model_policy must be default_group|error")
 	}
 	// Provider checks.
 	for id, p := range cfg.Providers {
@@ -33,6 +27,9 @@ func Validate(cfg *Config) error {
 		}
 		if _, err := url.ParseRequestURI(p.BaseURL); err != nil {
 			return fmt.Errorf("providers.%s: invalid base_url %q", id, p.BaseURL)
+		}
+		if p.WireAPI != "" && p.WireAPI != "responses" && p.WireAPI != "chat_completions" {
+			return fmt.Errorf("providers.%s: wire_api must be responses|chat_completions", id)
 		}
 	}
 	// Model checks.
@@ -53,18 +50,10 @@ func Validate(cfg *Config) error {
 			return fmt.Errorf("models.%q: thinking_budget is Anthropic-specific and cannot be represented by the Responses upstream; use reasoning_effort", id)
 		}
 	}
-	// Collision checks: group/model/alias names must be disjoint.
+	// Group and model names must be disjoint.
 	for g := range cfg.Groups {
 		if _, ok := cfg.Models[g]; ok {
 			return fmt.Errorf("name collision: group %q is also a model id", g)
-		}
-		if _, ok := cfg.Aliases[g]; ok {
-			return fmt.Errorf("name collision: group %q is also an alias", g)
-		}
-	}
-	for m := range cfg.Models {
-		if _, ok := cfg.Aliases[m]; ok {
-			return fmt.Errorf("name collision: model %q is also an alias", m)
 		}
 	}
 	// Group checks.
@@ -102,21 +91,11 @@ func Validate(cfg *Config) error {
 		}
 	}
 	// Default group.
-	if cfg.Routing.DefaultGroup != "" {
-		if _, ok := cfg.Groups[cfg.Routing.DefaultGroup]; !ok {
-			return fmt.Errorf("routing.default_group %q does not exist", cfg.Routing.DefaultGroup)
-		}
+	if cfg.Routing.DefaultGroup == "" {
+		return fmt.Errorf("routing.default_group is required")
 	}
-	// Alias checks.
-	for a, target := range cfg.Aliases {
-		if strings.TrimSpace(a) == "" {
-			return fmt.Errorf("alias name must not be empty")
-		}
-		if _, ok := cfg.Groups[target]; !ok {
-			if _, ok2 := cfg.Models[target]; !ok2 {
-				return fmt.Errorf("aliases.%q: unknown target %q", a, target)
-			}
-		}
+	if _, ok := cfg.Groups[cfg.Routing.DefaultGroup]; !ok {
+		return fmt.Errorf("routing.default_group %q does not exist", cfg.Routing.DefaultGroup)
 	}
 	return nil
 }

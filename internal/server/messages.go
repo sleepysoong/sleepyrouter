@@ -22,11 +22,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		anthropic.WriteError(w, http.StatusServiceUnavailable, "api_error", "server not ready")
 		return
 	}
-	limit := int64(snap.Server.RequestBodyLimitMB) * 1024 * 1024
-	if limit <= 0 {
-		limit = 32 * 1024 * 1024
-	}
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
 	if err != nil {
 		anthropic.WriteError(w, http.StatusRequestEntityTooLarge, "invalid_request", "body too large")
 		return
@@ -86,7 +82,7 @@ func (s *Server) serveMessagesNonStream(w http.ResponseWriter, r *http.Request, 
 			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID, Skipped: true, SkipReason: "missing_api_key"})
 			continue
 		}
-		upBody, err := anthropic.ToResponses(parsed, c.UpstreamModel)
+		upBody, err := anthropic.ToResponsesWithContinuations(parsed, c.UpstreamModel, s.reasoningForRequest(parsed, c), c.Provider.WireAPI == "chat_completions")
 		if err != nil {
 			anthropic.WriteError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
 			return
@@ -114,6 +110,10 @@ func (s *Server) serveMessagesNonStream(w http.ResponseWriter, r *http.Request, 
 			attempts = append(attempts, ae)
 			continue
 		}
+		s.rememberReasoning(parsed, c, anthropicMessageContent(out), anthropic.ReasoningContinuation{
+			ChatCompletions: res.ReasoningContent,
+			ResponsesItems:  res.ReasoningItems,
+		})
 		inT, outT, cacheWriteT, cachedT := anthropicUsage(out)
 		setDebugHeaders(w, reqID, c, len(attempts)+1, snap.Generation)
 		var rows []usage.Attempt
@@ -170,8 +170,7 @@ func toUsageAttempts(reqID string, atts []routing.AttemptError) []usage.Attempt 
 func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 	snap := s.deps.Store.Current()
 	_ = snap
-	limit := int64(32) * 1024 * 1024
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
 	if err != nil {
 		anthropic.WriteError(w, http.StatusRequestEntityTooLarge, "invalid_request", "body too large")
 		return

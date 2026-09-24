@@ -36,15 +36,12 @@ func ParseCapability(v *bool) CapabilityState {
 }
 
 type ServerConfig struct {
-	Host               string
-	Port               int
-	RequestBodyLimitMB int
-	ShutdownGrace      time.Duration
+	Host string
+	Port int
 }
 
 type RoutingConfig struct {
-	DefaultGroup       string
-	UnknownModelPolicy string // "default_group" | "error"
+	DefaultGroup string
 }
 
 type TimeoutsConfig struct {
@@ -63,9 +60,9 @@ type UsageConfig struct {
 }
 
 type ProviderConfig struct {
-	Enabled   bool
 	BaseURL   string
 	APIKeyEnv string
+	WireAPI   string
 	Headers   map[string]string
 }
 
@@ -78,7 +75,6 @@ type ModelCapabilities struct {
 type ModelConfig struct {
 	Provider        string
 	UpstreamModel   string
-	Enabled         bool
 	ReasoningEffort string
 	ThinkingBudget  *int
 	Capabilities    ModelCapabilities
@@ -102,7 +98,6 @@ type Config struct {
 	Models    map[string]ModelConfig
 	Groups    map[string][]string
 	GroupOrd  []string // definition order, never sorted
-	Aliases   map[string]string
 }
 
 // RuntimeProvider is the resolved, immutable provider used per request.
@@ -110,8 +105,8 @@ type RuntimeProvider struct {
 	ID      string
 	BaseURL string
 	APIKey  string
+	WireAPI string
 	Headers map[string]string
-	Enabled bool
 }
 
 // RuntimeModel is the resolved, immutable model used per request.
@@ -119,7 +114,6 @@ type RuntimeModel struct {
 	LocalID               string
 	ProviderID            string
 	UpstreamModel         string
-	Enabled               bool
 	ReasoningEffort       string
 	ThinkingBudget        *int
 	Capabilities          ModelCapabilities
@@ -138,21 +132,17 @@ type RuntimeSnapshot struct {
 	Models     map[string]RuntimeModel
 	Groups     map[string][]string
 	GroupOrder []string
-	Aliases    map[string]string
 }
 
 func Defaults() Config {
 	return Config{
 		Version: 1,
 		Server: ServerConfig{
-			Host:               "127.0.0.1",
-			Port:               4567,
-			RequestBodyLimitMB: 32,
-			ShutdownGrace:      10 * time.Second,
+			Host: "127.0.0.1",
+			Port: 4567,
 		},
 		Routing: RoutingConfig{
-			DefaultGroup:       "",
-			UnknownModelPolicy: "default_group",
+			DefaultGroup: "",
 		},
 		Timeouts: TimeoutsConfig{
 			Request:    180 * time.Second,
@@ -168,6 +158,5 @@ func Defaults() Config {
 		Models:    map[string]ModelConfig{},
 		Groups:    map[string][]string{},
 		GroupOrd:  []string{},
-		Aliases:   map[string]string{},
 	}
 }

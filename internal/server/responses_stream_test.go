@@ -72,7 +72,7 @@ func streamCandidate() routing.Candidate {
 	return routing.Candidate{
 		LocalModelID: "openrouter/c", ProviderID: "openrouter", UpstreamModel: "c",
 		Model:    config.RuntimeModel{LocalID: "openrouter/c", ProviderID: "openrouter", UpstreamModel: "c"},
-		Provider: &config.RuntimeProvider{ID: "openrouter", BaseURL: "https://example.invalid/v1", APIKey: "k", Enabled: true},
+		Provider: &config.RuntimeProvider{ID: "openrouter", BaseURL: "https://example.invalid/v1", APIKey: "k"},
 	}
 }
 
@@ -258,7 +258,6 @@ stream_idle = "5s"
 [routing]
 default_group = "coding"
 [providers.openrouter]
-enabled = true
 base_url = "https://example.invalid/v1"
 api_key_env = "TEST_OR_KEY"
 [models."openrouter/c"]
@@ -283,7 +282,7 @@ func TestPrecommitForwardsEveryEventInOrder(t *testing.T) {
 	c := routing.Candidate{
 		LocalModelID: "openrouter/c", ProviderID: "openrouter", UpstreamModel: "c",
 		Model:    config.RuntimeModel{LocalID: "openrouter/c", ProviderID: "openrouter", UpstreamModel: "c"},
-		Provider: &config.RuntimeProvider{ID: "openrouter", BaseURL: "https://example.invalid/v1", APIKey: "k", Enabled: true},
+		Provider: &config.RuntimeProvider{ID: "openrouter", BaseURL: "https://example.invalid/v1", APIKey: "k"},
 	}
 	const n = 50
 	events := [][2]string{{"response.created", `{"type":"response.created"}`}}

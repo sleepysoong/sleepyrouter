@@ -55,10 +55,6 @@ func BuildSnapshot(cfg Config, dotenv map[string]string, generation uint64) *Run
 		Providers:  map[string]*RuntimeProvider{},
 		Models:     map[string]RuntimeModel{},
 		Groups:     map[string][]string{},
-		Aliases:    map[string]string{},
-	}
-	if snap.Routing.UnknownModelPolicy == "" {
-		snap.Routing.UnknownModelPolicy = "default_group"
 	}
 	for id, p := range cfg.Providers {
 		envName := p.APIKeyEnv
@@ -71,14 +67,14 @@ func BuildSnapshot(cfg Config, dotenv map[string]string, generation uint64) *Run
 			hdr[k] = v
 		}
 		snap.Providers[id] = &RuntimeProvider{
-			ID: id, BaseURL: p.BaseURL, APIKey: key, Headers: hdr, Enabled: p.Enabled,
+			ID: id, BaseURL: p.BaseURL, APIKey: key, WireAPI: p.WireAPI, Headers: hdr,
 		}
 	}
 	for id, m := range cfg.Models {
 		snap.Models[id] = RuntimeModel{
 			LocalID: id, ProviderID: m.Provider, UpstreamModel: m.UpstreamModel,
-			Enabled: m.Enabled, ReasoningEffort: m.ReasoningEffort,
-			ThinkingBudget: m.ThinkingBudget, Capabilities: m.Capabilities,
+			ReasoningEffort: m.ReasoningEffort,
+			ThinkingBudget:  m.ThinkingBudget, Capabilities: m.Capabilities,
 			Extra:                m.Extra,
 			InputPricePerMillion: m.InputPricePerMillion, OutputPricePerMillion: m.OutputPricePerMillion,
 		}
@@ -89,8 +85,5 @@ func BuildSnapshot(cfg Config, dotenv map[string]string, generation uint64) *Run
 		snap.Groups[g] = cp
 	}
 	snap.GroupOrder = append([]string{}, cfg.GroupOrd...)
-	for a, t := range cfg.Aliases {
-		snap.Aliases[a] = t
-	}
 	return snap
 }

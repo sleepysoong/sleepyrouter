@@ -125,7 +125,7 @@ func Parse(raw []byte) (Parsed, error) {
 	if err := validateOptions(typed); err != nil {
 		return Parsed{}, err
 	}
-	if err := validateThinking(typed.Thinking); err != nil {
+	if err := validateThinking(typed.Thinking, typed.MaxTokens); err != nil {
 		return Parsed{}, err
 	}
 	p.Requirements = deriveRequirements(typed)
@@ -142,8 +142,8 @@ func deriveRequirements(t MessageRequest) routing.Requirements {
 			Type string `json:"type"`
 		}
 		if err := json.Unmarshal(t.Thinking, &th); err != nil || (th.Type != "" && th.Type != "disabled") {
-			// Claude Code sends "adaptive" for model IDs it does not recognize,
-			// including gateway aliases; it is still a reasoning requirement.
+			// Claude Code sends "adaptive" for model IDs it does not recognize;
+			// it is still a reasoning requirement.
 			r.Reasoning = true
 		}
 	}
@@ -346,21 +346,35 @@ func validateOptions(t MessageRequest) error {
 	return validateOutputConfig(t.OutputConfig)
 }
 
-func validateThinking(raw json.RawMessage) error {
+func validateThinking(raw json.RawMessage, maxTokens int) error {
 	if len(raw) == 0 || isJSONNull(raw) {
 		return nil
 	}
 	var thinking struct {
-		Type string `json:"type"`
+		Type         string  `json:"type"`
+		BudgetTokens *int    `json:"budget_tokens"`
+		Display      *string `json:"display"`
 	}
 	if json.Unmarshal(raw, &thinking) != nil {
 		return fmt.Errorf("thinking must be an object")
 	}
+	if thinking.Display != nil && *thinking.Display != "summarized" && *thinking.Display != "omitted" {
+		return fmt.Errorf("thinking.display must be summarized or omitted")
+	}
 	switch thinking.Type {
 	case "disabled", "adaptive":
+		if thinking.BudgetTokens != nil {
+			return fmt.Errorf("thinking.budget_tokens requires thinking.type=enabled")
+		}
 		return nil
 	case "enabled":
-		return fmt.Errorf("thinking.type=enabled uses Anthropic token budgets that cannot be represented by the Responses upstream; use output_config.effort")
+		if thinking.BudgetTokens == nil || *thinking.BudgetTokens < 1024 {
+			return fmt.Errorf("thinking.type=enabled requires budget_tokens of at least 1024")
+		}
+		if *thinking.BudgetTokens >= maxTokens {
+			return fmt.Errorf("thinking.budget_tokens must be less than max_tokens")
+		}
+		return nil
 	default:
 		return fmt.Errorf("unsupported thinking.type %q", thinking.Type)
 	}

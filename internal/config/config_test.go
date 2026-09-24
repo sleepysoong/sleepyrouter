@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +15,133 @@ func TestDefaultStreamIdleExceedsClaudeCodeWatchdog(t *testing.T) {
 	}
 }
 
+func TestExampleConfigValid(t *testing.T) {
+	data, err := os.ReadFile("../../config.example.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Validate(&cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProviderWireAPIDefaultAndChatCompletions(t *testing.T) {
+	cfg, err := config.Parse([]byte(`
+version = 1
+[routing]
+default_group = "coding"
+[providers.nvidia-nim]
+base_url = "https://example.invalid/v1"
+api_key_env = "NVIDIA_NIM_API_KEY"
+wire_api = "chat_completions"
+[groups]
+coding = []
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Providers["nvidia-nim"].WireAPI != "chat_completions" {
+		t.Fatalf("wire_api = %q", cfg.Providers["nvidia-nim"].WireAPI)
+	}
+	if err := config.Validate(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	snap := config.BuildSnapshot(cfg, nil, 1)
+	if got := snap.Providers["nvidia-nim"].WireAPI; got != "chat_completions" {
+		t.Fatalf("runtime wire_api = %q", got)
+	}
+
+	defaultCfg, err := config.Parse([]byte("version = 1\n[providers.nvidia]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := defaultCfg.Providers["nvidia"].WireAPI; got != "responses" {
+		t.Fatalf("declared provider default wire_api = %q, want responses", got)
+	}
+}
+
+func TestValidationRejectsUnknownProviderWireAPI(t *testing.T) {
+	cfg, err := config.Parse([]byte(`
+version = 1
+[routing]
+default_group = "coding"
+[providers.custom]
+base_url = "https://example.invalid/v1"
+wire_api = "completions"
+[groups]
+coding = []
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Validate(&cfg); err == nil || !strings.Contains(err.Error(), "wire_api") {
+		t.Fatalf("expected invalid wire_api error, got %v", err)
+	}
+}
+
+func TestRemovedConfigKeysRejected(t *testing.T) {
+	base := `version = 1
+[routing]
+default_group = "coding"
+[providers.zen]
+[models."zen/a"]
+provider = "zen"
+upstream_model = "a"
+[groups]
+coding = ["zen/a"]
+`
+	cases := map[string]string{
+		"aliases":              base + "[aliases]\nold = \"coding\"\n",
+		"unknown_model_policy": strings.Replace(base, "default_group = \"coding\"", "default_group = \"coding\"\nunknown_model_policy = \"error\"", 1),
+		"request_body_limit":   "version = 1\n[server]\nrequest_body_limit_mb = 32\n" + strings.TrimPrefix(base, "version = 1\n"),
+		"shutdown_grace":       "version = 1\n[server]\nshutdown_grace = \"20s\"\n" + strings.TrimPrefix(base, "version = 1\n"),
+		"provider_enabled":     strings.Replace(base, "[providers.zen]", "[providers.zen]\nenabled = false", 1),
+		"model_enabled":        strings.Replace(base, "upstream_model = \"a\"", "upstream_model = \"a\"\nenabled = false", 1),
+	}
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := config.Parse([]byte(data)); err == nil {
+				t.Fatal("removed config key was silently accepted")
+			}
+		})
+	}
+}
+
+func TestDeclaredProvidersOnlyAndRequiredDefaultGroup(t *testing.T) {
+	cfg, err := config.Parse([]byte(`version = 1
+[routing]
+default_group = "coding"
+[providers.zen]
+[models."zen/a"]
+provider = "zen"
+upstream_model = "a"
+[groups]
+coding = ["zen/a"]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Providers) != 1 || cfg.Providers["zen"].BaseURL == "" {
+		t.Fatalf("declared providers = %#v", cfg.Providers)
+	}
+	if err := config.Validate(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	delete(cfg.Providers, "zen")
+	if err := config.Validate(&cfg); err == nil || !strings.Contains(err.Error(), "unknown provider") {
+		t.Fatalf("expected dangling model provider error, got %v", err)
+	}
+	cfg.Providers["zen"] = config.ProviderConfig{BaseURL: "https://example.invalid/v1"}
+	cfg.Routing.DefaultGroup = ""
+	if err := config.Validate(&cfg); err == nil || !strings.Contains(err.Error(), "default_group") {
+		t.Fatalf("expected missing default group error, got %v", err)
+	}
+}
+
 const exampleTOML = `
 version = 1
 
@@ -22,17 +151,16 @@ port = 4567
 
 [routing]
 default_group = "coding"
-unknown_model_policy = "default_group"
 
 [providers.zen]
-enabled = true
 base_url = "https://example.invalid/v1"
 api_key_env = "OPENCODE_API_KEY"
 
 [providers.nvidia]
-enabled = true
 base_url = "https://example.invalid/v1"
 api_key_env = "NVIDIA_API_KEY"
+
+[providers.gemini]
 
 [models."zen/model-a"]
 provider = "zen"
@@ -50,8 +178,6 @@ upstream_model = "model-c"
 coding = ["zen/model-a", "nvidia/model-b"]
 fast = ["gemini/model-c", "nvidia/model-b"]
 
-[aliases]
-"claude-sleepy" = "coding"
 `
 
 func TestParsePreservesGroupOrder(t *testing.T) {
@@ -70,6 +196,9 @@ func TestParsePreservesGroupOrder(t *testing.T) {
 func TestValidationRejectsUnknownModel(t *testing.T) {
 	cfg, err := config.Parse([]byte(`
 version = 1
+[routing]
+default_group = "coding"
+[providers.zen]
 [models."a/x"]
 provider = "zen"
 upstream_model = "x"
@@ -79,14 +208,17 @@ coding = ["a/x", "missing/y"]
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if err := config.Validate(&cfg); err == nil {
-		t.Fatal("expected validation error for unknown model")
+	if err := config.Validate(&cfg); err == nil || !strings.Contains(err.Error(), "unknown model") {
+		t.Fatalf("expected unknown model error, got %v", err)
 	}
 }
 
 func TestValidationRejectsDuplicate(t *testing.T) {
 	cfg, err := config.Parse([]byte(`
 version = 1
+[routing]
+default_group = "coding"
+[providers.zen]
 [models."a/x"]
 provider = "zen"
 upstream_model = "x"
@@ -96,14 +228,17 @@ coding = ["a/x", "a/x"]
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if err := config.Validate(&cfg); err == nil {
-		t.Fatal("expected duplicate error")
+	if err := config.Validate(&cfg); err == nil || !strings.Contains(err.Error(), "duplicate model") {
+		t.Fatalf("expected duplicate model error, got %v", err)
 	}
 }
 
 func TestValidationRejectsCollision(t *testing.T) {
 	cfg, err := config.Parse([]byte(`
 version = 1
+[routing]
+default_group = "coding"
+[providers.zen]
 [models."coding"]
 provider = "zen"
 upstream_model = "x"
@@ -113,24 +248,29 @@ coding = ["coding"]
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if err := config.Validate(&cfg); err == nil {
-		t.Fatal("expected collision error")
+	if err := config.Validate(&cfg); err == nil || !strings.Contains(err.Error(), "name collision") {
+		t.Fatalf("expected collision error, got %v", err)
 	}
 }
 
 func TestValidationRejectsAnthropicThinkingBudgetForResponsesUpstream(t *testing.T) {
 	cfg, err := config.Parse([]byte(`
 version = 1
+[routing]
+default_group = "coding"
+[providers.zen]
 [models."zen/model-a"]
 provider = "zen"
 upstream_model = "model-a"
 thinking_budget = 1024
+[groups]
+coding = ["zen/model-a"]
 `))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if err := config.Validate(&cfg); err == nil {
-		t.Fatal("expected incompatible thinking_budget validation error")
+	if err := config.Validate(&cfg); err == nil || !strings.Contains(err.Error(), "thinking_budget") {
+		t.Fatalf("expected thinking_budget validation error, got %v", err)
 	}
 }
 
@@ -138,8 +278,9 @@ func TestSnapshotResolvesKeys(t *testing.T) {
 	t.Setenv("SLEEPYROUTER_TEST_KEY", "secret-from-env")
 	cfg, _ := config.Parse([]byte(`
 version = 1
+[routing]
+default_group = "g"
 [providers.custom]
-enabled = true
 base_url = "https://example.invalid/v1"
 api_key_env = "SLEEPYROUTER_TEST_KEY"
 [models."custom/m"]
@@ -178,6 +319,10 @@ func TestInvalidReloadKeepsOld(t *testing.T) {
 func TestGroupOrderReversedAndCommented(t *testing.T) {
 	cfg, err := config.Parse([]byte(`
 version = 1
+[routing]
+default_group = "zebra"
+[providers.zen]
+[providers.nvidia]
 [models."zen/a"]
 provider = "zen"
 upstream_model = "a"

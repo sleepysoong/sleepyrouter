@@ -7,7 +7,7 @@ import (
 )
 
 // Resolve maps a requested model to an ordered local-model ID list.
-// Order: exact group -> exact model -> alias -> unknown policy.
+// Order: exact group -> exact model -> default group.
 // Group array order is authoritative and never re-sorted.
 func Resolve(snap *config.RuntimeSnapshot, requested string) ([]string, RouteReason, error) {
 	req := strings.TrimSpace(requested)
@@ -23,24 +23,7 @@ func Resolve(snap *config.RuntimeSnapshot, requested string) ([]string, RouteRea
 	if _, ok := snap.Models[req]; ok {
 		return []string{req}, ReasonDirect, nil
 	}
-	// 3. alias match
-	if target, ok := snap.Aliases[req]; ok {
-		if members, ok := snap.Groups[target]; ok {
-			return append([]string{}, members...), ReasonAlias, nil
-		}
-		if _, ok := snap.Models[target]; ok {
-			return []string{target}, ReasonAlias, nil
-		}
-		return nil, "", errUnknownAliasTarget(req, target)
-	}
-	// 4. unknown policy
-	policy := snap.Routing.UnknownModelPolicy
-	if policy == "" {
-		policy = "default_group"
-	}
-	if policy == "error" {
-		return nil, "", errUnknownModel(req)
-	}
+	// 3. unknown names always use the configured default group.
 	def := snap.Routing.DefaultGroup
 	if def == "" {
 		return nil, "", errUnknownModel(req)
@@ -53,16 +36,16 @@ func Resolve(snap *config.RuntimeSnapshot, requested string) ([]string, RouteRea
 }
 
 // FilterCandidates applies deterministic exclusion without reordering:
-// disabled model, disabled provider, explicit capability unsupported.
+// missing model/provider, explicit capability unsupported.
 func FilterCandidates(snap *config.RuntimeSnapshot, ids []string, req Requirements) []Candidate {
 	out := make([]Candidate, 0, len(ids))
 	for _, id := range ids {
 		m, ok := snap.Models[id]
-		if !ok || !m.Enabled {
+		if !ok {
 			continue
 		}
 		p, ok := snap.Providers[m.ProviderID]
-		if !ok || !p.Enabled {
+		if !ok {
 			continue
 		}
 		if req.Tools && m.Capabilities.Tools == config.CapabilityUnsupported {

@@ -32,7 +32,6 @@ type RouteReason string
 const (
 	ReasonGroup   RouteReason = "model-group"
 	ReasonDirect  RouteReason = "direct-model"
-	ReasonAlias   RouteReason = "alias"
 	ReasonDefault RouteReason = "fallback-default-group"
 )
 

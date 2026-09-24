@@ -2,9 +2,18 @@
 
 Checked against the official Claude Code gateway and Messages API documentation on
 2026-09-24. This gateway accepts Anthropic Messages requests at the edge but
-translates them into OpenAI Responses requests. It is not an Anthropic-compatible
-upstream proxy: Anthropic-only headers, beta features, cache controls, and server
-tools cannot be forwarded transparently across that protocol boundary.
+normalizes them into a Responses-shaped internal request, then converts them to the
+configured provider's Responses or Chat Completions wire format. It is not an
+Anthropic-compatible upstream proxy: Anthropic-only headers, beta features, cache
+controls, and server tools cannot be forwarded transparently across that protocol
+boundary.
+
+Providers whose hosted API exposes Chat Completions can opt into a provider-level
+`wire_api = "chat_completions"` bridge. The bridge reconstructs Responses-style SSE
+from typed Chat Completions chunks; text and function-tool streaming are covered by
+tests, but this is not byte- or feature-identical to a native Responses or Anthropic
+upstream. NVIDIA's hosted DeepSeek-V4.1-Flash endpoint currently documents
+`POST /v1/chat/completions`, not `/v1/responses` ([NVIDIA endpoint reference](https://docs.api.nvidia.com/nim/reference/nvidia-deepseek-v4_1-flash-infer)).
 
 ## Request and response mapping
 
@@ -17,21 +26,22 @@ tools cannot be forwarded transparently across that protocol boundary.
 | Tool `strict` and `tool_choice.disable_parallel_tool_use` | Mapped to Responses `strict` and `parallel_tool_calls=false` | Provider/model support and strict JSON Schema subsets vary; incompatible schemas can still be rejected upstream. |
 | User `image` blocks | Responses `input_image`, from base64 data or URL | The chosen model/provider must support image input. |
 | User `document` blocks | Text becomes `input_text`; URL/base64 becomes `input_file` | Supported file types, URL access, size limits, and vision behavior belong to the upstream provider. |
-| `output_config.effort` | Responses `reasoning.effort` | This is a cross-provider best-effort mapping, not Anthropic's identical reasoning implementation. |
+| `output_config.effort` | Responses `reasoning.effort` | Forwarded to Responses upstreams. For NVIDIA DeepSeek V4.1 Flash Chat Completions, the bridge converts categories to its documented numeric scale (`minimal=1`, `low=25`, `medium=50`, `high=75`, `xhigh=90`, `max=100`). These are explicit bridge policy values, not equivalent provider semantics. |
 | Per-message `output_config` (beta) | Rejected | Responses has no general equivalent for changing Anthropic effort mid-history; silently dropping it would change the requested turn behavior. |
 | `output_config.format` JSON schema | Responses strict `text.format` JSON schema | Generated format name is `anthropic_output`; unsupported format shapes fail validation. |
-| `thinking.type=adaptive` | Used to require a reasoning-capable route; not sent as an upstream field | If supplied, `output_config.effort` is the only explicit reasoning setting mapped. |
+| `thinking.type=adaptive` | Mapped to Responses `reasoning.effort=medium` unless `output_config.effort` is supplied | Responses has no adaptive mode; medium is a bridge fallback, not an equivalent policy. |
 | `thinking.type=disabled` | No upstream `reasoning` override | It does not disable a `reasoning_effort` default configured on the selected model. |
-| `thinking.type=enabled` with token budget | Rejected | Responses has no equivalent fixed Anthropic thinking-token budget. The old config `thinking_budget` is also rejected; use `reasoning_effort`. |
+| `thinking.type=enabled` with token budget | Mapped to categorical Responses reasoning effort | `budget_tokens <=4096` → `low`, `<=8192` → `medium`, `<=32768` → `high`, otherwise `xhigh`; explicit `output_config.effort` overrides this fallback. The configured budget must be at least 1024 and less than `max_tokens`. This is not a token-for-token budget mapping. |
 | OpenAI usage `cached_tokens` / `cache_write_tokens` | Stored as cache-read/cache-write counters | Counters appear only if the selected provider reports them. `input_tokens` remains the total input count in local usage storage. |
 
 The gateway rejects known Anthropic-only request features when their semantics
 would otherwise be silently lost: `context_management`, Anthropic `service_tier`
-and `inference_geo`, `stop_sequences`, `top_k`, `container`, `mcp_servers`,
-top-level `cache_control`, tools with `defer_loading=true`, `tool_reference` blocks,
+and `inference_geo`, `stop_sequences`, `top_k`, `container`, server-side
+`mcp_servers`, top-level `cache_control`, tools with `defer_loading=true`, `tool_reference` blocks,
 unsupported output formats, `output_config.task_budget`, message-level
-`output_config`, and fixed-budget thinking. Request
-metadata accepts only `user_id`, which is mapped to Responses metadata. Anthropic
+`output_config`. Thinking is not rejected, but its Anthropic budget, returned
+thinking blocks, and signatures cannot be preserved as OpenAI Responses reasoning.
+Request metadata accepts only `user_id`, which is mapped to Responses metadata. Anthropic
 version/beta request headers are ignored rather than forwarded to the Responses
 upstream. Nested `cache_control` markers are accepted but dropped during conversion.
 Some unknown JSON fields are ignored by the Go request structs; they are neither
@@ -51,6 +61,11 @@ Responses' SDK-known `prompt_cache_key` is passed to the provider when present, 
 OpenAI-compatible providers may implement different caching behavior. Prompt caching
 depends on prefix identity and provider/model routing; a cache hit is never guaranteed
 by this gateway.
+
+The Chat Completions bridge preserves the ordered prompt text, tool-call IDs, and
+reported cached-token counters where present. It does not translate Anthropic
+`cache_control` markers into provider-specific cache controls, and the hosted NIM
+endpoint's cache policy and hit rate must be verified from actual usage responses.
 Claude Code's system-attribution block is part of the prompt this non-Anthropic
 upstream receives. Claude Code v2.1.181+ keeps it stable for a conversation through
 a custom base URL; older versions could vary it per request and reduce prefix-cache
@@ -69,17 +84,17 @@ reuse. Prefer upgrading Claude Code; for older clients, review
   be rejected without breaking inference.
 - `/v1/messages/count_tokens` exists, but returns a local character-based estimate,
   not Anthropic's tokenizer result.
-- `GET /v1/models` exposes gateway groups, models, and aliases for optional model
-  discovery. It lists configuration entries even if their model/provider is
-  disabled or their key is missing; it does not query the provider for availability.
+- `GET /v1/models` exposes configured gateway groups and models for optional model
+  discovery. It lists configuration entries even if their key is missing; it does
+  not query the provider for availability.
   Claude Code discovery runs only with the Anthropic Messages connection
   (`ANTHROPIC_BASE_URL`) and `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`, and can
   also be hidden by model-picker settings. Claude Code keeps discovered IDs containing
-  `claude` or `anthropic` case-insensitively, so a gateway alias intended for the
-  picker should include one of those strings (for example, `sleepy-claude-coding`).
+  `claude` or `anthropic` case-insensitively, so a group or model ID intended for
+  the picker should include one of those strings (for example, `sleepy-claude-coding`).
   Discovery uses `GET /v1/models?limit=1000`, defaults to a three-second timeout, and
   treats redirects as failure.
-- Context behavior depends on the model ID spelling. `sleepy-claude-coding` does not
+- Context behavior depends on the model ID spelling. `coding` does not
   start with `claude-`, so it is an unrecognized custom spelling and
   `CLAUDE_CODE_MAX_CONTEXT_TOKENS` applies directly (unless `[1m]` changes the rules).
   If the ID resolves to a recognized Claude model, the variable applies only with
@@ -92,12 +107,21 @@ reuse. Prefer upgrading Claude Code; for older clients, review
   therefore not run. Locally rejected unsupported fields return a gateway-generated
   `400` before any upstream candidate is tried.
 
-- Claude Code's current compatibility guide notes that
-  `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` does not suppress adaptive reasoning and,
-  on an `ANTHROPIC_BASE_URL` connection, can still leave MCP tool-search beta headers,
-  `defer_loading`, and `tool_reference` in requests. `ENABLE_TOOL_SEARCH=false` avoids
-  deferred-tool search but loads all MCP tools up front, increasing prompt size and
-  potentially reducing cache-prefix reuse.
+- Claude Code's ordinary local MCP tools are client-side custom tools: Claude Code
+  starts the MCP servers, sends their tool schemas as `tools`, receives a normal
+  `tool_use`, executes it locally, then sends `tool_result` on the next request.
+  This bridge preserves that loop, including names and call IDs; the gateway does
+  not connect to or execute the MCP servers itself. Anthropic-hosted MCP
+  (`mcp_servers`/`mcp_toolset`) and deferred tool search (`defer_loading`/
+  `tool_reference`) are not supported.
+- No special launcher is required. Claude Code documents tool search as disabled
+  by default when using a non-first-party custom `ANTHROPIC_BASE_URL`; this setting
+  controls deferred tool search, not thinking or ordinary custom-tool/MCP calls.
+  There is no need to set `ENABLE_TOOL_SEARCH=false`; leaving it unset keeps the
+  default. Setting it to `true` can send `tool_reference`, which this bridge does
+  not support. Eagerly including local MCP tool schemas can enlarge requests and
+  may reduce cache-prefix reuse. Anthropic-hosted MCP and deferred tool search
+  remain unsupported.
 
 ## References and regression inspiration
 
@@ -106,6 +130,8 @@ Official contracts:
 - [Claude Code gateway compatibility](https://code.claude.com/docs/en/llm-gateway-protocol)
 - [Claude Code model configuration](https://code.claude.com/docs/en/model-config)
 - [Claude Code environment variables](https://code.claude.com/docs/en/env-vars)
+- [Claude Code MCP servers](https://code.claude.com/docs/en/mcp)
+- [Claude Code tool search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool)
 - [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create)
 - [Anthropic tool calls and `is_error`](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls)
 - [Anthropic streaming events](https://platform.claude.com/docs/en/build-with-claude/streaming)

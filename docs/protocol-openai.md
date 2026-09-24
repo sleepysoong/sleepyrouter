@@ -16,6 +16,12 @@
   client-facing 모델명으로 rewrite. 완료된 stream ID만 affinity 저장.
 - `previous_response_id`:
   affinity hit → 해당 모델만 시도, miss → 첫 candidate에만 전달.
+- Provider `wire_api = "chat_completions"`:
+  Responses 입력을 typed OpenAI Go SDK `ChatCompletionNewParams`로 변환하고,
+  Chat Completion 결과를 Responses JSON/SSE shape로 재구성한다. Text, images,
+  function tools, JSON format, token usage를 매핑하지만 provider-specific metadata는
+  완전 보존하지 않는다. `previous_response_id`는 stateless Chat Completions endpoint에
+  전달할 수 없어 명시적으로 거부한다.
 - Error: OpenAI envelope. 400(클라이언트) / 404(unknown+error 정책) /
   502(all failed) / 503(no usable).
 

@@ -35,7 +35,7 @@ Keep dependencies pointed inward by responsibility: the server composes packages
 
 ## Behavioral invariants
 
-- Preserve deterministic routing. Candidate/group order is configuration, not a set: do not sort it. Keep exact group/model matching, aliases, and unknown-model policy aligned with `docs/architecture.md` and tests.
+- Preserve deterministic routing. Candidate/group order is configuration, not a set: do not sort it. Keep exact group/model matching and unconditional fallback to the required default group aligned with `docs/architecture.md` and tests.
 - Retry/failover is owned by the gateway, not hidden SDK retries. Keep SDK retries disabled unless the design is deliberately changed and tested. Before any response bytes are committed, bounded precommit buffering may permit trying another candidate; after streaming is committed, never switch providers or concatenate a second response into the first.
 - Propagate request contexts and cancellation through every upstream operation. A disconnected client must not leave an upstream request running unnecessarily.
 - Runtime configuration snapshots are immutable after publication. Parse and validate a replacement before atomically publishing it; a failed reload must leave the last valid snapshot active. Missing provider credentials should affect candidate eligibility, not leak into logs or crash unrelated providers.

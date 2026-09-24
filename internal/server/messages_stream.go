@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -26,7 +27,7 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorUnknown, SafeMessage: "API key missing for provider " + c.ProviderID, Skipped: true, SkipReason: "missing_api_key"})
 			continue
 		}
-		upBody, err := anthropic.ToResponses(parsed, c.UpstreamModel)
+		upBody, err := anthropic.ToResponsesWithContinuations(parsed, c.UpstreamModel, s.reasoningForRequest(parsed, c), c.Provider.WireAPI == "chat_completions")
 		if err != nil {
 			anthropic.WriteError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
 			return
@@ -63,6 +64,12 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 				return
 			}
 			continue
+		}
+		if res.success && res.continuationFingerprint != "" {
+			s.continuations.Store(parsed.SessionID, c, res.continuationFingerprint, anthropic.ReasoningContinuation{
+				ChatCompletions: res.reasoningContent,
+				ResponsesItems:  res.reasoningItems,
+			})
 		}
 		var rows []usage.Attempt
 		for i, a := range attempts {
@@ -186,16 +193,36 @@ collect:
 	w.WriteHeader(http.StatusOK)
 	fl, _ := w.(http.Flusher)
 	enc := anthropic.NewStreamEncoder(parsed.RequestedModel)
+	var continuationFingerprint string
+	var continuation anthropic.ReasoningContinuation
 	for _, ev := range enc.StartEvents() {
 		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Event, ev.Data)
 	}
 	flushEncode := func(typ string, payload []byte) {
+		if typ == "response.completed" || typ == "response.incomplete" {
+			fingerprint, value := anthropicContinuationFromEvent(typ, payload, parsed.RequestedModel)
+			if providerStream, ok := st.(interface{ ProviderReasoningContent() string }); ok {
+				value.ChatCompletions = providerStream.ProviderReasoningContent()
+			}
+			if fingerprint != "" && (value.ChatCompletions != "" || len(value.ResponsesItems) > 0) {
+				continuationFingerprint, continuation = fingerprint, value
+			}
+		}
 		for _, ev := range enc.HandleResponsesEvent(typ, string(payload)) {
 			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Event, ev.Data)
 		}
 		if fl != nil {
 			fl.Flush()
 		}
+	}
+	streamResultWithContinuation := func(success bool, errClass string) streamResult {
+		result := anthropicStreamResult(enc, success, errClass)
+		if success {
+			result.continuationFingerprint = continuationFingerprint
+			result.reasoningContent = continuation.ChatCompletions
+			result.reasoningItems = continuation.ResponsesItems
+		}
+		return result
 	}
 	for _, b := range buf {
 		flushEncode(b.typ, b.payload)
@@ -215,7 +242,7 @@ collect:
 				errClass = "incomplete"
 			}
 		}
-		return true, anthropicStreamResult(enc, enc.Success, errClass)
+		return true, streamResultWithContinuation(enc.Success, errClass)
 	}
 	// Drain rest post-commit (no failover). The producer above stays the
 	// sole st reader; we drain steps in order.
@@ -233,7 +260,7 @@ collect:
 			success = false
 			errClass = "client"
 			_ = st.Close()
-			return true, anthropicStreamResult(enc, success, errClass)
+			return true, streamResultWithContinuation(success, errClass)
 		case stp, ok := <-steps:
 			if ok {
 				flushEncode(stp.typ, stp.payload)
@@ -245,7 +272,7 @@ collect:
 							errClass = "incomplete"
 						}
 					}
-					return true, anthropicStreamResult(enc, enc.Success, errClass)
+					return true, streamResultWithContinuation(enc.Success, errClass)
 				}
 				if !idleTimer.Stop() {
 					select {
@@ -276,7 +303,7 @@ collect:
 			}
 			success = enc.Success && errClass == ""
 			_ = st.Close()
-			return true, anthropicStreamResult(enc, success, errClass)
+			return true, streamResultWithContinuation(success, errClass)
 		case <-idleTimer.C:
 			success = false
 			errClass = "timeout"
@@ -289,7 +316,7 @@ collect:
 					fl.Flush()
 				}
 			}
-			return true, anthropicStreamResult(enc, success, errClass)
+			return true, streamResultWithContinuation(success, errClass)
 		case <-pingTicker.C:
 			// Keep Claude Code's byte-level watchdog alive without extending
 			// our own no-upstream-event idle ceiling.
@@ -298,6 +325,29 @@ collect:
 				fl.Flush()
 			}
 		}
+	}
+}
+
+func anthropicContinuationFromEvent(typ string, payload []byte, requestedModel string) (string, anthropic.ReasoningContinuation) {
+	if typ != "response.completed" && typ != "response.incomplete" {
+		return "", anthropic.ReasoningContinuation{}
+	}
+	var event struct {
+		Response json.RawMessage `json:"response"`
+	}
+	if json.Unmarshal(payload, &event) != nil || len(event.Response) == 0 {
+		return "", anthropic.ReasoningContinuation{}
+	}
+	message, err := anthropic.ToMessage(event.Response, requestedModel)
+	if err != nil {
+		return "", anthropic.ReasoningContinuation{}
+	}
+	content := anthropicMessageContent(message)
+	if len(content) == 0 {
+		return "", anthropic.ReasoningContinuation{}
+	}
+	return anthropic.ContentFingerprint(content), anthropic.ReasoningContinuation{
+		ResponsesItems: upstream.ResponsesReasoningItems(event.Response),
 	}
 }
 

@@ -17,11 +17,7 @@ func errUnknownModel(m string) *RouteError {
 	return &RouteError{Code: "unknown_model", Message: fmt.Sprintf("unknown model %q", m)}
 }
 
-func errUnknownAliasTarget(alias, target string) *RouteError {
-	return &RouteError{Code: "bad_alias", Message: fmt.Sprintf("alias %q targets unknown %q", alias, target)}
-}
-
-// IsUnknownModel reports unknown-model policy errors.
+// IsUnknownModel reports a missing or invalid default-group route.
 func IsUnknownModel(err error) bool {
 	if re, ok := err.(*RouteError); ok {
 		return re.Code == "unknown_model"

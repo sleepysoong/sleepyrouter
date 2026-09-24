@@ -23,11 +23,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		openai.WriteError(w, http.StatusServiceUnavailable, "no_config", "server not ready")
 		return
 	}
-	limit := int64(snap.Server.RequestBodyLimitMB) * 1024 * 1024
-	if limit <= 0 {
-		limit = 32 * 1024 * 1024
-	}
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
 	if err != nil {
 		openai.WriteError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")
 		return
@@ -96,11 +92,11 @@ func (s *Server) resolveWithAffinity(snap *config.RuntimeSnapshot, requested str
 		if aff, ok := s.deps.Affinity.Get(prevID); ok {
 			// Sticky: only the affined model, no cross-provider failover.
 			m, ok := snap.Models[aff.LocalModelID]
-			if !ok || !m.Enabled {
+			if !ok {
 				return nil, "", errAffinityGone()
 			}
 			p, ok := snap.Providers[aff.ProviderID]
-			if !ok || !p.Enabled {
+			if !ok {
 				return nil, "", errAffinityGone()
 			}
 			c := routing.Candidate{LocalModelID: aff.LocalModelID, ProviderID: aff.ProviderID, UpstreamModel: m.UpstreamModel, Model: m, Provider: p}

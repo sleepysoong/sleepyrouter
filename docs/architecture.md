@@ -14,7 +14,8 @@
      raw preserve + model rewrite      typed parse → Responses →
                                        Anthropic encode
 
-Upstream은 전부 OpenAI-compatible이며 공식 OpenAI Go SDK로 호출한다.
+Upstream은 공식 OpenAI Go SDK로 호출한다. provider `wire_api` 기본값은 Responses이며,
+필요할 때 Chat Completions provider를 provider-specific adapter로 bridge한다.
 `WithMaxRetries(0)` — retry/failover는 sleepyrouter가 소유.
 
 ## Dependency directions (enforced by review)
@@ -46,3 +47,4 @@ server → protocol → routing → upstream → provider/config
 12. previous_response_id를 무작정 이동 금지.
 13. client disconnect → upstream cancel.
 14. storage failure ≠ inference failure.
+15. provider별 wire API 변환은 SDK 경계에 둔다. Router는 wire format을 모른다.

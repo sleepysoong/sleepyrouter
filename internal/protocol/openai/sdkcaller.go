@@ -72,7 +72,12 @@ func (s *SDKCaller) DoStream(ctx context.Context, c routing.Candidate, rawBody [
 	if err != nil {
 		return nil, err
 	}
-	st, err := openStream(ctx, cl, c, rewritten)
+	var st EventStream
+	if c.Provider != nil && c.Provider.WireAPI == "chat_completions" {
+		st, err = openChatCompletionStream(ctx, cl, c, rewritten)
+	} else {
+		st, err = openStream(ctx, cl, c, rewritten)
+	}
 	if err != nil {
 		ae := upstream.NormalizeError(c, err, 0, hookOrNoop(hook))
 		return nil, &sdkAttemptError{ae: ae}

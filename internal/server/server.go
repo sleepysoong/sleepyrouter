@@ -27,8 +27,9 @@ type Deps struct {
 
 // Server is the localhost gateway.
 type Server struct {
-	deps Deps
-	mux  *http.ServeMux
+	deps          Deps
+	mux           *http.ServeMux
+	continuations *reasoningContinuations
 }
 
 func New(d Deps) *Server {
@@ -38,7 +39,7 @@ func New(d Deps) *Server {
 	if d.Affinity == nil {
 		d.Affinity = state.New(nil)
 	}
-	s := &Server{deps: d, mux: http.NewServeMux()}
+	s := &Server{deps: d, mux: http.NewServeMux(), continuations: newReasoningContinuations()}
 	s.routes()
 	return s
 }

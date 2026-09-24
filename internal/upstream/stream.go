@@ -22,6 +22,8 @@ func IsMeaningfulEvent(eventType, payload string) bool {
 	p := payload
 	switch t {
 	case "response.output_text.delta",
+		"response.refusal.delta",
+		"response.refusal.done",
 		"response.function_call_arguments.delta",
 		"response.output_item.added",
 		"response.content_part.added",

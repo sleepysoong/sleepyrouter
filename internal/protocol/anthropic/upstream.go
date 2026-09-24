@@ -1,16 +1,34 @@
 package anthropic
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
 )
 
+// ReasoningContinuation is private gateway state used to continue a provider's
+// reasoning across stateless Anthropic Messages requests. Neither field is
+// included in the Anthropic response.
+type ReasoningContinuation struct {
+	ChatCompletions string
+	ResponsesItems  []json.RawMessage
+}
+
 // ToResponses converts an Anthropic request to a Responses API raw body.
 // All tool IDs and JSON schemas are preserved byte-for-byte.
 func ToResponses(p Parsed, upstreamModel string) ([]byte, error) {
+	return ToResponsesWithContinuations(p, upstreamModel, nil, false)
+}
+
+// ToResponsesWithContinuations adds provider-private reasoning continuation
+// data for prior assistant turns. Chat Completions continuations are encoded as
+// a temporary internal marker and removed by the Chat Completions adapter;
+// Responses continuations are inserted as their original reasoning items.
+func ToResponsesWithContinuations(p Parsed, upstreamModel string, continuations map[string]ReasoningContinuation, chatCompletions bool) ([]byte, error) {
 	instructions := systemToInstructions(p.Typed.System)
-	inputItems, err := messagesToInput(p.Typed.Messages)
+	inputItems, err := messagesToInput(p.Typed.Messages, continuations, chatCompletions)
 	if err != nil {
 		return nil, err
 	}
@@ -43,6 +61,9 @@ func ToResponses(p Parsed, upstreamModel string) ([]byte, error) {
 	if p.Typed.TopP != nil {
 		body["top_p"] = *p.Typed.TopP
 	}
+	if effort := thinkingToResponsesEffort(p.Typed.Thinking); effort != "" {
+		body["reasoning"] = map[string]any{"effort": effort}
+	}
 	outputConfig, err := outputConfigToResponses(p.Typed.OutputConfig)
 	if err != nil {
 		return nil, err
@@ -60,6 +81,42 @@ func ToResponses(p Parsed, upstreamModel string) ([]byte, error) {
 	}
 	body["stream"] = false // upstream streaming is controlled by caller transport
 	return json.Marshal(body)
+}
+
+// thinkingToResponsesEffort keeps Anthropic thinking-enabled requests on a
+// reasoning-capable Responses path. Responses exposes effort levels, not
+// Anthropic's separate thinking-token budget, so the budget mapping is an
+// explicit approximation; output_config.effort, when present, overrides it.
+func thinkingToResponsesEffort(raw json.RawMessage) string {
+	if len(raw) == 0 || isJSONNull(raw) {
+		return ""
+	}
+	var thinking struct {
+		Type         string `json:"type"`
+		BudgetTokens int    `json:"budget_tokens"`
+	}
+	if json.Unmarshal(raw, &thinking) != nil {
+		return ""
+	}
+	switch thinking.Type {
+	case "adaptive":
+		// Responses has no adaptive mode; medium is the bridge's neutral,
+		// reasoning-enabled default when the caller omitted output_config.effort.
+		return "medium"
+	case "enabled":
+		switch {
+		case thinking.BudgetTokens <= 4096:
+			return "low"
+		case thinking.BudgetTokens <= 8192:
+			return "medium"
+		case thinking.BudgetTokens <= 32768:
+			return "high"
+		default:
+			return "xhigh"
+		}
+	default:
+		return ""
+	}
 }
 
 func systemToInstructions(raw json.RawMessage) string {
@@ -90,9 +147,20 @@ func systemToInstructions(raw json.RawMessage) string {
 	return strings.Join(parts, "\n")
 }
 
-func messagesToInput(msgs []Message) ([]any, error) {
+func messagesToInput(msgs []Message, continuations map[string]ReasoningContinuation, chatCompletions bool) ([]any, error) {
 	var out []any
 	for _, m := range msgs {
+		var continuation ReasoningContinuation
+		if m.Role == "assistant" {
+			continuation = continuations[ContentFingerprint(m.Content)]
+			if !chatCompletions {
+				for _, item := range continuation.ResponsesItems {
+					if json.Valid(item) {
+						out = append(out, json.RawMessage(item))
+					}
+				}
+			}
+		}
 		s := strings.TrimSpace(string(m.Content))
 		if strings.HasPrefix(s, "\"") {
 			var str string
@@ -101,6 +169,7 @@ func messagesToInput(msgs []Message) ([]any, error) {
 			}
 			if m.Role == "assistant" || m.Role == "system" {
 				out = append(out, map[string]any{"type": "message", "role": m.Role, "content": str})
+				appendChatReasoningMarker(&out, m.Role, continuation, chatCompletions)
 				continue
 			}
 			out = append(out, map[string]any{
@@ -174,11 +243,53 @@ func messagesToInput(msgs []Message) ([]any, error) {
 			}
 		}
 		flushMessage()
+		appendChatReasoningMarker(&out, m.Role, continuation, chatCompletions)
 	}
 	if out == nil {
 		out = []any{}
 	}
 	return out, nil
+}
+
+func appendChatReasoningMarker(out *[]any, role string, continuation ReasoningContinuation, chatCompletions bool) {
+	if role != "assistant" || !chatCompletions || continuation.ChatCompletions == "" {
+		return
+	}
+	*out = append(*out, map[string]any{
+		"type": "chat_reasoning", "content": continuation.ChatCompletions,
+	})
+}
+
+// ContentFingerprint returns a stable digest for Anthropic assistant content.
+// Both client history and gateway-generated response bodies are decoded into
+// the same typed block representation before hashing, so omitted zero fields
+// do not create different keys.
+func ContentFingerprint(raw json.RawMessage) string {
+	if len(raw) == 0 || isJSONNull(raw) {
+		return ""
+	}
+	var canonical []byte
+	var text string
+	if raw[0] == '"' {
+		if json.Unmarshal(raw, &text) != nil {
+			return ""
+		}
+		canonical, _ = json.Marshal(struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}{Type: "string", Text: text})
+	} else {
+		var blocks []ContentBlock
+		if json.Unmarshal(raw, &blocks) != nil || blocks == nil {
+			return ""
+		}
+		canonical, _ = json.Marshal(blocks)
+	}
+	if len(canonical) == 0 {
+		return ""
+	}
+	digest := sha256.Sum256(canonical)
+	return hex.EncodeToString(digest[:])
 }
 
 func toolsToResponses(tools []Tool) ([]any, error) {
@@ -361,6 +472,25 @@ func toolResultToResponsesOutput(block ContentBlock) (any, error) {
 	var blocks []ContentBlock
 	if err := json.Unmarshal(block.Content, &blocks); err != nil {
 		return prefix + content, nil
+	}
+	// Tool-result text blocks are plain text payloads. Keeping them as Responses
+	// input_text parts causes the Chat Completions adapter to JSON-encode the
+	// parts array into the tool message's content string, so downstream tools
+	// receive JSON syntax instead of their actual result text.
+	allText := true
+	for _, nested := range blocks {
+		if nested.Type != "text" {
+			allText = false
+			break
+		}
+	}
+	if allText {
+		var result strings.Builder
+		result.WriteString(prefix)
+		for _, nested := range blocks {
+			result.WriteString(nested.Text)
+		}
+		return result.String(), nil
 	}
 	out := make([]any, 0, len(blocks)+1)
 	if prefix != "" {

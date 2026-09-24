@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
@@ -15,16 +16,15 @@ type tomlCapabilities struct {
 }
 
 type tomlProvider struct {
-	Enabled   *bool             `toml:"enabled"`
 	BaseURL   string            `toml:"base_url"`
 	APIKeyEnv string            `toml:"api_key_env"`
+	WireAPI   string            `toml:"wire_api"`
 	Headers   map[string]string `toml:"headers"`
 }
 
 type tomlModel struct {
 	Provider              string            `toml:"provider"`
 	UpstreamModel         string            `toml:"upstream_model"`
-	Enabled               *bool             `toml:"enabled"`
 	ReasoningEffort       string            `toml:"reasoning_effort"`
 	ThinkingBudget        *int              `toml:"thinking_budget"`
 	Capabilities          *tomlCapabilities `toml:"capabilities"`
@@ -36,14 +36,11 @@ type tomlModel struct {
 type tomlFile struct {
 	Version *int `toml:"version"`
 	Server  *struct {
-		Host               string `toml:"host"`
-		Port               *int   `toml:"port"`
-		RequestBodyLimitMB *int   `toml:"request_body_limit_mb"`
-		ShutdownGrace      string `toml:"shutdown_grace"`
+		Host string `toml:"host"`
+		Port *int   `toml:"port"`
 	} `toml:"server"`
 	Routing *struct {
-		DefaultGroup       string `toml:"default_group"`
-		UnknownModelPolicy string `toml:"unknown_model_policy"`
+		DefaultGroup string `toml:"default_group"`
 	} `toml:"routing"`
 	Timeouts *struct {
 		Request    string `toml:"request"`
@@ -60,7 +57,6 @@ type tomlFile struct {
 	Providers map[string]tomlProvider `toml:"providers"`
 	Models    map[string]tomlModel    `toml:"models"`
 	Groups    map[string][]string     `toml:"groups"`
-	Aliases   map[string]string       `toml:"aliases"`
 }
 
 // orderedGroupKeys preserves TOML document order for [groups] keys.
@@ -161,7 +157,7 @@ func cutComment(s string) string {
 func Parse(data []byte) (Config, error) {
 	cfg := Defaults()
 	var tf tomlFile
-	if err := toml.Unmarshal(data, &tf); err != nil {
+	if err := toml.NewDecoder(strings.NewReader(string(data))).DisallowUnknownFields().Decode(&tf); err != nil {
 		return Config{}, fmt.Errorf("toml parse: %w", err)
 	}
 	if tf.Version != nil {
@@ -174,22 +170,9 @@ func Parse(data []byte) (Config, error) {
 		if tf.Server.Port != nil {
 			cfg.Server.Port = *tf.Server.Port
 		}
-		if tf.Server.RequestBodyLimitMB != nil {
-			cfg.Server.RequestBodyLimitMB = *tf.Server.RequestBodyLimitMB
-		}
-		if tf.Server.ShutdownGrace != "" {
-			d, err := time.ParseDuration(tf.Server.ShutdownGrace)
-			if err != nil {
-				return Config{}, fmt.Errorf("server.shutdown_grace: %w", err)
-			}
-			cfg.Server.ShutdownGrace = d
-		}
 	}
 	if tf.Routing != nil {
 		cfg.Routing.DefaultGroup = tf.Routing.DefaultGroup
-		if tf.Routing.UnknownModelPolicy != "" {
-			cfg.Routing.UnknownModelPolicy = tf.Routing.UnknownModelPolicy
-		}
 	}
 	if tf.Timeouts != nil {
 		if tf.Timeouts.Request != "" {
@@ -228,13 +211,14 @@ func Parse(data []byte) (Config, error) {
 	if tf.Providers != nil {
 		for id, p := range tf.Providers {
 			defBase, defEnv := builtinProviderDefault(id)
-			pc := ProviderConfig{Enabled: true, Headers: map[string]string{}}
-			if p.Enabled != nil {
-				pc.Enabled = *p.Enabled
-			}
+			pc := ProviderConfig{Headers: map[string]string{}}
 			pc.BaseURL = p.BaseURL
 			if pc.BaseURL == "" {
 				pc.BaseURL = defBase
+			}
+			pc.WireAPI = p.WireAPI
+			if pc.WireAPI == "" {
+				pc.WireAPI = "responses"
 			}
 			pc.APIKeyEnv = p.APIKeyEnv
 			if pc.APIKeyEnv == "" {
@@ -248,22 +232,11 @@ func Parse(data []byte) (Config, error) {
 			cfg.Providers[id] = pc
 		}
 	}
-	// Ensure built-in providers exist even when [providers.x] omitted,
-	// so models referencing them validate. Enabled defaults true.
-	for _, id := range []string{"zen", "nvidia", "gemini", "openrouter"} {
-		if _, ok := cfg.Providers[id]; !ok {
-			defBase, defEnv := builtinProviderDefault(id)
-			cfg.Providers[id] = ProviderConfig{Enabled: true, BaseURL: defBase, APIKeyEnv: defEnv, Headers: map[string]string{}}
-		}
-	}
 	if tf.Models != nil {
 		for id, m := range tf.Models {
-			mc := ModelConfig{Enabled: true, Extra: map[string]any{}}
+			mc := ModelConfig{Extra: map[string]any{}}
 			mc.Provider = m.Provider
 			mc.UpstreamModel = m.UpstreamModel
-			if m.Enabled != nil {
-				mc.Enabled = *m.Enabled
-			}
 			mc.ReasoningEffort = m.ReasoningEffort
 			mc.ThinkingBudget = m.ThinkingBudget
 			if m.Capabilities != nil {
@@ -289,9 +262,6 @@ func Parse(data []byte) (Config, error) {
 			cfg.Groups[k] = cp
 		}
 		cfg.GroupOrd = orderedGroupKeys(data, cfg.Groups)
-	}
-	if tf.Aliases != nil {
-		cfg.Aliases = tf.Aliases
 	}
 	return cfg, nil
 }

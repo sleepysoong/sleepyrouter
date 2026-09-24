@@ -39,6 +39,12 @@ func ApplyProviderDefaults(raw []byte, c routing.Candidate) ([]byte, error) {
 			return raw, err
 		}
 	}
+	if c.Model.ReasoningEffort != "" && !gjson.GetBytes(out, "reasoning.effort").Exists() {
+		out, err = sjson.SetBytes(out, "reasoning.effort", c.Model.ReasoningEffort)
+		if err != nil {
+			return raw, err
+		}
+	}
 	return out, nil
 }
 

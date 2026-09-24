@@ -74,19 +74,15 @@ request = "10s"
 first_event = "5s"
 stream_idle = "10s"
 [providers.zen]
-enabled = true
 base_url = "` + baseA + `"
 api_key_env = "TEST_ZEN_KEY"
 [providers.nvidia]
-enabled = true
 base_url = "` + baseB + `"
 api_key_env = "TEST_NVIDIA_KEY"
 [providers.openrouter]
-enabled = true
 base_url = "` + baseC + `"
 api_key_env = "TEST_OR_KEY"
 [providers.gemini]
-enabled = true
 base_url = "` + baseD + `"
 api_key_env = "TEST_GEMINI_KEY"
 [models."zen/a"]
@@ -103,8 +99,6 @@ provider = "gemini"
 upstream_model = "d"
 [groups]
 coding = ["zen/a", "nvidia/b", "openrouter/c", "gemini/d"]
-[aliases]
-"sleepy-claude-coding" = "coding"
 `
 	cfg, err := config.Parse([]byte(toml))
 	if err != nil {
@@ -325,7 +319,7 @@ func TestHealthAndModels(t *testing.T) {
 	if rec2.Code != 200 {
 		t.Fatalf("models %d", rec2.Code)
 	}
-	if !strings.Contains(rec2.Body.String(), `"id":"sleepy-claude-coding"`) {
-		t.Fatalf("Claude Code discoverable alias missing from model list: %s", rec2.Body.String())
+	if !strings.Contains(rec2.Body.String(), `"id":"coding"`) || strings.Contains(rec2.Body.String(), `"id":"sleepy-claude-coding"`) {
+		t.Fatalf("model list should contain the group but no alias: %s", rec2.Body.String())
 	}
 }

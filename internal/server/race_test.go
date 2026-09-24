@@ -9,10 +9,12 @@ import (
 )
 
 func TestConcurrentRoutingDuringReload(t *testing.T) {
-	cfg, _ := config.Parse([]byte(`
+	cfg, err := config.Parse([]byte(`
 version = 1
 [routing]
 default_group = "coding"
+[providers.zen]
+[providers.nvidia]
 [models."zen/a"]
 provider = "zen"
 upstream_model = "a"
@@ -22,7 +24,13 @@ upstream_model = "b"
 [groups]
 coding = ["zen/a", "nvidia/b"]
 `))
-	store, _ := config.NewStore(cfg, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := config.NewStore(cfg, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
 		wg.Add(1)

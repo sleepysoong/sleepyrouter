@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -192,7 +193,7 @@ func runServe(o serveOpts) int {
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 	log.Info("server_shutdown", "msg", "shutting down")
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownGrace)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
 	return 0
@@ -252,22 +253,18 @@ func runDoctor() int {
 	} else {
 		fmt.Printf(".env: absent\n")
 	}
-	for _, id := range []string{"zen", "nvidia", "gemini", "openrouter"} {
-		envName := ""
-		if p, ok := cfg.Providers[id]; ok && p.APIKeyEnv != "" {
-			envName = p.APIKeyEnv
-		} else {
-			_, envName = config.BuiltinProviderDefault(id)
-		}
-		key, _ := config.LookupEnv(envName, dotenv)
+	providerIDs := make([]string, 0, len(cfg.Providers))
+	for id := range cfg.Providers {
+		providerIDs = append(providerIDs, id)
+	}
+	sort.Strings(providerIDs)
+	for _, id := range providerIDs {
+		key, _ := config.LookupEnv(cfg.Providers[id].APIKeyEnv, dotenv)
 		status := "no"
 		if key != "" {
 			status = "yes"
 		}
-		fmt.Printf("provider %-10s key(%s)=%s\n", id, envName, status)
-	}
-	for _, id := range extraProviders(cfg) {
-		fmt.Printf("provider %-10s custom\n", id)
+		fmt.Printf("provider %-10s key(%s)=%s\n", id, cfg.Providers[id].APIKeyEnv, status)
 	}
 	fmt.Printf("default_group: %s\n", cfg.Routing.DefaultGroup)
 	// Port availability.
@@ -293,18 +290,6 @@ func runDoctor() int {
 		fmt.Printf("proxy: detected (upstream uses ProxyFromEnvironment)\n")
 	}
 	return 0
-}
-
-func extraProviders(cfg config.Config) []string {
-	var out []string
-	for id := range cfg.Providers {
-		switch id {
-		case "zen", "nvidia", "gemini", "openrouter":
-		default:
-			out = append(out, id)
-		}
-	}
-	return out
 }
 
 func firstNonEmpty(a, b string) string {

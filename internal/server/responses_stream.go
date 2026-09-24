@@ -112,15 +112,18 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 }
 
 type streamResult struct {
-	success            bool
-	inTok              int64
-	cachedInputTok     int64
-	cacheWriteInputTok int64
-	outTok             int64
-	responseID         string
-	statusCode         int
-	errClass           string
-	failErr            routing.AttemptError
+	success                 bool
+	inTok                   int64
+	cachedInputTok          int64
+	cacheWriteInputTok      int64
+	outTok                  int64
+	responseID              string
+	statusCode              int
+	errClass                string
+	failErr                 routing.AttemptError
+	continuationFingerprint string
+	reasoningContent        string
+	reasoningItems          []json.RawMessage
 }
 
 // precommitAndStreamOpenAI buffers until meaningful event, then commits and streams rest.

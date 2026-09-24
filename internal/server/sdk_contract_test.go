@@ -29,18 +29,27 @@ func TestOfficialClientsReadGatewayStreams(t *testing.T) {
 			if !strings.Contains(string(requestBody), `"call_id":"call_1"`) {
 				t.Errorf("tool result lost call_id: %s", requestBody)
 			}
+			if !strings.Contains(string(requestBody), `"output":"ok"`) {
+				t.Errorf("tool result content did not round-trip: %s", requestBody)
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(successBody("resp_2", "a", "file contents")))
 			return
 		}
+		if strings.Contains(string(requestBody), `"mcp__filesystem__read_file"`) && !strings.Contains(string(requestBody), `"reasoning":{"effort":"low"}`) {
+			t.Errorf("thinking-enabled MCP request lost its reasoning effort: %s", requestBody)
+		}
+		if strings.Contains(string(requestBody), `"mcp__filesystem__read_file"`) && !strings.Contains(string(requestBody), `"path":{"type":"string"}`) {
+			t.Errorf("local MCP tool schema did not round-trip: %s", requestBody)
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		frames := [][2]string{
 			{"response.created", `{"type":"response.created","sequence_number":0,"response":{"id":"resp_1","object":"response","model":"a","status":"in_progress","output":[]}}`},
-			{"response.output_item.added", `{"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"read_file","arguments":""}}`},
+			{"response.output_item.added", `{"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"mcp__filesystem__read_file","arguments":""}}`},
 			{"response.function_call_arguments.delta", `{"type":"response.function_call_arguments.delta","sequence_number":2,"item_id":"fc_1","output_index":0,"delta":"{\"path\":\"a\"}"}`},
 			{"response.function_call_arguments.done", `{"type":"response.function_call_arguments.done","sequence_number":3,"item_id":"fc_1","output_index":0,"arguments":"{\"path\":\"a\"}"}`},
-			{"response.output_item.done", `{"type":"response.output_item.done","sequence_number":4,"output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"read_file","arguments":"{\"path\":\"a\"}"}}`},
-			{"response.completed", `{"type":"response.completed","sequence_number":5,"response":{"id":"resp_1","object":"response","model":"a","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"read_file","arguments":"{\"path\":\"a\"}"}],"usage":{"input_tokens":6,"output_tokens":7,"total_tokens":13,"input_tokens_details":{"cached_tokens":2,"cache_write_tokens":1}}}}`},
+			{"response.output_item.done", `{"type":"response.output_item.done","sequence_number":4,"output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"mcp__filesystem__read_file","arguments":"{\"path\":\"a\"}"}}`},
+			{"response.completed", `{"type":"response.completed","sequence_number":5,"response":{"id":"resp_1","object":"response","model":"a","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"mcp__filesystem__read_file","arguments":"{\"path\":\"a\"}"}],"usage":{"input_tokens":6,"output_tokens":7,"total_tokens":13,"input_tokens_details":{"cached_tokens":2,"cache_write_tokens":1}}}}`},
 		}
 		for _, frame := range frames {
 			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", frame[0], frame[1])
@@ -73,8 +82,14 @@ func TestOfficialClientsReadGatewayStreams(t *testing.T) {
 	_ = openaiStream.Close()
 
 	anthropicClient := anthropicsdk.NewClient(anthropicoption.WithAPIKey("dummy"), anthropicoption.WithBaseURL(gateway.URL))
+	tool := anthropicsdk.ToolUnionParamOfTool(anthropicsdk.ToolInputSchemaParam{
+		Properties: map[string]any{"path": map[string]any{"type": "string"}},
+		Required:   []string{"path"},
+	}, "mcp__filesystem__read_file")
+	thinking := anthropicsdk.ThinkingConfigParamOfEnabled(1024)
 	anthropicStream := anthropicClient.Messages.NewStreaming(context.Background(), anthropicsdk.MessageNewParams{
-		Model: "coding", MaxTokens: 32,
+		Model: "coding", MaxTokens: 4096, Thinking: thinking,
+		Tools:    []anthropicsdk.ToolUnionParam{tool},
 		Messages: []anthropicsdk.MessageParam{anthropicsdk.NewUserMessage(anthropicsdk.NewTextBlock("hi"))},
 	})
 	var message anthropicsdk.Message
@@ -87,7 +102,7 @@ func TestOfficialClientsReadGatewayStreams(t *testing.T) {
 		t.Fatalf("Anthropic SDK stream: %v", err)
 	}
 	_ = anthropicStream.Close()
-	if len(message.Content) != 1 || message.Content[0].AsToolUse().ID != "call_1" || string(message.Content[0].AsToolUse().Input) != `{"path":"a"}` || string(message.StopReason) != "tool_use" {
+	if len(message.Content) != 1 || message.Content[0].AsToolUse().ID != "call_1" || message.Content[0].AsToolUse().Name != "mcp__filesystem__read_file" || string(message.Content[0].AsToolUse().Input) != `{"path":"a"}` || string(message.StopReason) != "tool_use" {
 		t.Fatalf("Anthropic SDK message: %+v", message)
 	}
 	if message.Usage.InputTokens != 3 || message.Usage.OutputTokens != 7 {
@@ -97,10 +112,11 @@ func TestOfficialClientsReadGatewayStreams(t *testing.T) {
 		t.Fatalf("Anthropic SDK cache usage: %+v", message.Usage)
 	}
 	followup, err := anthropicClient.Messages.New(context.Background(), anthropicsdk.MessageNewParams{
-		Model: "coding", MaxTokens: 32,
+		Model: "coding", MaxTokens: 4096,
+		Thinking: thinking, Tools: []anthropicsdk.ToolUnionParam{tool},
 		Messages: []anthropicsdk.MessageParam{
 			anthropicsdk.NewUserMessage(anthropicsdk.NewTextBlock("read a")),
-			anthropicsdk.NewAssistantMessage(anthropicsdk.NewToolUseBlock("call_1", map[string]any{"path": "a"}, "read_file")),
+			anthropicsdk.NewAssistantMessage(anthropicsdk.NewToolUseBlock("call_1", map[string]any{"path": "a"}, "mcp__filesystem__read_file")),
 			anthropicsdk.NewUserMessage(anthropicsdk.NewToolResultBlock("call_1", "ok", false)),
 		},
 	})

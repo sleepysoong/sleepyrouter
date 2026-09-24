@@ -18,6 +18,8 @@ import (
 // Result is a successful non-streaming upstream call.
 type Result struct {
 	RawBody               []byte
+	ReasoningContent      string
+	ReasoningItems        []json.RawMessage
 	ResponseID            string
 	InputTokens           int64
 	CachedInputTokens     int64
@@ -81,6 +83,39 @@ func truncate(s string, n int) string {
 
 // ExecuteNonStream performs one candidate attempt (non-streaming).
 func ExecuteNonStream(ctx context.Context, client openai.Client, c routing.Candidate, rawBody []byte, hook provider.CompatibilityHook) (Result, error) {
+	if c.Provider != nil && c.Provider.WireAPI == "chat_completions" {
+		params, requestOptions, err := ResponsesToChatCompletionRequest(rawBody, c.UpstreamModel)
+		if err != nil {
+			return Result{}, err
+		}
+		resp, err := client.Chat.Completions.New(ctx, params, requestOptions...)
+		if err != nil {
+			return Result{}, err
+		}
+		out, err := ChatCompletionResponseBody(resp)
+		if err != nil {
+			return Result{}, err
+		}
+		status := responses.ResponseStatusCompleted
+		if len(resp.Choices) > 0 && resp.Choices[0].FinishReason == "length" {
+			status = responses.ResponseStatusIncomplete
+		}
+		var reasoningContent string
+		if len(resp.Choices) > 0 {
+			var vendorFields struct {
+				ReasoningContent string `json:"reasoning_content"`
+			}
+			_ = json.Unmarshal([]byte(resp.Choices[0].Message.RawJSON()), &vendorFields)
+			reasoningContent = vendorFields.ReasoningContent
+		}
+		return Result{
+			RawBody: out, ReasoningContent: reasoningContent, ResponseID: ChatCompletionResponseID(resp),
+			InputTokens:           resp.Usage.PromptTokens,
+			CachedInputTokens:     resp.Usage.PromptTokensDetails.CachedTokens,
+			CacheWriteInputTokens: resp.Usage.PromptTokensDetails.CacheWriteTokens,
+			OutputTokens:          resp.Usage.CompletionTokens, Model: resp.Model, Status: status,
+		}, nil
+	}
 	var params responses.ResponseNewParams
 	if err := json.Unmarshal(rawBody, &params); err != nil {
 		return Result{}, err
@@ -117,10 +152,32 @@ func ExecuteNonStream(ctx context.Context, client openai.Client, c routing.Candi
 		return Result{}, &emptyResponseError{status: http.StatusOK}
 	}
 	return Result{
-		RawBody: out, ResponseID: respID, InputTokens: usageIn,
+		RawBody: out, ReasoningItems: ResponsesReasoningItems(out), ResponseID: respID, InputTokens: usageIn,
 		CachedInputTokens: cachedInput, CacheWriteInputTokens: cacheWriteInput,
 		OutputTokens: usageOut, Model: model, Status: resp.Status,
 	}, nil
+}
+
+// ResponsesReasoningItems extracts complete reasoning output items for a
+// later stateless tool turn. The raw JSON is retained so encrypted provider
+// continuation fields are not lost through an SDK type round-trip.
+func ResponsesReasoningItems(raw []byte) []json.RawMessage {
+	var response struct {
+		Output []json.RawMessage `json:"output"`
+	}
+	if json.Unmarshal(raw, &response) != nil {
+		return nil
+	}
+	var items []json.RawMessage
+	for _, item := range response.Output {
+		var header struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(item, &header) == nil && header.Type == "reasoning" {
+			items = append(items, append(json.RawMessage(nil), item...))
+		}
+	}
+	return items
 }
 
 type emptyResponseError struct{ status int }

@@ -76,6 +76,56 @@ func TestClaudeCodeAdaptiveAndMidConversationSystemMapping(t *testing.T) {
 	}
 }
 
+func TestEnabledThinkingMapsBudgetAndEffortOverride(t *testing.T) {
+	tests := []struct {
+		name       string
+		request    string
+		wantEffort string
+	}{
+		{
+			name:       "enabled budget maps to reasoning effort",
+			request:    `{"model":"m","max_tokens":8192,"thinking":{"type":"enabled","budget_tokens":4096},"messages":[{"role":"user","content":"reason carefully"}]}`,
+			wantEffort: "low",
+		},
+		{
+			name:       "explicit output effort takes precedence",
+			request:    `{"model":"m","max_tokens":16384,"thinking":{"type":"enabled","budget_tokens":4096},"output_config":{"effort":"high"},"messages":[{"role":"user","content":"reason carefully"}]}`,
+			wantEffort: "high",
+		},
+		{
+			name:       "adaptive thinking has enabled bridge default",
+			request:    `{"model":"m","max_tokens":4096,"thinking":{"type":"adaptive"},"messages":[{"role":"user","content":"reason carefully"}]}`,
+			wantEffort: "medium",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			parsed, err := anthropic.Parse([]byte(test.request))
+			if err != nil {
+				t.Fatalf("parse request: %v", err)
+			}
+			if !parsed.Requirements.Reasoning {
+				t.Fatal("thinking request must require a reasoning-capable route")
+			}
+			body, err := anthropic.ToResponses(parsed, "upstream-model")
+			if err != nil {
+				t.Fatalf("convert request: %v", err)
+			}
+			var got struct {
+				Reasoning struct {
+					Effort string `json:"effort"`
+				} `json:"reasoning"`
+			}
+			if err := json.Unmarshal(body, &got); err != nil {
+				t.Fatalf("decode Responses request: %v", err)
+			}
+			if got.Reasoning.Effort != test.wantEffort {
+				t.Fatalf("reasoning.effort = %q, want %q (body: %s)", got.Reasoning.Effort, test.wantEffort, body)
+			}
+		})
+	}
+}
+
 func TestToolResultFailureAndMultimodalContentMapping(t *testing.T) {
 	raw := []byte(`{
 		"model":"coding","max_tokens":64,
@@ -119,7 +169,9 @@ func TestParseRejectsBrokenRequestRelationships(t *testing.T) {
 		{"unsupported output format", `{"model":"m","max_tokens":1,"output_config":{"format":{"type":"text","schema":{}}},"messages":[{"role":"user","content":"hi"}]}`},
 		{"unsupported stop sequences", `{"model":"m","max_tokens":1,"stop_sequences":["END"],"messages":[{"role":"user","content":"hi"}]}`},
 		{"unsupported per-message output config", `{"model":"m","max_tokens":1,"messages":[{"role":"system","content":[],"output_config":{"effort":"low"}},{"role":"user","content":"hi"}]}`},
-		{"unrepresentable thinking budget", `{"model":"m","max_tokens":1,"thinking":{"type":"enabled","budget_tokens":4096},"messages":[{"role":"user","content":"hi"}]}`},
+		{"thinking budget missing", `{"model":"m","max_tokens":4096,"thinking":{"type":"enabled"},"messages":[{"role":"user","content":"hi"}]}`},
+		{"thinking budget below minimum", `{"model":"m","max_tokens":4096,"thinking":{"type":"enabled","budget_tokens":1000},"messages":[{"role":"user","content":"hi"}]}`},
+		{"thinking budget consumes max tokens", `{"model":"m","max_tokens":4096,"thinking":{"type":"enabled","budget_tokens":4096},"messages":[{"role":"user","content":"hi"}]}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -158,6 +210,63 @@ func TestToolMappingPreservesID(t *testing.T) {
 	// Number precision: 1.5 must survive (not 1.5000001 float noise is ok, but key must exist).
 	if !strings.Contains(s, "1.5") {
 		t.Fatalf("number precision lost: %s", s)
+	}
+}
+
+func TestResponsesContinuationReplaysBeforeAssistantToolTurn(t *testing.T) {
+	raw := []byte(`{
+		"model":"claude-sleepy","max_tokens":128,
+		"tools":[{"name":"mcp__filesystem__read_file","input_schema":{"type":"object","properties":{"path":{"type":"string"}}}}],
+		"messages":[
+			{"role":"assistant","content":[{"type":"text","text":"I will read that file."},{"type":"tool_use","id":"call_mcp_1","name":"mcp__filesystem__read_file","input":{"path":"/tmp/notes"}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_mcp_1","content":"file contents"}]},
+			{"role":"user","content":"Summarize it."}
+		]
+	}`)
+	parsed, err := anthropic.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	const continuation = `{"type":"reasoning","id":"rs_123","encrypted_content":"provider-sealed-state","summary":[]}`
+	fingerprint := anthropic.ContentFingerprint(parsed.Typed.Messages[0].Content)
+	body, err := anthropic.ToResponsesWithContinuations(parsed, "provider-model", map[string]anthropic.ReasoningContinuation{
+		fingerprint: {ResponsesItems: []json.RawMessage{json.RawMessage(continuation)}},
+	}, false)
+	if err != nil {
+		t.Fatalf("convert with continuation: %v", err)
+	}
+	var converted struct {
+		Input []json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(body, &converted); err != nil {
+		t.Fatalf("decode Responses input: %v", err)
+	}
+	if len(converted.Input) != 5 {
+		t.Fatalf("input item count = %d, want 5: %s", len(converted.Input), body)
+	}
+	var first struct {
+		Type             string `json:"type"`
+		EncryptedContent string `json:"encrypted_content"`
+	}
+	if err := json.Unmarshal(converted.Input[0], &first); err != nil {
+		t.Fatalf("decode continuation item: %v", err)
+	}
+	if first.Type != "reasoning" || first.EncryptedContent != "provider-sealed-state" {
+		t.Fatalf("first input item did not preserve reasoning continuation: %s", converted.Input[0])
+	}
+	var second struct {
+		Type string `json:"type"`
+		Role string `json:"role"`
+	}
+	if err := json.Unmarshal(converted.Input[1], &second); err != nil {
+		t.Fatalf("decode assistant message: %v", err)
+	}
+	if second.Type != "message" || second.Role != "assistant" {
+		t.Fatalf("assistant turn must immediately follow its reasoning item: %s", converted.Input[1])
+	}
+	if !strings.Contains(string(converted.Input[2]), `"type":"function_call"`) ||
+		!strings.Contains(string(converted.Input[3]), `"type":"function_call_output"`) {
+		t.Fatalf("MCP tool call/result round-trip was lost: %s", body)
 	}
 }
 
@@ -213,6 +322,49 @@ func TestResponseRefusalIsNotConvertedToEmptySuccess(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "I can’t help with that.") {
 		t.Fatalf("refusal was lost: %s", out)
+	}
+	var response struct {
+		StopReason string `json:"stop_reason"`
+	}
+	if err := json.Unmarshal(out, &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.StopReason != "refusal" {
+		t.Fatalf("stop_reason = %q, want refusal", response.StopReason)
+	}
+	var sdkMessage anthropicsdk.Message
+	if err := json.Unmarshal(out, &sdkMessage); err != nil {
+		t.Fatalf("Anthropic SDK could not decode refusal: %v", err)
+	}
+	if string(sdkMessage.StopReason) != "refusal" || len(sdkMessage.Content) != 1 || sdkMessage.Content[0].Text != "I can’t help with that." {
+		t.Fatalf("Anthropic SDK message = %+v", sdkMessage)
+	}
+}
+
+func TestOfficialAnthropicSDKAccumulatesRefusalStream(t *testing.T) {
+	enc := anthropic.NewStreamEncoder("claude-sleepy")
+	events := enc.StartEvents()
+	inputs := [][2]string{
+		{"response.refusal.delta", `{"type":"response.refusal.delta","item_id":"msg_1","output_index":0,"content_index":0,"delta":"I can’t "}`},
+		{"response.refusal.delta", `{"type":"response.refusal.delta","item_id":"msg_1","output_index":0,"content_index":0,"delta":"help with that."}`},
+		{"response.refusal.done", `{"type":"response.refusal.done","item_id":"msg_1","output_index":0,"content_index":0,"refusal":"I can’t help with that."}`},
+		{"response.completed", `{"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":5}}}`},
+	}
+	for _, in := range inputs {
+		events = append(events, enc.HandleResponsesEvent(in[0], in[1])...)
+	}
+	var message anthropicsdk.Message
+	for _, item := range events {
+		var event anthropicsdk.MessageStreamEventUnion
+		if err := event.UnmarshalJSON([]byte(item.Data)); err != nil {
+			t.Fatalf("parse %s: %v", item.Event, err)
+		}
+		if err := message.Accumulate(event); err != nil {
+			t.Fatalf("accumulate %s: %v", item.Event, err)
+		}
+	}
+	if !enc.Success || len(message.Content) != 1 || message.Content[0].Text != "I can’t help with that." || string(message.StopReason) != "refusal" {
+		t.Fatalf("accumulated refusal = %+v (success=%v)", message, enc.Success)
 	}
 }
 

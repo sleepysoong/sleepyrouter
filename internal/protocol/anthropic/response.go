@@ -39,6 +39,7 @@ func ToMessage(responsesRaw []byte, requestedModel string) ([]byte, error) {
 	}
 	var content []wireContentBlock
 	toolCount := 0
+	refusal := false
 	for _, item := range v.Output {
 		var probe struct {
 			Type      string `json:"type"`
@@ -61,10 +62,13 @@ func ToMessage(responsesRaw []byte, requestedModel string) ([]byte, error) {
 			for _, c := range probe.Content {
 				if c.Type == "output_text" && c.Text != "" {
 					content = append(content, wireContentBlock{Type: "text", Text: wireString(c.Text)})
-				} else if c.Type == "refusal" && c.Refusal != "" {
+				} else if c.Type == "refusal" {
+					refusal = true
 					// A Responses refusal is user-visible text. Dropping it would
 					// turn a valid refusal into an empty, apparently successful turn.
-					content = append(content, wireContentBlock{Type: "text", Text: wireString(c.Refusal)})
+					if c.Refusal != "" {
+						content = append(content, wireContentBlock{Type: "text", Text: wireString(c.Refusal)})
+					}
 				}
 			}
 			if probe.Text != "" {
@@ -101,6 +105,8 @@ func ToMessage(responsesRaw []byte, requestedModel string) ([]byte, error) {
 		stop = "max_tokens"
 	} else if toolCount > 0 {
 		stop = "tool_use"
+	} else if refusal {
+		stop = "refusal"
 	}
 	var inTok, outTok, cacheRead, cacheWrite int64
 	if v.Usage != nil {
