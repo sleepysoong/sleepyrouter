@@ -209,7 +209,7 @@ func (s *Server) precommitAndStreamOpenAI(w http.ResponseWriter, r *http.Request
 			if !ok {
 				// Stream ended. Check SDK error.
 				if err := st.Err(); err != nil {
-					return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: trunc(err.Error(), 300)}}
+					return false, streamResult{failErr: classifyStreamErr(r.Context(), c, err)}
 				}
 				if len(buf) == 0 || !meaningful {
 					return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: "upstream stream ended before meaningful event"}}

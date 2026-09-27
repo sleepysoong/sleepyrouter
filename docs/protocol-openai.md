@@ -9,6 +9,12 @@
 - Non-stream: 성공 시 client-facing `model`을 요청값으로 rewrite,
   완료된 응답에 한해 `response_id → provider/model` affinity 저장,
   실패·불완전 응답은 성공으로 기록하지 않음.
+- Stream 오류 분류: SDK stream은 지연 연결이라 upstream HTTP 오류(429/401/400…)가
+  `DoStream`이 아니라 첫 `Next()` 이후 `Err()`로 나온다. precommit은 이를
+  `SDKCaller.NormalizeStreamError`(= non-stream과 같은 `upstream.NormalizeError` + provider hook)로
+  분류해 status·class·URL 없는 메시지를 non-stream과 동일하게 만든다. 그래서 stream에서도
+  client error(400)는 failover 없이 즉시 400, 401/403은 같은 provider 건너뛰기가 적용된다
+  (`/v1/responses`, `/v1/messages`, `/hoard/v1/responses` 공통).
 - Stream: precommit 버퍼 (32 events / 64 KiB / 2s) 후 commit.
   `response.created`만으로는 commit 안 함.
   commit 전 실패 → failover, commit 후 실패 → 공식 `error` SSE로 종료

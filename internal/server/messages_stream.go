@@ -63,6 +63,16 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 			if r.Context().Err() != nil {
 				return
 			}
+			if ae.Class == routing.ErrorAuth && (ae.StatusCode == 401 || ae.StatusCode == 403) {
+				authFailed[c.ProviderID] = true
+			}
+			// Same rule as non-stream: a client error is the request's fault; do not fail over.
+			if ae.Class == routing.ErrorClient {
+				anthropic.WriteError(w, http.StatusBadRequest, "invalid_request_error", ae.SafeMessage)
+				s.recordUsage(reqID, "anthropic", parsed.RequestedModel, "", "", 0, 0, len(attempts), false, ae.Class.String(), time.Since(start).Milliseconds(), parsed.SessionID, snap.Generation, toUsageAttempts(reqID, attempts))
+				s.logAttempts(reqID, attempts)
+				return
+			}
 			continue
 		}
 		if res.success && res.continuationFingerprint != "" {
@@ -167,7 +177,7 @@ collect:
 			idleTimer.Stop()
 			if !ok {
 				if err := st.Err(); err != nil {
-					return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: trunc(err.Error(), 300)}}
+					return false, streamResult{failErr: classifyStreamErr(r.Context(), c, err)}
 				}
 				if !meaningful {
 					return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: "upstream stream ended before meaningful event"}}

@@ -67,7 +67,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		s.serveMessagesNonStream(w, r, snap, reqID, parsed, candidates, caller, start)
 		return
 	}
-	s.serveMessagesStream(w, r, snap, reqID, parsed, candidates, caller, start)
+	s.serveMessagesStream(w, r.WithContext(withStreamClassifier(r.Context(), caller)), snap, reqID, parsed, candidates, caller, start)
 }
 
 func (s *Server) serveMessagesNonStream(w http.ResponseWriter, r *http.Request, snap *config.RuntimeSnapshot, reqID string, parsed anthropic.Parsed, candidates []routing.Candidate, caller *openai.SDKCaller, start time.Time) {

@@ -85,6 +85,18 @@ func (s *SDKCaller) DoStream(ctx context.Context, c routing.Candidate, rawBody [
 	return st, nil
 }
 
+// NormalizeStreamError classifies an error returned by a stream's Err().
+// SDK streams open lazily, so upstream HTTP errors (429, 401, 400, …) surface
+// there instead of from DoStream; they must get the same status, class and
+// URL-free message as non-stream errors, or failover decisions diverge.
+func (s *SDKCaller) NormalizeStreamError(c routing.Candidate, err error) routing.AttemptError {
+	var hook provider.CompatibilityHook
+	if s != nil && s.Registry != nil {
+		hook = s.Registry.Get(c.ProviderID).Hook
+	}
+	return upstream.NormalizeError(c, err, 0, hookOrNoop(hook))
+}
+
 func hookOrNoop(h provider.CompatibilityHook) provider.CompatibilityHook {
 	if h != nil {
 		return h

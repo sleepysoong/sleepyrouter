@@ -521,3 +521,93 @@ func TestHoardOfficialClientCompatibility(t *testing.T) {
 		})
 	}
 }
+
+// Streaming upstream HTTP errors surface lazily (first Next()), not from DoStream.
+// They must be classified like non-stream errors: status, class, a message without
+// the internal upstream URL, and client errors must stop routing.
+func TestHoardStreamUpstreamHTTPErrorsAreClassified(t *testing.T) {
+	a := upstreamJSON(429, providerErr("rate_limit_error", "rate_limited", "slow down"))
+	defer a.Close()
+	b := upstreamJSON(401, providerErr("authentication_error", "invalid_api_key", "bad key"))
+	defer b.Close()
+	c := sseUpstream(okFrames, false)
+	defer c.Close()
+	srv := hoardServer(t, a.URL+"/v1", b.URL+"/v1", c.URL+"/v1")
+
+	_, raw, evs := streamThroughGateway(t, srv, "/hoard/v1/responses")
+	if len(evs) == 0 {
+		t.Fatalf("no stream: %s", raw)
+	}
+	tr := traceOf(t, []byte(evs[0].data))
+	want := "zen/a=failed/rate_limit/over=true gemini/d=skipped/unknown nvidia/b=failed/auth/over=true openrouter/c=streaming"
+	if tr.outcomes() != want {
+		t.Fatalf("stream classification:\n got %s\nwant %s", tr.outcomes(), want)
+	}
+	if tr.Attempts[0].StatusCode != 429 || tr.Attempts[2].StatusCode != 401 {
+		t.Fatalf("status codes lost on the stream path: %+v", tr.Attempts)
+	}
+	for _, at := range tr.Attempts {
+		if strings.Contains(at.Reason, "http://") {
+			t.Fatalf("internal upstream URL leaked into reason: %q", at.Reason)
+		}
+	}
+	if !strings.Contains(tr.Attempts[0].Reason, "slow down") {
+		t.Fatalf("reason: %q", tr.Attempts[0].Reason)
+	}
+}
+
+func TestHoardStreamClientErrorStopsRouting(t *testing.T) {
+	a := upstreamJSON(400, providerErr("invalid_request_error", "invalid_value", "input must not be empty"))
+	defer a.Close()
+	var hits int32
+	never := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(500)
+	}))
+	defer never.Close()
+	srv := hoardServer(t, a.URL+"/v1", never.URL+"/v1", never.URL+"/v1")
+	st, raw, _ := streamThroughGateway(t, srv, "/hoard/v1/responses")
+	if st != 400 {
+		t.Fatalf("stream client error must return 400 like non-stream, got %d %s", st, raw)
+	}
+	if hits != 0 {
+		t.Fatalf("client error must not fail over (other candidates hit %d times)", hits)
+	}
+	tr := traceOf(t, []byte(raw))
+	if tr.outcomes() != "zen/a=failed/client/over=false" {
+		t.Fatalf("trace: %s", tr.outcomes())
+	}
+}
+
+// Regression (shared stream path, not Hoard-specific): a streaming client error
+// used to fail over across every candidate and end as 502 on /v1/responses and
+// /v1/messages, while the non-stream path correctly returned 400 at once.
+func TestStreamClientErrorReturns400OnPlainEndpoints(t *testing.T) {
+	for _, tc := range []struct{ path, body string }{
+		{"/v1/responses", `{"model":"coding","input":"hi","stream":true}`},
+		{"/v1/messages", `{"model":"coding","max_tokens":16,"stream":true,"messages":[{"role":"user","content":"hi"}]}`},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			a := upstreamJSON(400, providerErr("invalid_request_error", "invalid_value", "bad input"))
+			defer a.Close()
+			var hits int32
+			other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++; w.WriteHeader(500) }))
+			defer other.Close()
+			srv := hoardServer(t, a.URL+"/v1", other.URL+"/v1", other.URL+"/v1")
+			gw := httptest.NewServer(srv.Handler())
+			defer gw.Close()
+			resp, err := http.Post(gw.URL+tc.path, "application/json", strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != 400 || hits != 0 {
+				t.Fatalf("status=%d otherHits=%d body=%s", resp.StatusCode, hits, b)
+			}
+			if strings.Contains(string(b), "sleepyrouter") {
+				t.Fatalf("plain endpoint must not carry the trace: %s", b)
+			}
+		})
+	}
+}

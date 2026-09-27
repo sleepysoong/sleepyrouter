@@ -97,7 +97,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.serveResponsesStream(w, r, snap, reqID, parsed, candidates, caller, start)
+	s.serveResponsesStream(w, r.WithContext(withStreamClassifier(r.Context(), caller)), snap, reqID, parsed, candidates, caller, start)
 }
 
 func (s *Server) resolveWithAffinity(snap *config.RuntimeSnapshot, requested string, req routing.Requirements, prevID string) ([]routing.Candidate, routing.RouteReason, error) {

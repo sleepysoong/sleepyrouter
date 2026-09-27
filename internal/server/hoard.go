@@ -248,3 +248,21 @@ func writeResponsesError(w http.ResponseWriter, r *http.Request, status int, cod
 	w.WriteHeader(status)
 	_, _ = w.Write(injectTrace(body, t))
 }
+
+type streamClassifierKey struct{}
+
+// withStreamClassifier stores the request's SDK caller so precommit code can
+// normalize lazily surfaced stream errors with the right provider hook.
+func withStreamClassifier(ctx context.Context, caller *openai.SDKCaller) context.Context {
+	return context.WithValue(ctx, streamClassifierKey{}, caller)
+}
+
+// classifyStreamErr turns a stream Err() into an AttemptError like the non-stream
+// path would (status, class, message without the upstream URL). Without a caller
+// (unit tests of precommit) it falls back to the previous generic classification.
+func classifyStreamErr(ctx context.Context, c routing.Candidate, err error) routing.AttemptError {
+	if caller, ok := ctx.Value(streamClassifierKey{}).(*openai.SDKCaller); ok && caller != nil {
+		return caller.NormalizeStreamError(c, err)
+	}
+	return routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: trunc(err.Error(), 300)}
+}
