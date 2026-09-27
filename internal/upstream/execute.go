@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/tidwall/gjson"
 	"net/http"
 	"strings"
 	"time"
@@ -32,7 +34,41 @@ type Result struct {
 // RewriteModel replaces top-level "model" without touching other fields.
 // Uses sjson so unknown fields keep byte-level fidelity.
 func RewriteModel(raw []byte, upstreamModel string) ([]byte, error) {
-	return sjson.SetBytes(raw, "model", upstreamModel)
+	out, err := sjson.SetBytes(raw, "model", upstreamModel)
+	if err != nil {
+		return nil, err
+	}
+	return NormalizeInputItems(out)
+}
+
+// NormalizeInputItems adds "type":"message" to input items that are messages
+// written without it ({"role": ..., "content": ...} — the Responses API's
+// EasyInputMessage form). The official SDK's typed ResponseNewParams decoder
+// silently discards the ENTIRE input array when any item lacks "type", so the
+// upstream would receive no conversation at all. Items that already have a
+// type, and non-message items, are left untouched.
+func NormalizeInputItems(raw []byte) ([]byte, error) {
+	input := gjson.GetBytes(raw, "input")
+	if !input.IsArray() {
+		return raw, nil
+	}
+	out := raw
+	var err error
+	i := 0
+	input.ForEach(func(_, item gjson.Result) bool {
+		if item.IsObject() && !item.Get("type").Exists() && item.Get("role").Exists() {
+			out, err = sjson.SetBytes(out, fmt.Sprintf("input.%d.type", i), "message")
+			if err != nil {
+				return false
+			}
+		}
+		i++
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // NormalizeError maps SDK/transport errors to AttemptError (no secrets).

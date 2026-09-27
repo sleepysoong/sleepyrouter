@@ -611,3 +611,37 @@ func TestStreamClientErrorReturns400OnPlainEndpoints(t *testing.T) {
 		})
 	}
 }
+
+// The Responses API accepts message items without "type" (EasyInputMessage:
+// {"role","content"}, content as string or parts). The typed SDK decoder silently
+// drops the WHOLE input array when an item lacks "type", so the model would
+// answer an empty conversation. Every endpoint must forward the conversation.
+func TestUntypedInputMessagesReachTheUpstream(t *testing.T) {
+	var got []string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = append(got, string(b))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, successBody("resp_1", "a", "ok"))
+	}))
+	defer up.Close()
+	srv := hoardServer(t, up.URL+"/v1", up.URL+"/v1", up.URL+"/v1")
+	body := `{"model":"zen/a","input":[` +
+		`{"role":"system","content":"be brief"},` +
+		`{"role":"user","content":[{"type":"input_text","text":"first question"},{"type":"input_image","image_url":"data:image/png;base64,AAAA"}]},` +
+		`{"role":"assistant","content":[{"type":"output_text","text":"first answer"}]},` +
+		`{"role":"user","content":"second question"},` +
+		`{"type":"function_call_output","call_id":"call_1","output":"tool result"}]}`
+	for _, path := range []string{"/v1/responses", "/hoard/v1/responses"} {
+		got = nil
+		st, resp := post(t, srv, path, body)
+		if st != 200 || len(got) != 1 {
+			t.Fatalf("%s: status=%d upstream calls=%d %s", path, st, len(got), resp)
+		}
+		for _, want := range []string{"be brief", "first question", "data:image/png;base64,AAAA", "first answer", "second question", `"call_id":"call_1"`} {
+			if !strings.Contains(got[0], want) {
+				t.Fatalf("%s: upstream lost %q:\n%s", path, want, got[0])
+			}
+		}
+	}
+}

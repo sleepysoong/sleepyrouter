@@ -5,6 +5,10 @@
 - `Parse`: raw 보존 + `model/stream/previous_response_id` + requirements 추출.
   `model` 누락 → 400.
 - Upstream 호출 전 `model`만 교체 (`sjson`, unknown field 보존).
+  같은 단계에서 `type` 없는 message item(`{"role","content"}` — Responses API의
+  EasyInputMessage 형식)에 `"type":"message"`를 채운다. 공식 SDK의 typed
+  `ResponseNewParams` decoder는 item 하나라도 `type`이 없으면 **input 배열 전체를
+  조용히 버려서** 업스트림이 대화 없이 호출됐다(`TestUntypedInputMessagesReachTheUpstream`).
   SDK `ResponseNewParams`의 `apijson` extras도 보존.
 - Non-stream: 성공 시 client-facing `model`을 요청값으로 rewrite,
   완료된 응답에 한해 `response_id → provider/model` affinity 저장,
