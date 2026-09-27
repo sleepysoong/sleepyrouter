@@ -51,6 +51,13 @@ type chatCompletionEventStream struct {
 	text             string
 	refusal          string
 	reasoningContent string
+	// exposeReasoning streams reasoning_content downstream as a Responses
+	// reasoning item (Hoard endpoint only); otherwise it stays private.
+	exposeReasoning  bool
+	reasoningID      string
+	reasoningOutput  int
+	reasoningStarted bool
+	reasoningClosed  bool
 	textID           string
 	textOutput       int
 	textStarted      bool
@@ -75,7 +82,22 @@ func openChatCompletionStream(ctx context.Context, client openaisdk.Client, c ro
 	return &chatCompletionEventStream{
 		inner: stream, responseID: "resp_" + uuid.NewString(), model: c.UpstreamModel,
 		createdAt: time.Now().Unix(), tools: map[int64]*streamedToolCall{},
+		exposeReasoning: StreamedReasoning(ctx),
 	}, nil
+}
+
+type streamedReasoningKey struct{}
+
+// WithStreamedReasoning marks a request whose client wants provider reasoning
+// streamed as reasoning_text events (the Hoard endpoint).
+func WithStreamedReasoning(ctx context.Context) context.Context {
+	return context.WithValue(ctx, streamedReasoningKey{}, true)
+}
+
+// StreamedReasoning reports whether WithStreamedReasoning was applied.
+func StreamedReasoning(ctx context.Context) bool {
+	v, _ := ctx.Value(streamedReasoningKey{}).(bool)
+	return v
 }
 
 func (s *chatCompletionEventStream) Next() bool {
@@ -108,8 +130,9 @@ func (s *chatCompletionEventStream) Next() bool {
 			var vendorFields struct {
 				ReasoningContent string `json:"reasoning_content"`
 			}
-			if json.Unmarshal([]byte(choice.Delta.RawJSON()), &vendorFields) == nil {
+			if json.Unmarshal([]byte(choice.Delta.RawJSON()), &vendorFields) == nil && vendorFields.ReasoningContent != "" {
 				s.reasoningContent += vendorFields.ReasoningContent
+				s.addReasoning(vendorFields.ReasoningContent)
 			}
 			for _, delta := range choice.Delta.ToolCalls {
 				s.addToolDelta(delta)
@@ -162,8 +185,50 @@ func (s *chatCompletionEventStream) captureUsage(usage *openaisdk.CompletionUsag
 	s.usage = &copy
 }
 
+func (s *chatCompletionEventStream) addReasoning(delta string) {
+	if !s.exposeReasoning || s.reasoningClosed {
+		return
+	}
+	if !s.reasoningStarted {
+		s.reasoningStarted = true
+		s.reasoningID = "rs_" + uuid.NewString()
+		s.reasoningOutput = s.nextOutput
+		s.nextOutput++
+		s.enqueue("response.output_item.added", map[string]any{
+			"output_index": s.reasoningOutput,
+			"item":         map[string]any{"id": s.reasoningID, "type": "reasoning", "summary": []any{}},
+		})
+	}
+	s.enqueue("response.reasoning_text.delta", map[string]any{
+		"item_id": s.reasoningID, "output_index": s.reasoningOutput, "content_index": 0, "delta": delta,
+	})
+}
+
+// closeReasoning ends the reasoning item before any later output item starts,
+// so output items never interleave.
+func (s *chatCompletionEventStream) closeReasoning() {
+	if !s.reasoningStarted || s.reasoningClosed {
+		return
+	}
+	s.reasoningClosed = true
+	s.enqueue("response.reasoning_text.done", map[string]any{
+		"item_id": s.reasoningID, "output_index": s.reasoningOutput, "content_index": 0, "text": s.reasoningContent,
+	})
+	s.enqueue("response.output_item.done", map[string]any{
+		"output_index": s.reasoningOutput, "item": s.reasoningItem(),
+	})
+}
+
+func (s *chatCompletionEventStream) reasoningItem() map[string]any {
+	return map[string]any{
+		"id": s.reasoningID, "type": "reasoning", "summary": []any{},
+		"content": []any{map[string]any{"type": "reasoning_text", "text": s.reasoningContent}},
+	}
+}
+
 func (s *chatCompletionEventStream) addText(delta string) {
 	if !s.textStarted {
+		s.closeReasoning()
 		s.textStarted = true
 		s.textID = "msg_" + uuid.NewString()
 		s.textOutput = s.nextOutput
@@ -185,6 +250,7 @@ func (s *chatCompletionEventStream) addText(delta string) {
 
 func (s *chatCompletionEventStream) addRefusal(delta string) {
 	if !s.refusalStarted {
+		s.closeReasoning()
 		s.refusalStarted = true
 		s.refusalID = "msg_" + uuid.NewString()
 		s.refusalOutput = s.nextOutput
@@ -222,6 +288,7 @@ func (s *chatCompletionEventStream) addToolDelta(delta openaisdk.ChatCompletionC
 		tool.arguments += delta.Function.Arguments
 	}
 	if !tool.started && tool.callID != "" && tool.name != "" {
+		s.closeReasoning()
 		tool.started = true
 		tool.itemID = "fc_" + uuid.NewString()
 		tool.outputIndex = s.nextOutput
@@ -246,6 +313,7 @@ func (s *chatCompletionEventStream) finishOutput() error {
 	if s.finalized {
 		return nil
 	}
+	s.closeReasoning()
 	if s.textStarted {
 		s.enqueue("response.output_text.done", map[string]any{
 			"item_id": s.textID, "output_index": s.textOutput, "content_index": 0, "text": s.text,
@@ -303,7 +371,10 @@ func (s *chatCompletionEventStream) outputItems() []any {
 		index int
 		item  any
 	}
-	items := make([]output, 0, len(s.tools)+2)
+	items := make([]output, 0, len(s.tools)+3)
+	if s.reasoningStarted {
+		items = append(items, output{index: s.reasoningOutput, item: s.reasoningItem()})
+	}
 	if s.textStarted {
 		items = append(items, output{index: s.textOutput, item: map[string]any{
 			"id": s.textID, "type": "message", "status": "completed", "role": "assistant",

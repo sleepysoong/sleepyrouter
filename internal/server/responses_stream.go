@@ -336,6 +336,17 @@ COMMIT:
 		if rid != "" {
 			respID = rid
 		}
+		if trace != nil && upstream.IsEmptyCompletion(typ, string(payload)) {
+			// Hoard: a committed stream (e.g. reasoning shown live) that ends
+			// with no visible answer is a failure the client can retry, not
+			// an empty success.
+			terminal, success, errClass = true, false, "upstream"
+			_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", errorEvent("upstream returned empty response", "upstream", lastSequence+1))
+			if fl != nil {
+				fl.Flush()
+			}
+			return
+		}
 		body := openai.RewriteStreamEventModel(string(payload), parsed.RequestedModel)
 		if typ != "" {
 			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", typ, body)

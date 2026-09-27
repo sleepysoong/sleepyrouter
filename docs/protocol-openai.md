@@ -64,5 +64,11 @@
 - 비밀 유지: reason은 `AttemptError.SafeMessage`에서 오며, 추가로 현재 snapshot의 provider API key
   문자열을 `[redacted]`로 치환한다. SDK가 오류 본문을 해석하지 못해 빈 메시지(`": : "`)가 되면
   HTTP 상태로 대체한다.
+- Reasoning: `wire_api = "chat_completions"` provider의 `reasoning_content`는 이 endpoint에서만
+  Responses `reasoning` item(`output_item.added` → `response.reasoning_text.delta`… → `reasoning_text.done`
+  → `output_item.done`, 최종 `output`에도 `content:[{type:reasoning_text}]`)으로 흘려보낸다. 답변 item이
+  열리기 전에 닫는다. 다른 endpoint에서는 기존대로 비공개(continuation 전용).
+- commit 후 `response.completed`에 보이는 출력이 없으면(reasoning뿐) completed 대신 `error`
+  (`upstream returned empty response`, 선택 후보 `failed`)를 보낸다. 클라이언트가 재시도하면 된다.
 - 한계: 추적은 OpenAI 스키마 밖 확장이다. 공식 OpenAI Go SDK는 알 수 없는 필드/이벤트를 허용하는 것을
   `TestHoardOfficialClientCompatibility`로 확인했지만, 모든 클라이언트를 보장하지 않는다.

@@ -78,7 +78,10 @@ func routeTraceFrom(ctx context.Context) *routeTrace {
 }
 
 func (s *Server) handleHoardResponses(w http.ResponseWriter, r *http.Request) {
-	s.handleResponses(w, r.WithContext(withRouteTrace(r.Context(), &routeTrace{Candidates: []string{}, Attempts: []traceAttempt{}})))
+	// Hoard shows the model's reasoning live, so Chat Completions
+	// reasoning_content is streamed as reasoning_text events here.
+	ctx := openai.WithStreamedReasoning(withRouteTrace(r.Context(), &routeTrace{Candidates: []string{}, Attempts: []traceAttempt{}}))
+	s.handleResponses(w, r.WithContext(ctx))
 }
 
 // setRoute records the resolved candidate plan and remembers provider keys to scrub.

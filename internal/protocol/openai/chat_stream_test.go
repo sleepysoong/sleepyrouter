@@ -275,3 +275,65 @@ func containsEvent(events []string, want string) bool {
 	}
 	return false
 }
+
+func TestChatCompletionStreamExposesReasoningWhenRequested(t *testing.T) {
+	chunk := func(raw string) openaisdk.ChatCompletionChunk {
+		t.Helper()
+		var decoded openaisdk.ChatCompletionChunk
+		if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+			t.Fatalf("decode chunk: %v", err)
+		}
+		return decoded
+	}
+	inner := &fakeChatCompletionStream{chunks: []openaisdk.ChatCompletionChunk{
+		chunk(`{"id":"c","object":"chat.completion.chunk","created":1,"model":"t","choices":[{"index":0,"delta":{"reasoning_content":"step "},"finish_reason":null}]}`),
+		chunk(`{"id":"c","object":"chat.completion.chunk","created":1,"model":"t","choices":[{"index":0,"delta":{"reasoning_content":"two"},"finish_reason":null}]}`),
+		chunk(`{"id":"c","object":"chat.completion.chunk","created":1,"model":"t","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}`),
+		chunk(`{"id":"c","object":"chat.completion.chunk","created":1,"model":"t","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`),
+	}}
+	stream := &chatCompletionEventStream{inner: inner, responseID: "resp_r", model: "t", createdAt: 1, tools: map[int64]*streamedToolCall{}, exposeReasoning: true}
+	encoder := anthropic.NewStreamEncoder("claude-alias")
+	_ = encoder.StartEvents()
+	var names []string
+	var completed map[string]any
+	var anthropicText strings.Builder
+	for stream.Next() {
+		name, payload := stream.Event()
+		names = append(names, name)
+		if name == "response.completed" {
+			if err := json.Unmarshal(payload, &completed); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, ev := range encoder.HandleResponsesEvent(name, string(payload)) {
+			if ev.Event == "content_block_delta" {
+				anthropicText.WriteString(ev.Data)
+			}
+		}
+	}
+	if err := stream.Err(); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"response.created",
+		"response.output_item.added", "response.reasoning_text.delta", "response.reasoning_text.delta",
+		"response.reasoning_text.done", "response.output_item.done",
+		"response.output_item.added", "response.content_part.added", "response.output_text.delta",
+		"response.output_text.done", "response.content_part.done", "response.output_item.done",
+		"response.completed",
+	}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Fatalf("events =\n%v\nwant\n%v", names, want)
+	}
+	output := completed["response"].(map[string]any)["output"].([]any)
+	if len(output) != 2 || output[0].(map[string]any)["type"] != "reasoning" || output[1].(map[string]any)["type"] != "message" {
+		t.Fatalf("output = %v", output)
+	}
+	if stream.ProviderReasoningContent() != "step two" {
+		t.Fatalf("continuation = %q", stream.ProviderReasoningContent())
+	}
+	// Anthropic encoding of the same events carries only the answer.
+	if strings.Contains(anthropicText.String(), "step") || !strings.Contains(anthropicText.String(), "hi") || !encoder.Success {
+		t.Fatalf("anthropic deltas = %s success=%v", anthropicText.String(), encoder.Success)
+	}
+}
