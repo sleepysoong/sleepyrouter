@@ -354,3 +354,59 @@ func TestPrecommitEmptyCompletionFailsOver(t *testing.T) {
 		t.Fatalf("wrote to client before commit: %q", w.Body.String())
 	}
 }
+
+// delayedStream sleeps before emitting each event after the first.
+type delayedStream struct {
+	seqStream
+	delay time.Duration
+}
+
+func (f *delayedStream) Next() bool {
+	if f.idx > 0 && f.idx < len(f.events) {
+		time.Sleep(f.delay)
+	}
+	return f.seqStream.Next()
+}
+
+// A reasoning upstream that stays silent after response.created for longer
+// than the precommit delay must not be committed on the timer: if it then
+// completes empty, the attempt is still failoverable.
+func TestPrecommitDelayDoesNotCommitLifecycleOnly(t *testing.T) {
+	snap := testStreamSnapshot(t)
+	s := &Server{}
+	st := &delayedStream{delay: 2500 * time.Millisecond, seqStream: seqStream{events: [][2]string{
+		{"response.created", `{"type":"response.created"}`},
+		{"response.completed", `{"type":"response.completed","response":{"output":[],"status":"completed"}}`},
+	}}}
+	req := httptest.NewRequest("POST", "/v1/responses", nil)
+	w := httptest.NewRecorder()
+	parsed := openai.ParsedRequest{Raw: []byte(`{"model":"coding","input":"hi"}`), RequestedModel: "coding"}
+	committed, res := s.precommitAndStreamOpenAI(w, req, snap, "test-req", parsed, streamCandidate(), st, 1)
+	if committed || res.failErr.SafeMessage != "upstream returned empty response" {
+		t.Fatalf("committed=%v res=%+v body=%q", committed, res, w.Body.String())
+	}
+}
+
+// Once a non-lifecycle event is buffered, the precommit delay still commits.
+func TestPrecommitDelayStillCommitsAfterNonLifecycleEvent(t *testing.T) {
+	snap := testStreamSnapshot(t)
+	s := &Server{}
+	st := &delayedStream{delay: 2500 * time.Millisecond, seqStream: seqStream{events: [][2]string{
+		{"response.created", `{"type":"response.created"}`},
+		{"response.reasoning_summary_part.added", `{"type":"response.reasoning_summary_part.added"}`},
+		{"response.completed", `{"type":"response.completed","response":{"output":[{"type":"message"}],"status":"completed"}}`},
+	}}}
+	req := httptest.NewRequest("POST", "/v1/responses", nil)
+	w := &notifyWriter{ResponseRecorder: httptest.NewRecorder(), committed: make(chan struct{})}
+	parsed := openai.ParsedRequest{Raw: []byte(`{"model":"coding","input":"hi"}`), RequestedModel: "coding"}
+	start := time.Now()
+	go func() { _, _ = s.precommitAndStreamOpenAI(w, req, snap, "test-req", parsed, streamCandidate(), st, 1) }()
+	select {
+	case <-w.committed:
+		if el := time.Since(start); el > 4800*time.Millisecond {
+			t.Fatalf("commit took %v; want ~2s after the non-lifecycle event", el)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("never committed")
+	}
+}

@@ -19,7 +19,9 @@
   분류해 status·class·URL 없는 메시지를 non-stream과 동일하게 만든다. 그래서 stream에서도
   client error(400)는 failover 없이 즉시 400, 401/403은 같은 provider 건너뛰기가 적용된다
   (`/v1/responses`, `/v1/messages`, `/hoard/v1/responses` 공통).
-- Stream: precommit 버퍼 (32 events / 64 KiB / 2s) 후 commit.
+- Stream: precommit 버퍼 (32 events / 64 KiB / 2s) 후 commit. 2s 타이머는 lifecycle 이벤트(created/in_progress/queued)만
+  버퍼된 동안에는 commit하지 않는다. commit 전 `response.completed`에 보이는 output이 없으면
+  (비었거나 reasoning뿐) `upstream returned empty response`로 failover.
   `response.created`만으로는 commit 안 함.
   commit 전 실패 → failover, commit 후 실패 → 공식 `error` SSE로 종료
   (이어붙이기 금지). SDK의 raw 이벤트 JSON을 보존하고 `response.model`만

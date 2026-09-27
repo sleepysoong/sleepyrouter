@@ -119,6 +119,7 @@ func (s *Server) precommitAndStreamAnthropic(w http.ResponseWriter, r *http.Requ
 	defer firstTimer.Stop()
 	var precommitTimer *time.Timer
 	var precommitCh <-chan time.Time
+	lifecycleOnly := true // buffered events so far are only created/in_progress
 
 	type step struct {
 		ok      bool
@@ -169,6 +170,12 @@ collect:
 			if len(buf) == 0 {
 				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorTimeout, SafeMessage: "first event timeout"}}
 			}
+			if lifecycleOnly {
+				// See precommitAndStreamOpenAI: keep failover open while the
+				// upstream has only announced the response.
+				precommitTimer.Reset(2 * time.Second)
+				continue
+			}
 			meaningful = true
 			break collect
 		case <-idleTimer.C:
@@ -186,6 +193,9 @@ collect:
 			}
 			buf = append(buf, buffered{typ: stp.typ, payload: stp.payload})
 			bufBytes += len(stp.payload)
+			if !upstream.IsLifecycleEvent(stp.typ) {
+				lifecycleOnly = false
+			}
 			if stp.typ == "response.failed" || stp.typ == "error" {
 				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: "upstream response failed before output"}}
 			}

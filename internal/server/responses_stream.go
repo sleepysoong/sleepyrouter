@@ -148,6 +148,7 @@ func (s *Server) precommitAndStreamOpenAI(w http.ResponseWriter, r *http.Request
 	// Precommit max delay after first event.
 	var precommitTimer *time.Timer
 	var precommitCh <-chan time.Time
+	lifecycleOnly := true // buffered events so far are only created/in_progress
 
 	type step struct {
 		ok      bool
@@ -201,6 +202,15 @@ func (s *Server) precommitAndStreamOpenAI(w http.ResponseWriter, r *http.Request
 			if len(buf) == 0 {
 				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorTimeout, SafeMessage: "first event timeout"}}
 			}
+			if lifecycleOnly {
+				// Only response.created/in_progress so far (e.g. a reasoning
+				// model thinking behind a Chat Completions bridge). Committing
+				// now gives the client nothing and forfeits failover if the
+				// upstream later completes empty; keep waiting, bounded by
+				// stream_idle.
+				precommitTimer.Reset(2 * time.Second)
+				continue
+			}
 			meaningful = true // precommit delay reached -> commit
 		case <-idleTimer.C:
 			return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorTimeout, SafeMessage: "stream idle timeout"}}
@@ -221,6 +231,9 @@ func (s *Server) precommitAndStreamOpenAI(w http.ResponseWriter, r *http.Request
 			}
 			buf = append(buf, buffered{typ: stp.typ, payload: stp.payload})
 			bufBytes += len(stp.payload)
+			if !upstream.IsLifecycleEvent(stp.typ) {
+				lifecycleOnly = false
+			}
 			if stp.typ == "response.failed" || stp.typ == "error" {
 				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: "upstream response failed before output"}}
 			}

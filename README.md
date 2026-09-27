@@ -354,6 +354,9 @@ tool arguments가 JSON으로 해석되지 않으면 응답 변환에 실패해 �
   오면 빈 성공으로 commit하지 않고 `upstream returned empty response`로 failover한다
   (reasoning model이 `reasoning_content`만 내고 끝나는 경우).
 - precommit 버퍼 기본: 32 events / 64 KiB / 첫 event 후 2s 중 먼저 도달 시 commit.
+  단, 버퍼에 `response.created`/`in_progress`/`queued`만 있으면 2s 타이머로 commit하지
+  않고 계속 기다린다(`stream_idle`까지). 생각만 하는 reasoning model을 빈 채로 commit해
+  failover 기회를 잃지 않기 위해서다.
 - **commit 이후 다른 model로 절대 failover하지 않는다.**
   response ID / tool ID / index가 바뀌어 client parser가 깨지기 때문이다.
 - pre-commit 상태의 `first_event` / `stream_idle` timeout은 candidate failover 사유.

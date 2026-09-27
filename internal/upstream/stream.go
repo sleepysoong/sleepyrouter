@@ -45,6 +45,16 @@ func IsMeaningfulEvent(eventType, payload string) bool {
 	return false
 }
 
+// IsLifecycleEvent reports response-announcement events that carry no output.
+// While only these are buffered, the precommit delay does not force a commit.
+func IsLifecycleEvent(eventType string) bool {
+	switch strings.TrimSpace(eventType) {
+	case "response.created", "response.in_progress", "response.queued":
+		return true
+	}
+	return false
+}
+
 // IsEmptyCompletion reports whether a response.completed event carries no
 // user-visible output (no items, or reasoning items only). Upstreams such as
 // reasoning models on Chat Completions bridges occasionally finish with only
