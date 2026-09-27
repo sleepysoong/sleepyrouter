@@ -325,3 +325,32 @@ func TestPrecommitForwardsEveryEventInOrder(t *testing.T) {
 	}
 	_ = time.Now
 }
+
+// An upstream that completes with no visible output (reasoning-only) before
+// commit must fail over rather than commit an empty success.
+func TestPrecommitEmptyCompletionFailsOver(t *testing.T) {
+	snap := testStreamSnapshot(t)
+	s := &Server{}
+	c := routing.Candidate{
+		LocalModelID: "openrouter/c", ProviderID: "openrouter", UpstreamModel: "c",
+		Model:    config.RuntimeModel{LocalID: "openrouter/c", ProviderID: "openrouter", UpstreamModel: "c"},
+		Provider: &config.RuntimeProvider{ID: "openrouter", BaseURL: "https://example.invalid/v1", APIKey: "k"},
+	}
+	st := &seqStream{events: [][2]string{
+		{"response.created", `{"type":"response.created"}`},
+		{"response.completed", `{"type":"response.completed","response":{"output":[],"status":"completed","usage":{"output_tokens":34,"output_tokens_details":{"reasoning_tokens":34}}}}`},
+	}}
+	req := httptest.NewRequest("POST", "/v1/responses", nil)
+	w := httptest.NewRecorder()
+	parsed := openai.ParsedRequest{Raw: []byte(`{"model":"coding","input":"hi"}`), RequestedModel: "coding"}
+	committed, res := s.precommitAndStreamOpenAI(w, req, snap, "test-req", parsed, c, st, 1)
+	if committed {
+		t.Fatalf("empty completion committed: %s", w.Body.String())
+	}
+	if !res.failErr.Class.Failoverable() || res.failErr.SafeMessage != "upstream returned empty response" {
+		t.Fatalf("failErr = %+v", res.failErr)
+	}
+	if w.Body.Len() != 0 {
+		t.Fatalf("wrote to client before commit: %q", w.Body.String())
+	}
+}

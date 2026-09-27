@@ -224,6 +224,9 @@ func (s *Server) precommitAndStreamOpenAI(w http.ResponseWriter, r *http.Request
 			if stp.typ == "response.failed" || stp.typ == "error" {
 				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: "upstream response failed before output"}}
 			}
+			if upstream.IsEmptyCompletion(stp.typ, string(stp.payload)) {
+				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: "upstream returned empty response"}}
+			}
 			if upstream.IsMeaningfulEvent(stp.typ, string(stp.payload)) {
 				meaningful = true
 			}

@@ -516,3 +516,22 @@ func TestApplyProviderDefaults(t *testing.T) {
 		t.Fatalf("model default overrode explicit effort: %s", explicit)
 	}
 }
+
+func TestEmptyCompletion(t *testing.T) {
+	cases := []struct {
+		typ, payload string
+		want         bool
+	}{
+		{"response.completed", `{"response":{"output":[],"status":"completed"}}`, true},
+		{"response.completed", `{"response":{"output":[{"type":"reasoning"}]}}`, true},
+		{"response.completed", `{"response":{"output":[{"type":"reasoning"},{"type":"message"}]}}`, false},
+		{"response.completed", `{"response":{"output":[{"type":"function_call"}]}}`, false},
+		{"response.completed", `{}`, false},
+		{"response.output_text.delta", `{"response":{"output":[]}}`, false},
+	}
+	for _, c := range cases {
+		if got := upstream.IsEmptyCompletion(c.typ, c.payload); got != c.want {
+			t.Errorf("IsEmptyCompletion(%s, %s) = %v, want %v", c.typ, c.payload, got, c.want)
+		}
+	}
+}

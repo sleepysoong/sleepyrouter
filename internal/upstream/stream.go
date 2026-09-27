@@ -45,4 +45,29 @@ func IsMeaningfulEvent(eventType, payload string) bool {
 	return false
 }
 
-var _ = json.Marshal
+// IsEmptyCompletion reports whether a response.completed event carries no
+// user-visible output (no items, or reasoning items only). Upstreams such as
+// reasoning models on Chat Completions bridges occasionally finish with only
+// reasoning_content; seen before commit, this must fail over like the
+// non-streaming empty-response path instead of committing an empty success.
+func IsEmptyCompletion(eventType, payload string) bool {
+	if strings.TrimSpace(eventType) != "response.completed" {
+		return false
+	}
+	var ev struct {
+		Response *struct {
+			Output []struct {
+				Type string `json:"type"`
+			} `json:"output"`
+		} `json:"response"`
+	}
+	if json.Unmarshal([]byte(payload), &ev) != nil || ev.Response == nil {
+		return false
+	}
+	for _, item := range ev.Response.Output {
+		if item.Type != "reasoning" {
+			return false
+		}
+	}
+	return true
+}

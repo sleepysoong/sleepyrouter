@@ -350,6 +350,9 @@ tool arguments가 JSON으로 해석되지 않으면 응답 변환에 실패해 �
 - commit 기준은 첫 TCP byte가 아니라 **첫 meaningful event**
   (text/reasoning/tool delta, content 시작, completed, 버퍼 한계).
   `response.created`만 받고 죽으면 failover 가능.
+- commit 전에 보이는 출력 없이(`output`이 비었거나 reasoning뿐) `response.completed`가
+  오면 빈 성공으로 commit하지 않고 `upstream returned empty response`로 failover한다
+  (reasoning model이 `reasoning_content`만 내고 끝나는 경우).
 - precommit 버퍼 기본: 32 events / 64 KiB / 첫 event 후 2s 중 먼저 도달 시 commit.
 - **commit 이후 다른 model로 절대 failover하지 않는다.**
   response ID / tool ID / index가 바뀌어 client parser가 깨지기 때문이다.
