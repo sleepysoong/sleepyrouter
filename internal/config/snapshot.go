@@ -56,6 +56,10 @@ func BuildSnapshot(cfg Config, dotenv map[string]string, generation uint64) *Run
 		Models:     map[string]RuntimeModel{},
 		Groups:     map[string][]string{},
 	}
+	if cfg.Server.AuthTokenEnv != "" {
+		snap.AuthRequired = true
+		snap.AuthToken, _ = LookupEnv(cfg.Server.AuthTokenEnv, dotenv)
+	}
 	for id, p := range cfg.Providers {
 		envName := p.APIKeyEnv
 		if envName == "" {

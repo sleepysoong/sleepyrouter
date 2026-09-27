@@ -180,6 +180,22 @@ reasoning/thinking의 전달·변환은 유지하지만, 동일 provider 안에�
 확장 필드는 typed 변환 중 삭제될 수 있으므로 임의 필드의 투명한 pass-through는
 보장하지 않는다.
 
+## Inbound 인증 (선택)
+
+기본값은 인증 없음이다(`127.0.0.1` 바인딩 전제). 다른 기기에서 접속하도록 열 때는 켠다.
+
+```toml
+[server]
+host = "0.0.0.0"
+auth_token_env = "SLEEPYROUTER_TOKEN"   # 값은 ~/.sleepyrouter/.env 에
+```
+
+- 클라이언트는 `Authorization: Bearer <token>`(OpenAI 클라이언트·Hoard) 또는 `x-api-key: <token>`(Claude Code)을 보낸다.
+- `/health`, `/ready`, `/version`은 공개. 나머지(`/v1/*`, `/hoard/*`)는 401.
+- 변수가 비어 있으면 **모든 API 호출을 거부**한다(설정 실수로 열리지 않게 fail closed).
+- 비교는 상수 시간. 토큰은 로그·응답에 남지 않고 upstream으로 전달되지 않는다(upstream은 provider 키).
+- config reload로 즉시 반영.
+
 ## Hoard setup (라우팅 추적 포함 Responses)
 
 OpenAI 클라이언트의 base URL을 `http://127.0.0.1:4567/hoard/v1`로 두면 된다.
@@ -215,14 +231,14 @@ OpenAI 클라이언트의 base URL을 `http://127.0.0.1:4567/hoard/v1`로 두면
 - 성공 후보의 `duration_ms`는 요청 전체 시간이다(기존 usage 기록과 동일).
 - 추적은 계약 밖 확장 필드/이벤트다. 공식 OpenAI Go SDK가 JSON·스트림을 그대로 읽는 것을 테스트로
   확인했다(`RawJSON()`/알 수 없는 이벤트 타입으로 접근). 엄격한 스키마 검증 클라이언트는 무시하도록 설정해야 할 수 있다.
-- 인증 없음(다른 엔드포인트와 동일). 기본 바인딩 `127.0.0.1` 밖으로 열 때는 추적이 provider/모델 구성과
-  upstream 오류 메시지를 노출한다는 점을 고려한다.
+- 인증: 기본은 없음(다른 엔드포인트와 동일). `127.0.0.1` 밖(LAN·Tailscale)으로 열 때는 아래
+  inbound 인증을 켠다 — 추적은 provider/모델 구성과 upstream 오류 메시지를 노출한다.
 
 ## Claude Code setup
 
 ```bash
 export ANTHROPIC_BASE_URL="http://127.0.0.1:4567"
-export ANTHROPIC_API_KEY="local-dummy"   # 라우터는 inbound API key 인증을 하지 않음
+export ANTHROPIC_API_KEY="local-dummy"   # inbound 인증(auth_token_env)을 켰다면 그 토큰
 export ANTHROPIC_MODEL="coding"   # config의 그룹 이름
 export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
 # custom model/group ID의 context window를 조정해야 할 때 설정:

@@ -45,7 +45,8 @@ func New(d Deps) *Server {
 }
 
 func (s *Server) Handler() http.Handler {
-	return chain(s.mux, requestIDMiddleware, recoverMiddleware(s.deps.Logger), logMiddleware(s.deps.Logger))
+	// Auth runs innermost so rejected requests still get a request ID and an access log line.
+	return chain(s.mux, requestIDMiddleware, recoverMiddleware(s.deps.Logger), logMiddleware(s.deps.Logger), s.authMiddleware)
 }
 
 // NewRequestID returns a UUIDv7 (unique across restarts).

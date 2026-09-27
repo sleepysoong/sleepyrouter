@@ -35,8 +35,9 @@ type tomlModel struct {
 type tomlFile struct {
 	Version *int `toml:"version"`
 	Server  *struct {
-		Host string `toml:"host"`
-		Port *int   `toml:"port"`
+		Host         string `toml:"host"`
+		Port         *int   `toml:"port"`
+		AuthTokenEnv string `toml:"auth_token_env"`
 	} `toml:"server"`
 	Routing *struct {
 		DefaultGroup string `toml:"default_group"`
@@ -169,6 +170,7 @@ func Parse(data []byte) (Config, error) {
 		if tf.Server.Port != nil {
 			cfg.Server.Port = *tf.Server.Port
 		}
+		cfg.Server.AuthTokenEnv = strings.TrimSpace(tf.Server.AuthTokenEnv)
 	}
 	if tf.Routing != nil {
 		cfg.Routing.DefaultGroup = tf.Routing.DefaultGroup

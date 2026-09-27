@@ -38,6 +38,10 @@ func ParseCapability(v *bool) CapabilityState {
 type ServerConfig struct {
 	Host string
 	Port int
+	// AuthTokenEnv names the env var holding the inbound bearer token. Empty = no
+	// inbound auth (default; the gateway binds to 127.0.0.1). The token value itself
+	// never lives in config.toml, like provider API keys.
+	AuthTokenEnv string
 }
 
 type RoutingConfig struct {
@@ -126,10 +130,14 @@ type RuntimeSnapshot struct {
 	Server     ServerConfig
 	Routing    RoutingConfig
 	Timeouts   TimeoutsConfig
-	Providers  map[string]*RuntimeProvider
-	Models     map[string]RuntimeModel
-	Groups     map[string][]string
-	GroupOrder []string
+	// AuthRequired is true when [server] auth_token_env is set; AuthToken is its
+	// resolved value (empty = misconfigured, and requests are rejected: fail closed).
+	AuthRequired bool
+	AuthToken    string
+	Providers    map[string]*RuntimeProvider
+	Models       map[string]RuntimeModel
+	Groups       map[string][]string
+	GroupOrder   []string
 }
 
 func Defaults() Config {

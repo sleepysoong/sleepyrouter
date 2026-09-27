@@ -3,6 +3,11 @@ version = 1
 [server]
 host = "127.0.0.1"
 port = 4567
+# Optional inbound auth — set it before binding beyond 127.0.0.1 (LAN, Tailscale).
+# Names the env var holding the token (put the value in ~/.sleepyrouter/.env).
+# Clients send `Authorization: Bearer <token>` or `x-api-key: <token>`.
+# /health, /ready, /version stay public. If the variable is empty, API calls are refused.
+# auth_token_env = "SLEEPYROUTER_TOKEN"
 
 [routing]
 default_group = "coding"
