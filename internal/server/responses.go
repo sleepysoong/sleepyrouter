@@ -18,25 +18,27 @@ import (
 
 func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	reqID := RequestIDFrom(r.Context())
+	trace := routeTraceFrom(r.Context()) // nil except on the Hoard endpoint
 	snap := s.deps.Store.Current()
 	if snap == nil {
-		openai.WriteError(w, http.StatusServiceUnavailable, "no_config", "server not ready")
+		writeResponsesError(w, r, http.StatusServiceUnavailable, "no_config", "server not ready")
 		return
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
 	if err != nil {
-		openai.WriteError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")
+		writeResponsesError(w, r, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")
 		return
 	}
 	parsed, err := openai.Parse(raw)
 	if err != nil {
 		if isMissingModelErr(err) {
-			openai.WriteBadRequest(w, "missing_model", "model is required")
+			writeResponsesError(w, r, http.StatusBadRequest, "missing_model", "model is required")
 		} else {
-			openai.WriteBadRequest(w, "invalid_request", "malformed JSON")
+			writeResponsesError(w, r, http.StatusBadRequest, "invalid_request", "malformed JSON")
 		}
 		return
 	}
+	trace.setRequested(parsed.RequestedModel)
 	if s.deps.Logger != nil {
 		s.deps.Logger.Info("request_received", "request_id", reqID, "protocol", "openai", "requested_model", parsed.RequestedModel, "stream", parsed.Stream)
 	}
@@ -44,12 +46,13 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	candidates, reason, err := s.resolveWithAffinity(snap, parsed.RequestedModel, parsed.Requirements, parsed.PreviousResponseID)
 	if err != nil {
 		if routing.IsUnknownModel(err) {
-			openai.WriteError(w, http.StatusNotFound, "model_not_found", "unknown model")
+			writeResponsesError(w, r, http.StatusNotFound, "model_not_found", "unknown model")
 		} else {
-			openai.WriteBadRequest(w, "invalid_request", err.Error())
+			writeResponsesError(w, r, http.StatusBadRequest, "invalid_request", err.Error())
 		}
 		return
 	}
+	trace.setRoute(snap, parsed.RequestedModel, reason, candidates)
 	if s.deps.Logger != nil {
 		names := make([]string, 0, len(candidates))
 		for _, c := range candidates {
@@ -58,7 +61,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		s.deps.Logger.Info("route_resolved", "request_id", reqID, "reason", string(reason), "candidates", names)
 	}
 	if len(candidates) == 0 {
-		openai.WriteError(w, http.StatusServiceUnavailable, "no_usable_candidates", "no usable candidates")
+		writeResponsesError(w, r, http.StatusServiceUnavailable, "no_usable_candidates", "no usable candidates")
 		s.recordUsage(reqID, "openai", parsed.RequestedModel, "", "", 0, 0, 0, false, "no_usable", 0, "", snap.Generation, nil)
 		return
 	}
@@ -76,11 +79,21 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		if outcome.Result != nil {
 			s.onOpenAISuccess(snap, reqID, parsed, outcome.Candidate, *outcome.Result, dur, outcome.Attempts)
 			setDebugHeaders(w, reqID, outcome.Candidate, len(outcome.Attempts)+1, snap.Generation)
+			body := outcome.Result.RawBody
+			if trace != nil {
+				status := "succeeded"
+				if st := string(outcome.Result.Status); st != "" && st != "completed" {
+					status = st // e.g. "incomplete": answered, but not a completed response
+				}
+				trace.record(candidates, outcome.Attempts, &outcome.Candidate, status, routing.AttemptError{Duration: dur})
+				body = injectTrace(body, trace)
+			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(outcome.Result.RawBody)
+			_, _ = w.Write(body)
 			return
 		}
-		s.onOpenAIFailure(w, reqID, parsed, dur, outcome.Attempts, lastErr, snap.Generation)
+		trace.record(candidates, outcome.Attempts, nil, "", routing.AttemptError{})
+		s.onOpenAIFailure(w, r, reqID, parsed, dur, outcome.Attempts, lastErr, snap.Generation)
 		return
 	}
 
@@ -148,7 +161,7 @@ func (s *Server) onOpenAISuccess(snap *config.RuntimeSnapshot, reqID string, par
 	s.logAttempts(reqID, attempts)
 }
 
-func (s *Server) onOpenAIFailure(w http.ResponseWriter, reqID string, parsed openai.ParsedRequest, dur time.Duration, attempts []routing.AttemptError, lastErr *routing.AttemptError, gen uint64) {
+func (s *Server) onOpenAIFailure(w http.ResponseWriter, r *http.Request, reqID string, parsed openai.ParsedRequest, dur time.Duration, attempts []routing.AttemptError, lastErr *routing.AttemptError, gen uint64) {
 	status := http.StatusBadGateway
 	code := "all_candidates_failed"
 	msg := "All configured candidates failed"
@@ -181,7 +194,7 @@ func (s *Server) onOpenAIFailure(w http.ResponseWriter, reqID string, parsed ope
 		s.deps.Logger.Info("request_failed", "request_id", reqID, "attempts", len(atts), "error", msg)
 	}
 	s.logAttempts(reqID, attempts)
-	openai.WriteError(w, status, code, msg)
+	writeResponsesError(w, r, status, code, msg)
 }
 
 func allKeyMissing(atts []routing.AttemptError) bool {

@@ -34,3 +34,23 @@
 | 도구 호출·reasoning·이미지/오디오 등 출력 item | 업스트림 의존 | 라우터는 OpenAI 쪽에서는 변환하지 않음. 선택한 Responses 호환 모델이 해당 item을 실제 지원해야 함. |
 | `response.completed` / `response.failed` / `response.incomplete` / `error` | 지원 | 원본 터미널 이벤트를 전달하고 완료만 성공으로 기록. 커밋 후 전송 중단에는 `error` SSE를 생성. |
 | `previous_response_id` | 부분 지원 | 완료 ID affinity는 프로세스 메모리 기반. 재시작/설정 변경 시 동일 업스트림 상태를 보장하지 않음. |
+
+## Hoard endpoint — `POST /hoard/v1/responses`
+
+`internal/server/hoard.go`. `/v1/responses`와 같은 handler(`handleResponses`)를 요청 context에
+`routeTrace`를 실어 호출한다. 추적이 없는 요청(`/v1/responses`)에서는 모든 hook이 no-op이므로
+기존 계약은 바뀌지 않는다(`TestHoardPlainStreamHasNoRoutingEvent` 등).
+
+- 추적 내용: 요청 모델, route reason, 설정 순서 그대로의 candidate 목록, 선택된 모델/provider,
+  attempt 목록(outcome, error_class, status_code, reason, failed_over, duration_ms, upstream_model).
+- JSON(성공·오류): 최상위 `sleepyrouter.routing`을 `sjson`으로 추가. 원본 응답 필드는 그대로.
+- Stream: precommit 동안 버퍼링은 동일. **commit 직후, 버퍼링된 첫 upstream 이벤트 앞에**
+  `event: sleepyrouter.routing`(`{"type":"sleepyrouter.routing","routing":{...}}`, sequence_number 없음)을
+  한 번 쓴다. commit 전에 실패한 후보는 그 이벤트에 `failed`로 나오고, 모든 후보가 commit 전에 실패하면
+  기존처럼 JSON 오류(502/503) + 추적이다. commit 후 끊기면 게이트웨이의 `error` 이벤트에 추적을 싣고
+  선택된 후보를 `failed`(failed_over=false)로 표시한다 — commit 후 failover 금지 불변식 그대로.
+- 비밀 유지: reason은 `AttemptError.SafeMessage`에서 오며, 추가로 현재 snapshot의 provider API key
+  문자열을 `[redacted]`로 치환한다. SDK가 오류 본문을 해석하지 못해 빈 메시지(`": : "`)가 되면
+  HTTP 상태로 대체한다.
+- 한계: 추적은 OpenAI 스키마 밖 확장이다. 공식 OpenAI Go SDK는 알 수 없는 필드/이벤트를 허용하는 것을
+  `TestHoardOfficialClientCompatibility`로 확인했지만, 모든 클라이언트를 보장하지 않는다.

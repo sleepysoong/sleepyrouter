@@ -10,6 +10,7 @@
 인터페이스를 동시에 제공한다.
 
 - `POST /v1/responses` — OpenAI Responses API (Codex / OpenAI client)
+- `POST /hoard/v1/responses` — 같은 Responses API + **라우팅 추적**(시도한 모델과 실패 이유). Hoard 앱용
 - `POST /v1/messages`, `POST /v1/messages/count_tokens` — Anthropic Messages API (Claude Code)
 
 핵심 원칙: **모델 선택과 클라이언트 프로토콜은 독립적**이다.
@@ -178,6 +179,44 @@ reasoning/thinking의 전달·변환은 유지하지만, 동일 provider 안에�
 요청에서 생략한 필드에만 적용한다. `store=false`도 보존한다. SDK가 모르는 필드나
 확장 필드는 typed 변환 중 삭제될 수 있으므로 임의 필드의 투명한 pass-through는
 보장하지 않는다.
+
+## Hoard setup (라우팅 추적 포함 Responses)
+
+OpenAI 클라이언트의 base URL을 `http://127.0.0.1:4567/hoard/v1`로 두면 된다.
+요청·응답·스트림은 `/v1/responses`와 **완전히 같고**(같은 파이프라인), 다음만 추가된다.
+
+- JSON 응답(성공·오류 모두): 최상위 `"sleepyrouter": {"routing": {...}}`
+- SSE: 커밋 직후 첫 이벤트로 `event: sleepyrouter.routing`, 커밋 후 스트림이 끊기면
+  게이트웨이가 만드는 `error` 이벤트에도 추적 포함
+
+```json
+"sleepyrouter": {"routing": {
+  "requested_model": "coding", "route_reason": "model-group",
+  "candidates": ["zen/a", "gemini/d", "nvidia/b", "openrouter/c"],
+  "selected_model": "openrouter/c", "selected_provider": "openrouter",
+  "attempts": [
+    {"index": 1, "model": "zen/a", "provider": "zen", "upstream_model": "a", "outcome": "failed",
+     "error_class": "rate_limit", "status_code": 429, "reason": "rate_limit_error: rate_limited: slow down",
+     "failed_over": true, "duration_ms": 12},
+    {"index": 2, "model": "gemini/d", "provider": "gemini", "outcome": "skipped",
+     "error_class": "unknown", "reason": "missing_api_key: API key missing for provider gemini", "duration_ms": 0},
+    {"index": 3, "model": "nvidia/b", "provider": "nvidia", "outcome": "failed", "error_class": "upstream",
+     "status_code": 503, "reason": "HTTP 503 Service Unavailable from upstream (no error details in body)",
+     "failed_over": true, "duration_ms": 30},
+    {"index": 4, "model": "openrouter/c", "provider": "openrouter", "outcome": "succeeded", "duration_ms": 410}
+  ]}}
+```
+
+- `outcome`: `succeeded` / `failed` / `skipped`(업스트림에 보내지 않음: key 없음, 같은 provider auth 실패) /
+  `streaming`(커밋된 스트림 진행 중) / 완료되지 않은 응답이면 upstream `status`(예: `incomplete`).
+- `failed_over`: 이 실패 뒤 다음 후보로 넘어갔는지. 클라이언트 오류(400 등)는 라우팅을 멈추고 `false`.
+- `reason`: 정규화된 upstream 오류(type: code: message) 또는 게이트웨이 사유. provider API key는
+  `[redacted]`로 가린다. upstream이 오류 본문을 주지 않으면 HTTP 상태로 채운다.
+- 성공 후보의 `duration_ms`는 요청 전체 시간이다(기존 usage 기록과 동일).
+- 추적은 계약 밖 확장 필드/이벤트다. 공식 OpenAI Go SDK가 JSON·스트림을 그대로 읽는 것을 테스트로
+  확인했다(`RawJSON()`/알 수 없는 이벤트 타입으로 접근). 엄격한 스키마 검증 클라이언트는 무시하도록 설정해야 할 수 있다.
+- 인증 없음(다른 엔드포인트와 동일). 기본 바인딩 `127.0.0.1` 밖으로 열 때는 추적이 provider/모델 구성과
+  upstream 오류 메시지를 노출한다는 점을 고려한다.
 
 ## Claude Code setup
 

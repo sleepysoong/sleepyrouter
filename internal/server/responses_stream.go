@@ -19,6 +19,7 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 	authFailed := map[string]bool{}
 	var attempts []routing.AttemptError
 	var attemptRows []usage.Attempt
+	trace := routeTraceFrom(r.Context())
 
 	for _, c := range candidates {
 		if authFailed[c.ProviderID] {
@@ -43,13 +44,16 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 			}
 			if ae.Class == routing.ErrorClient {
 				s.recordUsage(reqID, "openai", parsed.RequestedModel, "", "", 0, 0, len(attempts), false, ae.Class.String(), time.Since(start).Milliseconds(), "", snap.Generation, toUsageAttempts(reqID, attempts))
-				openai.WriteError(w, http.StatusBadRequest, "invalid_request", ae.SafeMessage)
+				trace.record(candidates, attempts, nil, "", routing.AttemptError{})
+				writeResponsesError(w, r, http.StatusBadRequest, "invalid_request", ae.SafeMessage)
 				return
 			}
 			continue
 		}
 
-		// Precommit phase: buffer until meaningful event or failure.
+		// Precommit phase: buffer until meaningful event or failure. The trace
+		// names this candidate as "streaming"; it is only emitted if it commits.
+		trace.record(candidates, attempts, &c, "streaming", routing.AttemptError{})
 		committed, result := s.precommitAndStreamOpenAI(w, r, snap, reqID, parsed, c, st, len(attempts)+1)
 		dur := time.Since(attemptStart)
 		if !committed {
@@ -67,7 +71,8 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 			}
 			if ae.Class == routing.ErrorClient {
 				s.recordUsage(reqID, "openai", parsed.RequestedModel, "", "", 0, 0, len(attempts), false, ae.Class.String(), time.Since(start).Milliseconds(), "", snap.Generation, toUsageAttempts(reqID, attempts))
-				openai.WriteError(w, http.StatusBadRequest, "invalid_request", ae.SafeMessage)
+				trace.record(candidates, attempts, nil, "", routing.AttemptError{})
+				writeResponsesError(w, r, http.StatusBadRequest, "invalid_request", ae.SafeMessage)
 				return
 			}
 			_ = st.Close()
@@ -108,7 +113,8 @@ func (s *Server) serveResponsesStream(w http.ResponseWriter, r *http.Request, sn
 		s.deps.Logger.Info("request_failed", "request_id", reqID, "attempts", len(attempts))
 	}
 	s.logAttempts(reqID, attempts)
-	openai.WriteError(w, status, code, "All configured candidates failed")
+	trace.record(candidates, attempts, nil, "", routing.AttemptError{})
+	writeResponsesError(w, r, status, code, "All configured candidates failed")
 }
 
 type streamResult struct {
@@ -238,6 +244,21 @@ COMMIT:
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	fl, _ := w.(http.Flusher)
+	trace := routeTraceFrom(r.Context())
+	if trace != nil {
+		// Hoard: announce the route before the first upstream event.
+		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", routingEventName, routingEventPayload(trace))
+	}
+	// Gateway-generated error after commit: on the Hoard endpoint it carries the
+	// trace with the selected candidate marked failed.
+	errorEvent := func(msg, class string, seq int64) []byte {
+		payload := openai.StreamErrorEvent(msg, seq)
+		if trace == nil {
+			return payload
+		}
+		trace.failSelected(class, msg)
+		return injectTrace(payload, trace)
+	}
 	var inTok, outTok int64
 	var cachedInputTok, cacheWriteInputTok int64
 	var respID string
@@ -345,7 +366,7 @@ COMMIT:
 				errClass = "upstream_eof"
 			}
 			if !terminal {
-				_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", openai.StreamErrorEvent("upstream stream ended before completion", lastSequence+1))
+				_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", errorEvent("upstream stream ended before completion", errClass, lastSequence+1))
 				if fl != nil {
 					fl.Flush()
 				}
@@ -357,7 +378,7 @@ COMMIT:
 			errClass = "timeout"
 			_ = st.Close()
 			if !terminal {
-				_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", openai.StreamErrorEvent("upstream stream idle timeout", lastSequence+1))
+				_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", errorEvent("upstream stream idle timeout", "timeout", lastSequence+1))
 				if fl != nil {
 					fl.Flush()
 				}
