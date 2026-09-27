@@ -78,9 +78,8 @@ coding = ["zen/model-a"]
   upstream은 `"chat_completions"`로 지정할 수 있다. 이 경우 Responses 표준 내부
   요청/응답을 Chat Completions wire format으로 바꿔 호출한다.
 
-수신 요청에 대한 API key 인증은 구현되어 있지 않다. 기본 loopback 바인딩을
-유지하고, 외부 주소에 바인딩할 때는 신뢰된 네트워크나 별도 인증 프록시로
-보호한다. `Authorization`/`x-api-key`의 클라이언트 값은 upstream 자격 증명으로
+수신 요청 인증은 선택이다(기본 꺼짐, 아래 "Inbound 인증"). 외부 주소에 바인딩할 때는
+`auth_token_env`를 켠다. `Authorization`/`x-api-key`의 클라이언트 값은 upstream 자격 증명으로
 전달되지 않는다.
 
 Hot reload: `config.toml` + `.env` 변경은 재시작 없이 반영.
