@@ -345,6 +345,20 @@ tool arguments가 JSON으로 해석되지 않으면 응답 변환에 실패해 �
   retry/rate-limit 헤더는 전달하지 않는다. provider의 사용자 지정
   `Authorization` 요청 헤더는 SDK API key 헤더보다 우선할 수 있다.
 
+## 콘솔 요청·reasoning 추적
+
+`sleepyrouter serve`는 정상 파싱된 Responses, Messages, count_tokens 요청 본문을
+구분선이 있는 콘솔 블록으로 표시한다.
+JSON의 인증·API 키·token·password·secret 필드는 `[redacted]`로 가리고,
+현재 provider 키와 inbound 인증 토큰 값도 본문 문자열에서 제거한다. 본문 미리보기는
+32 KiB로 제한하며, 1 MiB를 넘는 원본 본문은 미리보기에서 생략한다. 응답을
+스트리밍하는 동안 upstream이 평문 reasoning delta를 실제로 보내면 도착 순서대로
+표시하고, 설정된 키와 수신 토큰 값도 치환한다. 이 관찰은 클라이언트 응답 SSE를
+바꾸지 않으며, 비스트리밍 요청에서는 실시간 delta를 받을 수 없다.
+
+요청 본문과 reasoning은 sleepyrouter가 파일이나 DB에 저장하지 않고 stdout에만
+쓴다. 실행 환경의 터미널·서비스 매니저가 stdout을 별도로 기록할 수 있다.
+
 ## Streaming behavior
 
 - commit 기준은 첫 TCP byte가 아니라 **첫 meaningful event**

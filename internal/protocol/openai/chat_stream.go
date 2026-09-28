@@ -51,9 +51,10 @@ type chatCompletionEventStream struct {
 	text             string
 	refusal          string
 	reasoningContent string
-	// exposeReasoning streams reasoning_content downstream as a Responses
-	// reasoning item (Hoard endpoint only); otherwise it stays private.
+	// exposeReasoning streams reasoning_content to the client as a Responses
+	// reasoning item on the Hoard endpoint only; otherwise client output stays private.
 	exposeReasoning  bool
+	observeReasoning func(string)
 	reasoningID      string
 	reasoningOutput  int
 	reasoningStarted bool
@@ -81,12 +82,28 @@ func openChatCompletionStream(ctx context.Context, client openaisdk.Client, c ro
 	stream := client.Chat.Completions.NewStreaming(ctx, params, requestOptions...)
 	return &chatCompletionEventStream{
 		inner: stream, responseID: "resp_" + uuid.NewString(), model: c.UpstreamModel,
-		createdAt: time.Now().Unix(), tools: map[int64]*streamedToolCall{},
+		createdAt: time.Now().Unix(), tools: map[int64]*streamedToolCall{}, observeReasoning: ReasoningObserverFrom(ctx),
 		exposeReasoning: StreamedReasoning(ctx),
 	}, nil
 }
 
 type streamedReasoningKey struct{}
+type reasoningObserverKey struct{}
+
+// WithReasoningObserver observes provider text deltas locally without adding
+// them to the client-facing Responses stream.
+func WithReasoningObserver(ctx context.Context, observe func(string)) context.Context {
+	if observe == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, reasoningObserverKey{}, observe)
+}
+
+// ReasoningObserverFrom returns the request-local observer, if present.
+func ReasoningObserverFrom(ctx context.Context) func(string) {
+	observe, _ := ctx.Value(reasoningObserverKey{}).(func(string))
+	return observe
+}
 
 // WithStreamedReasoning marks a request whose client wants provider reasoning
 // streamed as reasoning_text events (the Hoard endpoint).
@@ -132,6 +149,9 @@ func (s *chatCompletionEventStream) Next() bool {
 			}
 			if json.Unmarshal([]byte(choice.Delta.RawJSON()), &vendorFields) == nil && vendorFields.ReasoningContent != "" {
 				s.reasoningContent += vendorFields.ReasoningContent
+				if s.observeReasoning != nil {
+					s.observeReasoning(vendorFields.ReasoningContent)
+				}
 				s.addReasoning(vendorFields.ReasoningContent)
 			}
 			for _, delta := range choice.Delta.ToolCalls {

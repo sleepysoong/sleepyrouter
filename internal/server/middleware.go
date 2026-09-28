@@ -52,7 +52,8 @@ func logMiddleware(log *slog.Logger) func(http.Handler) http.Handler {
 			start := time.Now()
 			next.ServeHTTP(w, r)
 			if log != nil {
-				// Never log prompt/body/secrets.
+				// Access logs stay metadata-only; the separate console trace prints
+				// bounded request previews with credential-shaped fields redacted.
 				log.Info("request",
 					"request_id", logging.Redact(RequestIDFrom(r.Context())),
 					"method", r.Method, "path", r.URL.Path,

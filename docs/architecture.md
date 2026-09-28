@@ -48,3 +48,11 @@ server → protocol → routing → upstream → provider/config
 13. client disconnect → upstream cancel.
 14. storage failure ≠ inference failure.
 15. provider별 wire API 변환은 SDK 경계에 둔다. Router는 wire format을 모른다.
+
+## Console trace
+
+The serve process may print a bounded, redacted request preview and provider-supplied
+reasoning text deltas to stdout for interactive inspection. This view is in-memory
+only inside the gateway and does not change client SSE or usage persistence. The
+gateway does not write request bodies or reasoning to files or its usage database;
+the parent terminal or service manager may independently capture stdout.

@@ -38,6 +38,9 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if s.console != nil {
+		s.console.Request(reqID, "openai", parsed.RequestedModel, parsed.Raw, consoleSecrets(snap))
+	}
 	trace.setRequested(parsed.RequestedModel)
 	if s.deps.Logger != nil {
 		s.deps.Logger.Info("request_received", "request_id", reqID, "protocol", "openai", "requested_model", parsed.RequestedModel, "stream", parsed.Stream)

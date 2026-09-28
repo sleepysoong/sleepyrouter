@@ -32,6 +32,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		anthropic.WriteError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	if s.console != nil {
+		s.console.Request(reqID, "anthropic", parsed.RequestedModel, parsed.Raw, consoleSecrets(snap))
+	}
 	parsed.SessionID = r.Header.Get("X-Claude-Code-Session-Id")
 	if s.deps.Logger != nil {
 		s.deps.Logger.Info("request_received", "request_id", reqID, "protocol", "anthropic", "requested_model", parsed.RequestedModel, "stream", parsed.Stream, "session", parsed.SessionID)
@@ -180,6 +183,9 @@ func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		anthropic.WriteError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
+	}
+	if s.console != nil {
+		s.console.Request(RequestIDFrom(r.Context()), "anthropic/count_tokens", "", raw, consoleSecrets(snap))
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"input_tokens": n})

@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/sleepysoong/sleepyrouter/internal/config"
+	"github.com/sleepysoong/sleepyrouter/internal/consoletrace"
 	"github.com/sleepysoong/sleepyrouter/internal/provider"
 	"github.com/sleepysoong/sleepyrouter/internal/state"
 	"github.com/sleepysoong/sleepyrouter/internal/usage"
@@ -30,6 +32,7 @@ type Server struct {
 	deps          Deps
 	mux           *http.ServeMux
 	continuations *reasoningContinuations
+	console       *consoletrace.Trace
 }
 
 func New(d Deps) *Server {
@@ -39,7 +42,11 @@ func New(d Deps) *Server {
 	if d.Affinity == nil {
 		d.Affinity = state.New(nil)
 	}
-	s := &Server{deps: d, mux: http.NewServeMux(), continuations: newReasoningContinuations()}
+	var console *consoletrace.Trace
+	if d.Logger != nil {
+		console = consoletrace.New(os.Stdout)
+	}
+	s := &Server{deps: d, mux: http.NewServeMux(), continuations: newReasoningContinuations(), console: console}
 	s.routes()
 	return s
 }

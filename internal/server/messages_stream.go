@@ -33,7 +33,7 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 			return
 		}
 		attemptStart := time.Now()
-		st, err := caller.DoStream(r.Context(), c, upBody)
+		st, err := caller.DoStream(s.withReasoningObserver(r.Context(), reqID, c.LocalModelID, consoleSecrets(snap)), c, upBody)
 		if err != nil {
 			ae := extractAttempt(c, err, time.Since(attemptStart))
 			attempts = append(attempts, ae)
@@ -48,6 +48,7 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 			continue
 		}
 		committed, res := s.precommitAndStreamAnthropic(w, r, snap, reqID, parsed, c, st, len(attempts)+1)
+		s.finishReasoningView(reqID, c.LocalModelID)
 		dur := time.Since(attemptStart)
 		if !committed {
 			ae := res.failErr
@@ -109,6 +110,7 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 
 func (s *Server) precommitAndStreamAnthropic(w http.ResponseWriter, r *http.Request, snap *config.RuntimeSnapshot, reqID string, parsed anthropic.Parsed, c routing.Candidate, st openai.EventStream, attemptNo int) (bool, streamResult) {
 	cfg := upstream.DefaultPrecommit()
+	logSecrets := consoleSecrets(snap)
 	type buffered struct {
 		typ     string
 		payload []byte
@@ -133,6 +135,7 @@ func (s *Server) precommitAndStreamAnthropic(w http.ResponseWriter, r *http.Requ
 		defer close(steps)
 		for st.Next() {
 			t, p := st.Event()
+			s.observeReasoningEvent(reqID, c, t, p, logSecrets)
 			cp := append([]byte{}, p...)
 			select {
 			case steps <- step{ok: true, typ: t, payload: cp}:
