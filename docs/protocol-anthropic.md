@@ -21,6 +21,9 @@
   partial JSON은 완료 전 파싱하지 않음. 실패는 `event: error`,
   `max_output_tokens`는 `stop_reason=max_tokens`. Messages SSE의 무응답 구간에는
   synthetic `ping`을 보내되 ping으로 stream idle timeout을 연장하지 않는다.
+- Messages streaming도 모델 공통으로 upstream 요청 시작 후 10s 안에 meaningful output이
+  없으면 precommit failover한다. `response.created` 같은 lifecycle event만으로는 commit하지
+  않으며, commit 뒤에는 다른 candidate로 전환하지 않는다.
 - `count_tokens`: local conservative estimator (`×1.2`, overcount 선호).
 - `GET /v1/models`: configured group/model list. Claude Code gateway model discovery 지원.
 

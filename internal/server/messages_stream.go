@@ -33,9 +33,15 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 			return
 		}
 		attemptStart := time.Now()
-		st, err := caller.DoStream(s.withReasoningObserver(r.Context(), reqID, c.LocalModelID, consoleSecrets(snap)), c, upBody)
+		attemptCtx, cancelAttempt, stopOutputDeadline, outputTimedOut := candidateStreamContext(r.Context(), attemptStart)
+		st, err := caller.DoStream(s.withReasoningObserver(attemptCtx, reqID, c.LocalModelID, consoleSecrets(snap)), c, upBody)
+		stopOutputDeadline()
 		if err != nil {
 			ae := extractAttempt(c, err, time.Since(attemptStart))
+			if outputTimedOut() {
+				ae = routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorTimeout, SafeMessage: "no meaningful upstream output within 10 seconds", Duration: time.Since(attemptStart)}
+			}
+			cancelAttempt()
 			attempts = append(attempts, ae)
 			if ae.Class == routing.ErrorAuth && (ae.StatusCode == 401 || ae.StatusCode == 403) {
 				authFailed[c.ProviderID] = true
@@ -47,7 +53,15 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 			}
 			continue
 		}
-		committed, res := s.precommitAndStreamAnthropic(w, r, snap, reqID, parsed, c, st, len(attempts)+1)
+		if outputTimedOut() {
+			_ = st.Close()
+			cancelAttempt()
+			attempts = append(attempts, routing.AttemptError{Candidate: c.LocalModelID, Provider: c.ProviderID, Class: routing.ErrorTimeout, SafeMessage: "no meaningful upstream output within 10 seconds", Duration: time.Since(attemptStart)})
+			continue
+		}
+		attemptRequest := r.WithContext(attemptCtx)
+		committed, res := s.precommitAndStreamAnthropic(w, attemptRequest, snap, reqID, parsed, c, st, len(attempts)+1)
+		cancelAttempt()
 		s.finishReasoningView(reqID, c.LocalModelID)
 		dur := time.Since(attemptStart)
 		if !committed {
@@ -111,17 +125,23 @@ func (s *Server) serveMessagesStream(w http.ResponseWriter, r *http.Request, sna
 func (s *Server) precommitAndStreamAnthropic(w http.ResponseWriter, r *http.Request, snap *config.RuntimeSnapshot, reqID string, parsed anthropic.Parsed, c routing.Candidate, st openai.EventStream, attemptNo int) (bool, streamResult) {
 	cfg := upstream.DefaultPrecommit()
 	logSecrets := consoleSecrets(snap)
+	outputDeadline := firstOutputDeadline(r.Context())
+	var outputTimer *time.Timer
+	var outputCh <-chan time.Time
+	if !outputDeadline.IsZero() {
+		outputTimer = time.NewTimer(time.Until(outputDeadline))
+		outputCh = outputTimer.C
+		defer outputTimer.Stop()
+	}
 	type buffered struct {
 		typ     string
 		payload []byte
 	}
 	var buf []buffered
 	bufBytes := 0
+	// Keep the configured first-event timeout as an additional, possibly shorter bound.
 	firstTimer := time.NewTimer(snap.Timeouts.FirstEvent)
 	defer firstTimer.Stop()
-	var precommitTimer *time.Timer
-	var precommitCh <-chan time.Time
-	lifecycleOnly := true // buffered events so far are only created/in_progress
 
 	type step struct {
 		ok      bool
@@ -148,20 +168,15 @@ func (s *Server) precommitAndStreamAnthropic(w http.ResponseWriter, r *http.Requ
 	meaningful := false
 collect:
 	for {
+		if firstOutputTimedOut(outputDeadline) {
+			return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorTimeout, SafeMessage: "no meaningful upstream output within 10 seconds"}}
+		}
 		if len(buf) >= cfg.MaxEvents || bufBytes >= cfg.MaxBytes {
-			meaningful = true
-			break
+			return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorTimeout, SafeMessage: "precommit buffer limit reached before meaningful output"}}
 		}
 		var timeoutCh <-chan time.Time
 		if len(buf) == 0 {
 			timeoutCh = firstTimer.C
-		} else {
-			if precommitTimer == nil {
-				precommitTimer = time.NewTimer(2 * time.Second)
-				precommitCh = precommitTimer.C
-				defer precommitTimer.Stop()
-			}
-			timeoutCh = precommitCh
 		}
 		idleTimer := time.NewTimer(snap.Timeouts.StreamIdle)
 		select {
@@ -173,18 +188,17 @@ collect:
 			if len(buf) == 0 {
 				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorTimeout, SafeMessage: "first event timeout"}}
 			}
-			if lifecycleOnly {
-				// See precommitAndStreamOpenAI: keep failover open while the
-				// upstream has only announced the response.
-				precommitTimer.Reset(2 * time.Second)
-				continue
-			}
-			meaningful = true
-			break collect
+			continue
+		case <-outputCh:
+			idleTimer.Stop()
+			return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorTimeout, SafeMessage: "no meaningful upstream output within 10 seconds"}}
 		case <-idleTimer.C:
 			return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorTimeout, SafeMessage: "stream idle timeout"}}
 		case stp, ok := <-steps:
 			idleTimer.Stop()
+			if firstOutputTimedOut(outputDeadline) {
+				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorTimeout, SafeMessage: "no meaningful upstream output within 10 seconds"}}
+			}
 			if !ok {
 				if err := st.Err(); err != nil {
 					return false, streamResult{failErr: classifyStreamErr(r.Context(), c, err)}
@@ -196,9 +210,6 @@ collect:
 			}
 			buf = append(buf, buffered{typ: stp.typ, payload: stp.payload})
 			bufBytes += len(stp.payload)
-			if !upstream.IsLifecycleEvent(stp.typ) {
-				lifecycleOnly = false
-			}
 			if stp.typ == "response.failed" || stp.typ == "error" {
 				return false, streamResult{failErr: routing.AttemptError{Class: routing.ErrorUpstream, SafeMessage: "upstream response failed before output"}}
 			}

@@ -362,18 +362,21 @@ JSON의 인증·API 키·token·password·secret 필드는 `[redacted]`로 가�
 ## Streaming behavior
 
 - commit 기준은 첫 TCP byte가 아니라 **첫 meaningful event**
-  (text/reasoning/tool delta, content 시작, completed, 버퍼 한계).
-  `response.created`만 받고 죽으면 failover 가능.
+  (text/reasoning/tool delta, content 시작, completed).
+  upstream 요청 시작 후 10s 동안 meaningful output이 없으면 candidate timeout으로
+  처리하고 다음 모델을 시도한다. `response.created` 같은 lifecycle event만 온 경우도
+  output으로 보지 않는다.
 - commit 전에 보이는 출력 없이(`output`이 비었거나 reasoning뿐) `response.completed`가
   오면 빈 성공으로 commit하지 않고 `upstream returned empty response`로 failover한다
   (reasoning model이 `reasoning_content`만 내고 끝나는 경우).
-- precommit 버퍼 기본: 32 events / 64 KiB / 첫 event 후 2s 중 먼저 도달 시 commit.
-  단, 버퍼에 `response.created`/`in_progress`/`queued`만 있으면 2s 타이머로 commit하지
-  않고 계속 기다린다(`stream_idle`까지). 생각만 하는 reasoning model을 빈 채로 commit해
-  failover 기회를 잃지 않기 위해서다.
+- meaningful output 전에는 최대 32 events / 64 KiB를 버퍼링한다. 이 한도에 먼저
+  도달하면 빈 출력을 commit하지 않고 candidate를 실패 처리한다. lifecycle event나
+  다른 metadata만 오는 경우도 첫 meaningful output 제한에 포함된다.
 - **commit 이후 다른 model로 절대 failover하지 않는다.**
   response ID / tool ID / index가 바뀌어 client parser가 깨지기 때문이다.
-- pre-commit 상태의 `first_event` / `stream_idle` timeout은 candidate failover 사유.
+- pre-commit 상태의 10s 첫 output, `first_event`, `stream_idle` timeout은 candidate
+  failover 사유다. 첫 meaningful output을 commit한 뒤의 idle timeout은 현재 stream을
+  오류로 끝내며 다른 candidate로 바꾸지 않는다.
 - Anthropic SSE는 quiet upstream 구간에 최대 15초 간격 `ping`을 내보낸다.
   기본 `stream_idle=330s` 는 Claude Code의 기본 300초 watchdog보다 약간 길게
   upstream 무응답 한계를 둔 값이다. ping은 클라이언트의 바이트 watchdog을
